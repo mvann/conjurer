@@ -239,11 +239,11 @@ const curveOf = (
   const source = curveOf([kf(0, 2), kf(0.2, 3)], [{ type: "linear" }]);
   const clip = copyCurveWindow(source, 0, 0.2)!;
   const pasted = pasteClipAt(target, clip, 0.4)!;
-  // The pasted window is the clip (sampled inside the window; the paste
-  // sits a hair right of the pinned keyframe, hence the loose tolerance).
-  near(evaluateCurve(pasted, 0.45)!, 2.25, 0.01, "paste window quarter");
-  near(evaluateCurve(pasted, 0.5)!, 2.5, 0.01, "paste window middle");
-  near(evaluateCurve(pasted, 0.55)!, 2.75, 0.01, "paste window late");
+  // The pasted window is EXACTLY the clip: it starts flush at the
+  // cursor (the pin stacks under it as an instantaneous step).
+  near(evaluateCurve(pasted, 0.45)!, 2.25, 1e-9, "paste window quarter");
+  near(evaluateCurve(pasted, 0.5)!, 2.5, 1e-9, "paste window middle");
+  near(evaluateCurve(pasted, 0.55)!, 2.75, 1e-9, "paste window late");
   // Outside the bisected segment the original survives exactly.
   for (const t of [0.15, 0.25, 0.75, 0.85])
     near(
@@ -252,18 +252,49 @@ const curveOf = (
       1e-9,
       `paste outside at ${t}`,
     );
-  // LEFT of the cursor the bisected segment is pinned and unchanged; the
-  // paste steps off the pinned keyframe.
+  // LEFT of the cursor the bisected segment is pinned and unchanged
+  // right up to the cursor; AT the cursor the paste takes over.
   near(
     evaluateCurve(pasted, 0.35)!,
     evaluateCurve(target, 0.35)!,
     1e-9,
     "left of cursor unchanged",
   );
-  near(evaluateCurve(pasted, 0.4)!, 1, 1e-9, "pinned value at the cursor");
-  near(evaluateCurve(pasted, 0.41)!, 2.05, 0.02, "step into the paste");
+  near(
+    evaluateCurve(pasted, 0.4 - 1e-6)!,
+    1,
+    1e-5,
+    "pinned value just before the cursor",
+  );
+  near(evaluateCurve(pasted, 0.4)!, 2, 1e-9, "paste starts at the cursor");
+  near(evaluateCurve(pasted, 0.41)!, 2.05, 1e-9, "clip shape from the cursor");
   // The right junction still bridges toward the surviving keyframes.
   near(evaluateCurve(pasted, 0.65)!, 2, 0.03, "junction out of paste");
+}
+
+// ---- paste lands flush: copy four "beats", paste right after them ----
+{
+  // Regression: the paste used to shift its content right by a small
+  // step gap to make room for the junction, which read as extra space
+  // at the front of everything pasted on a snapped grid.
+  const target = curveOf(
+    [kf(0.1, 0), kf(0.2, 1), kf(0.3, 0.5), kf(0.9, 0.5)],
+    [{ type: "linear" }, { type: "curve", bend: 3 }, { type: "linear" }],
+  );
+  const clip = copyCurveWindow(target, 0.1, 0.3)!;
+  const pasted = pasteClipAt(target, clip, 0.3)!;
+  if (!pasted.keyframes.some((keyframe) => keyframe.time === 0.3))
+    fail("flush paste: no keyframe exactly at the paste point");
+  // The pasted stretch reproduces the copied stretch with zero offset.
+  for (let i = 0; i <= 20; i++) {
+    const offset = (0.2 * i) / 20;
+    near(
+      evaluateCurve(pasted, 0.3 + offset)!,
+      evaluateCurve(target, 0.1 + offset)!,
+      1e-9,
+      `flush paste at +${offset.toFixed(3)}`,
+    );
+  }
 }
 
 // ---- pasting over a wave keeps everything left of the cursor exact ----

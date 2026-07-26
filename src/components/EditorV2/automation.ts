@@ -490,21 +490,27 @@ export const pasteClipAt = (
   const baseSegments = getSegments(base);
   // When the paste point bisects a segment (or lands on a keyframe), that
   // keyframe is KEPT, pinning the original value there so the curve to
-  // the left stays exactly as it was; the paste then steps off it. The
-  // pasted keyframes shift right by a hair to make room for the step.
-  const startPin = base.keyframes.find(
+  // the left stays exactly as it was; the paste stacks its first keyframe
+  // at the exact same time (an instantaneous step, as stacked keyframes
+  // are everywhere else), so the pasted content starts AT the paste point
+  // with no gap. A pin whose value already matches the clip's start is
+  // dropped: the junction is seamless and needs no step.
+  const boundary = base.keyframes.find(
     (keyframe) => Math.abs(keyframe.time - at) <= EPS * 2,
   );
-  const stepGap = startPin ? Math.min(5e-4, duration / 10) : 0;
+  const startPin =
+    boundary && Math.abs(boundary.value - trimmed.keyframes[0].value) > 1e-9
+      ? boundary
+      : undefined;
   const left = [
     ...base.keyframes.filter((keyframe) => keyframe.time < at - EPS),
     ...(startPin ? [startPin] : []),
   ];
   const right = base.keyframes.filter(
-    (keyframe) => keyframe.time > at + duration + stepGap + EPS,
+    (keyframe) => keyframe.time > at + duration + EPS,
   );
   const pasted = trimmed.keyframes.map((keyframe) => ({
-    time: Math.min(at + stepGap + keyframe.time, 1),
+    time: Math.min(at + keyframe.time, 1),
     value: keyframe.value,
   }));
 
