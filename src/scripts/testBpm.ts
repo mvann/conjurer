@@ -54,12 +54,15 @@ const synthesize = (
   offset: number,
   seconds: number,
   seed: number,
+  // Fraction of the track that carries kicks; the rest is an outro of
+  // just noise (the fit must not need onsets all the way to the end).
+  kickUntil = 1,
 ) => {
   const random = mulberry32(seed);
   const data = new Float32Array(Math.round(seconds * SAMPLE_RATE));
   const beat = 60 / bpm;
   const kicks: number[] = [];
-  for (let t = offset; t < seconds - 0.5; t += beat) {
+  for (let t = offset; t < seconds * kickUntil - 0.5; t += beat) {
     kicks.push(t);
     addBurst(data, t, 55, 0.9, 0.05);
     // Off-beat hat, well above the analyzer's low band.
@@ -79,22 +82,41 @@ const fold = (bpm: number) => {
   return folded;
 };
 
-const cases = [
+// Long tracks are where period error shows: a few thousandths of a BPM
+// compounds into a visible end-of-song slide, so the five-minute cases
+// assert the same 15ms kick-to-grid bound across hundreds of beats.
+// 127.87 exercises the free fit (no nice snap available); 104 exact must
+// snap; the kickUntil case proves the fit survives a silent outro.
+const cases: {
+  bpm: number;
+  offset: number;
+  seed: number;
+  seconds?: number;
+  kickUntil?: number;
+  // Assert the recovered BPM this tightly (defaults to 0.15); the
+  // exact-integer long case demands the snap.
+  bpmTolerance?: number;
+}[] = [
   { bpm: 120, offset: 0, seed: 1 },
   { bpm: 128, offset: 0.31, seed: 2 },
   { bpm: 95, offset: 0.11, seed: 3 },
   { bpm: 174, offset: 0.44, seed: 4 },
   { bpm: 104.3, offset: 0.2, seed: 5 },
   { bpm: 140, offset: 0.57, seed: 6 },
+  { bpm: 127.87, offset: 0.25, seed: 7, seconds: 300 },
+  { bpm: 104, offset: 0.12, seed: 8, seconds: 300, bpmTolerance: 0.005 },
+  { bpm: 133, offset: 0.4, seed: 9, seconds: 240, kickUntil: 0.85 },
 ];
 
 for (const testCase of cases) {
-  const label = `${testCase.bpm}bpm@${testCase.offset}s`;
+  const seconds = testCase.seconds ?? 45;
+  const label = `${testCase.bpm}bpm@${testCase.offset}s/${seconds}s`;
   const { data, kicks } = synthesize(
     testCase.bpm,
     testCase.offset,
-    45,
+    seconds,
     testCase.seed,
+    testCase.kickUntil ?? 1,
   );
   const analysis = analyzeBpmSamples(data, SAMPLE_RATE);
   if (!analysis) {
@@ -109,8 +131,10 @@ for (const testCase of cases) {
   const bpmError = Math.min(
     ...candidates.map((candidate) => Math.abs(analysis.bpm - candidate)),
   );
-  if (bpmError > 0.15)
-    fail(`${label}: bpm ${analysis.bpm.toFixed(3)} (error ${bpmError.toFixed(3)})`);
+  if (bpmError > (testCase.bpmTolerance ?? 0.15))
+    fail(
+      `${label}: bpm ${analysis.bpm.toFixed(3)} (error ${bpmError.toFixed(3)})`,
+    );
 
   // Every kick must sit on a grid line.
   const beat = 60 / analysis.bpm;

@@ -193,54 +193,140 @@ export const analyzeBpmSamples = (
     }
   }
 
-  // Precision: match each grid line to the strongest novelty peak nearby
-  // (sub-frame position via parabolic interpolation), then fit
-  // time = offset + k * period by weighted least squares. Two passes,
-  // the second with a tighter window. Regression over the whole song
-  // pins both tempo and phase with no cumulative drift.
-  for (const window of [3, 1.5]) {
+  // Sub-frame position and strength of the strongest novelty peak within
+  // +-window frames of a grid position, via parabolic interpolation.
+  const peakNear = (grid: number, window: number) => {
+    const from = Math.max(1, Math.round(grid - window));
+    const to = Math.min(frameCount - 2, Math.round(grid + window));
+    let peakAt = -1;
+    let peakValue = 0;
+    for (let i = from; i <= to; i++)
+      if (novelty[i] > peakValue) {
+        peakValue = novelty[i];
+        peakAt = i;
+      }
+    if (peakAt < 0 || peakValue <= 0) return null;
+    const a = novelty[peakAt - 1];
+    const b = novelty[peakAt];
+    const c = novelty[peakAt + 1];
+    const denominator = a - 2 * b + c;
+    const shift =
+      Math.abs(denominator) > 1e-12
+        ? Math.min(Math.max((0.5 * (a - c)) / denominator, -0.5), 0.5)
+        : 0;
+    return { t: peakAt + shift, w: peakValue };
+  };
+
+  // One weighted-least-squares pass: match each grid line to the
+  // strongest novelty peak nearby and fit time = offset + k * period.
+  const fitPass = (
+    fromPeriod: number,
+    fromOffset: number,
+    window: number,
+  ): { period: number; offset: number } | null => {
     let sumW = 0;
     let sumWk = 0;
     let sumWt = 0;
     let sumWkk = 0;
     let sumWkt = 0;
-    const count = Math.floor((frameCount - offset) / period);
+    const count = Math.floor((frameCount - fromOffset) / fromPeriod);
     for (let k = 0; k <= count; k++) {
-      const grid = offset + k * period;
-      const from = Math.max(1, Math.round(grid - window));
-      const to = Math.min(frameCount - 2, Math.round(grid + window));
-      let peakAt = -1;
-      let peakValue = 0;
-      for (let i = from; i <= to; i++)
-        if (novelty[i] > peakValue) {
-          peakValue = novelty[i];
-          peakAt = i;
-        }
-      if (peakAt < 0 || peakValue <= 0) continue;
-      // Sub-frame peak position.
-      const a = novelty[peakAt - 1];
-      const b = novelty[peakAt];
-      const c = novelty[peakAt + 1];
-      const denominator = a - 2 * b + c;
-      const shift =
-        Math.abs(denominator) > 1e-12
-          ? Math.min(Math.max((0.5 * (a - c)) / denominator, -0.5), 0.5)
-          : 0;
-      const t = peakAt + shift;
-      const w = peakValue;
-      sumW += w;
-      sumWk += w * k;
-      sumWt += w * t;
-      sumWkk += w * k * k;
-      sumWkt += w * k * t;
+      const peak = peakNear(fromOffset + k * fromPeriod, window);
+      if (!peak) continue;
+      sumW += peak.w;
+      sumWk += peak.w * k;
+      sumWt += peak.w * peak.t;
+      sumWkk += peak.w * k * k;
+      sumWkt += peak.w * k * peak.t;
     }
     const det = sumW * sumWkk - sumWk * sumWk;
-    if (sumW <= 0 || Math.abs(det) < 1e-9) break;
+    if (sumW <= 0 || Math.abs(det) < 1e-9) return null;
     const fittedOffset = (sumWkk * sumWt - sumWk * sumWkt) / det;
     const fittedPeriod = (sumW * sumWkt - sumWk * sumWt) / det;
-    if (fittedPeriod > 0) {
-      period = fittedPeriod;
-      offset = fittedOffset;
+    if (!(fittedPeriod > 0)) return null;
+    return { period: fittedPeriod, offset: fittedOffset };
+  };
+
+  // Offset-only refit for a FIXED period (used to score tempo
+  // candidates): the weighted mean of (peak - k * period), iterated so
+  // the matching window can recenter.
+  const fitOffsetFor = (fixedPeriod: number, seedOffset: number) => {
+    let fitted = seedOffset;
+    for (let pass = 0; pass < 3; pass++) {
+      let sumW = 0;
+      let sumWd = 0;
+      const count = Math.floor((frameCount - fitted) / fixedPeriod);
+      for (let k = 0; k <= count; k++) {
+        const peak = peakNear(fitted + k * fixedPeriod, 1.5);
+        if (!peak) continue;
+        sumW += peak.w;
+        sumWd += peak.w * (peak.t - k * fixedPeriod);
+      }
+      if (sumW <= 0) return null;
+      fitted = sumWd / sumW;
+    }
+    return fitted;
+  };
+
+  // Weighted RMS of grid-to-peak residuals: the figure of merit for
+  // choosing between tempo candidates.
+  const rmsFor = (fixedPeriod: number, fixedOffset: number) => {
+    let sumW = 0;
+    let sumWrr = 0;
+    const count = Math.floor((frameCount - fixedOffset) / fixedPeriod);
+    for (let k = 0; k <= count; k++) {
+      const grid = fixedOffset + k * fixedPeriod;
+      const peak = peakNear(grid, 1.5);
+      if (!peak) continue;
+      sumW += peak.w;
+      sumWrr += peak.w * (peak.t - grid) * (peak.t - grid);
+    }
+    return sumW > 0 ? Math.sqrt(sumWrr / sumW) : Infinity;
+  };
+
+  // Precision: iterate the regression to convergence. The coarse sweep
+  // can leave enough period error that the grid drifts out of the
+  // matching window by the end of a long song, which truncates exactly
+  // the beats with the most leverage on the period; re-matching against
+  // each improved grid recovers them. A fixed two-pass version of this
+  // left tens of milliseconds of end-of-song drift on real tracks.
+  let window = 3;
+  for (let pass = 0; pass < 10; pass++) {
+    const fit = fitPass(period, offset, window);
+    if (!fit) break;
+    const periodDelta = Math.abs(fit.period - period);
+    period = fit.period;
+    offset = fit.offset;
+    window = 1.5;
+    // 1e-4 frames/beat compounds to well under a millisecond over any
+    // song; further passes only chase noise.
+    if (periodDelta < 1e-4) break;
+  }
+
+  // Producers overwhelmingly render at whole (sometimes half) BPM, but a
+  // free-floating fit lands a few thousandths off, which still compounds
+  // to a visible slide over a full song. Snap to the nearest integer or
+  // half BPM when a grid at that exact tempo matches the onsets
+  // essentially as well as the free fit; keep the free fit otherwise
+  // (vinyl rips and live sets genuinely sit between).
+  const freeBpm = (60 * frameRate) / period;
+  const candidates = new Set<number>();
+  for (const snapped of [Math.round(freeBpm), Math.round(freeBpm * 2) / 2]) {
+    if (snapped !== freeBpm && Math.abs(snapped - freeBpm) <= 0.2)
+      candidates.add(snapped);
+  }
+  if (candidates.size > 0) {
+    const freeRms = rmsFor(period, offset);
+    for (const candidateBpm of candidates) {
+      const candidatePeriod = (60 * frameRate) / candidateBpm;
+      const candidateOffset = fitOffsetFor(candidatePeriod, offset);
+      if (candidateOffset === null) continue;
+      const candidateRms = rmsFor(candidatePeriod, candidateOffset);
+      if (candidateRms <= freeRms * 1.02) {
+        period = candidatePeriod;
+        offset = candidateOffset;
+        break;
+      }
     }
   }
 
