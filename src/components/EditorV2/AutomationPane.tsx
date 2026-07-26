@@ -155,15 +155,32 @@ function LaneCurve({
   );
 
   return (
-    <svg
-      className={`${styles.laneCurveSvg} ${
-        isCurveActive(curve) ? "" : styles.curveDimmed
-      }`}
-      viewBox="0 0 100 100"
-      preserveAspectRatio="none"
-    >
-      <path className={styles.curvePath} d={parts.join(" ")} />
-    </svg>
+    <>
+      <svg
+        className={`${styles.laneCurveSvg} ${
+          isCurveActive(curve) ? "" : styles.curveDimmed
+        }`}
+        viewBox="0 0 100 100"
+        preserveAspectRatio="none"
+      >
+        <path className={styles.curvePath} d={parts.join(" ")} />
+      </svg>
+      {/* Scale-model keyframe dots (positioned divs, not svg circles:
+          the stretched viewBox would deform them). */}
+      {keyframes.map((keyframe, index) => {
+        const left = x(keyframe.time);
+        if (left < 0 || left > 100) return null;
+        return (
+          <div
+            key={index}
+            className={`${styles.laneKeyframeDot} ${
+              isCurveActive(curve) ? "" : styles.laneKeyframeDotDimmed
+            }`}
+            style={{ left: `${left}%`, top: `${top(keyframe.value)}%` }}
+          />
+        );
+      })}
+    </>
   );
 }
 

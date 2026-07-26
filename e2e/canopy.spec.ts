@@ -123,6 +123,43 @@ test.describe("canopy pixel smoke", () => {
     expect(diffBytes(early, late)).toBeGreaterThan(2_000);
   });
 
+  test("see-through mode shows the animating canopy behind the editor", async ({
+    page,
+  }) => {
+    // Nebula at full motion, then open an automation lane editor over it:
+    // the opaque backdrop hides the animation until see-through thins it.
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+    await page
+      .locator("[data-doc=param-row]")
+      .filter({ hasText: "Warp" })
+      .click({ button: "right" });
+    await page.getByRole("button", { name: "Add Automation Lane" }).click();
+    await page.keyboard.press("Escape");
+    await page.locator("[class*=laneRow]").first().click();
+    await page.waitForTimeout(600);
+
+    const opaque1 = await shoot(page);
+    await page.waitForTimeout(900);
+    const opaque2 = await shoot(page);
+    expect(diffBytes(opaque1, opaque2)).toBeLessThan(100);
+
+    await page.getByLabel("See through to canopy").click();
+    await page.waitForTimeout(400);
+    const through1 = await shoot(page);
+    await page.waitForTimeout(900);
+    const through2 = await shoot(page);
+    expect(diffBytes(through1, through2)).toBeGreaterThan(2_000);
+
+    // Toggling back restores the solid backdrop.
+    await page.getByLabel("See through to canopy").click();
+    await page.waitForTimeout(400);
+    const solid1 = await shoot(page);
+    await page.waitForTimeout(900);
+    const solid2 = await shoot(page);
+    expect(diffBytes(solid1, solid2)).toBeLessThan(100);
+  });
+
   test("param edits still repaint after an undo", async ({ page }) => {
     // Regression: undo once replaced the live pattern instances, leaving
     // every later edit writing into objects the canopy no longer

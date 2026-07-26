@@ -430,6 +430,11 @@ Curve is the default: a straight line that bends toward the cursor when dragged 
 
 The current type is marked in the menu. Choosing a type resets the segment's parameters to defaults; the inspector card then edits them. Splitting a segment with a new keyframe gives both halves the original segment's type and parameters. Below the types, the menu also carries the Snap to options; right clicking empty space opens those on their own.`,
   },
+  "see-through": {
+    title: "See Through",
+    short: "Thins the editor's backdrop so the canopy shows behind it.",
+    long: `The toggle in the editor's bottom right corner makes the expanded automation view slightly transparent: the live canopy renders through the backdrop while every curve, keyframe, and control stays at full strength on top. Toggle it again to restore the solid backdrop. Useful for dialing a curve while watching what it does to the canopy in the same glance.`,
+  },
   "snap-menu": {
     title: "Snap To",
     short: "Snaps time edits to the beat grid or the song's transients.",

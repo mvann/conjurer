@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { MdOpacity } from "react-icons/md";
 import styles from "@/styles/EditorV2.module.css";
 import { PatternParam } from "@/src/params/shared/patternParam";
 import {
@@ -297,6 +298,9 @@ export function AutomationEditorView({
   const [snapMode, setSnapMode] = useState<"off" | "grid" | "transients">(
     "off",
   );
+  // See-through mode: the editor's backdrop thins so the canopy shows
+  // through while editing.
+  const [seeThrough, setSeeThrough] = useState(false);
   // Nearest snap target to a time (song fraction); identity when off or
   // when the mode's targets are unavailable.
   const snapTime = (time: number): number => {
@@ -1031,7 +1035,12 @@ export function AutomationEditorView({
   };
 
   return (
-    <div className={styles.automationEditor} data-doc="automation-editor">
+    <div
+      className={`${styles.automationEditor} ${
+        seeThrough ? styles.automationEditorSeeThrough : ""
+      }`}
+      data-doc="automation-editor"
+    >
       <div
         ref={areaRef}
         className={styles.editorLineArea}
@@ -1414,7 +1423,7 @@ export function AutomationEditorView({
               <div className={styles.contextMenuSeparator} />
             </>
           )}
-          <div data-doc="snap-menu">
+          <div className={styles.snapMenuSection} data-doc="snap-menu">
             <div className={styles.contextMenuLabel}>Snap to</div>
             {(
               [
@@ -1593,6 +1602,18 @@ export function AutomationEditorView({
       >
         ✕
       </button>
+
+      <div className={styles.editorCornerToggle} data-doc="see-through">
+        <button
+          className={`${styles.cornerButton} ${
+            seeThrough ? styles.cornerButtonActive : ""
+          }`}
+          onClick={() => setSeeThrough((current) => !current)}
+          aria-label="See through to canopy"
+        >
+          <MdOpacity />
+        </button>
+      </div>
     </div>
   );
 }

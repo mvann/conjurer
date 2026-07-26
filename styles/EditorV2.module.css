@@ -533,6 +533,23 @@
   touch-action: none;
 }
 
+/* Miniature keyframe markers in the lane previews: the editor's dots
+   at scale-model size, display only. */
+.laneKeyframeDot {
+  position: absolute;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #ffffff;
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 3px rgba(225, 233, 250, 0.85);
+  pointer-events: none;
+}
+
+.laneKeyframeDotDimmed {
+  opacity: 0.35;
+}
+
 .keyframeDot {
   position: absolute;
   width: 9px;
@@ -648,6 +665,22 @@
     rgba(255, 255, 255, 0.015),
     rgba(255, 255, 255, 0.015)
   );
+  transition: background-color 0.25s ease;
+}
+
+/* See-through mode: the editor's backdrop thins so the canopy renders
+   through it; curves and chrome stay at full strength on top. */
+.automationEditorSeeThrough {
+  background-color: rgba(7, 6, 15, 0.35);
+}
+
+/* Bottom-right corner of the editor: the see-through toggle, styled
+   like the canopy's corner controls. */
+.editorCornerToggle {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  z-index: 4;
 }
 
 /* Same width as the timeline's transport box, so lane areas line up with
@@ -1428,6 +1461,15 @@
   height: 1px;
   margin: 6px 4px;
   background: rgba(232, 236, 244, 0.14);
+}
+
+/* The chosen snap mode reads at a glance: glowing text alone is too
+   subtle among three short labels, so the active one is underlined. */
+.snapMenuSection .contextMenuItemActive {
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(232, 236, 244, 0.75);
 }
 
 /* Small-caps section heading inside the menu. */
