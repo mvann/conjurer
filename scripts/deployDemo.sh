@@ -10,6 +10,13 @@
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
+# The user's node toolchain (yarn via nvm) when not already on PATH.
+if ! command -v yarn > /dev/null 2>&1 && [ -s "$HOME/.nvm/nvm.sh" ]; then
+  # shellcheck disable=SC1091
+  source "$HOME/.nvm/nvm.sh"
+  nvm use > /dev/null 2>&1 || true
+fi
+
 REMOTE_URL=$(git remote get-url origin)
 
 # Pages the static demo does not ship (API routes cannot be exported;
