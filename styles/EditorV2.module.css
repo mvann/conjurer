@@ -1744,11 +1744,6 @@
   cursor: pointer;
 }
 
-/* Hidden host for the wavesurfer audio engine; it renders nothing. */
-.audioHost {
-  display: none;
-}
-
 /* Detected tempo, top-right of the timeline. */
 .bpmLabel {
   position: absolute;

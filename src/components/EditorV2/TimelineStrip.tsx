@@ -1,11 +1,11 @@
 import { useEffect, useRef, useState } from "react";
-import WaveSurfer from "wavesurfer.js";
 import { FaTrashAlt } from "react-icons/fa";
 import styles from "@/styles/EditorV2.module.css";
 import { TransportBar } from "@/src/components/EditorV2/TransportBar";
 import { SongsPanel } from "@/src/components/EditorV2/SongsPanel";
 import { analyzeBpm, BpmAnalysis } from "@/src/components/EditorV2/bpm";
 import { getSongUrl } from "@/src/utils/songUrl";
+import { SongPlayer } from "@/src/components/EditorV2/songPlayer";
 import { Song } from "@/src/types/Song";
 import {
   publishTimeViewport,
@@ -78,12 +78,11 @@ type DragState = {
 // to pan, up to widen (zoom out), down to narrow (zoom in); click outside
 // it to seek. Click the timeline waveform to seek.
 //
-// Rendering approach: wavesurfer is used purely as a hidden audio engine
-// (decode, play, seek, rate). The song's peaks are painted ONCE into two
-// offscreen canvases (dim and bright); every visible frame of both the
-// timeline and the minimap is then a couple of drawImage calls sampling
-// those offscreens, so pan/zoom redraw at full frame rate with no waveform
-// re-render ever.
+// Rendering approach: SongPlayer (a bare media element fed a fully
+// fetched blob) handles decode, play, seek, and rate. The song's peaks
+// are computed once from the decoded audio; every visible frame of the
+// timeline and the minimap max-pools bars straight from that array, so
+// pan/zoom redraw at full frame rate with no waveform re-render ever.
 type Props = {
   song: Song | null;
   onSongChange: (song: Song | null) => void;
@@ -103,7 +102,7 @@ export function TimelineStrip({
   const [isSongPanelOpen, setIsSongPanelOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
-  // Latest values for the async wavesurfer setup (see setUp below).
+  // Latest values applied to each fresh SongPlayer instance.
   const settings = useRef({ playbackRate: 1, volume });
   settings.current = { playbackRate, volume };
   const [bpmInfo, setBpmInfo] = useState<BpmAnalysis | null>(null);
@@ -111,14 +110,14 @@ export function TimelineStrip({
   const timeLabelRef = useRef<HTMLSpanElement>(null);
 
   const getDisplayTime = () =>
-    scrubTime.current ?? wavesurfer.current?.getCurrentTime() ?? 0;
+    scrubTime.current ?? player.current?.getCurrentTime() ?? 0;
 
   // Updated imperatively; timeupdate fires far too often for React state.
   // Each digit gets a fixed-width box so the label doesn't wiggle as
   // proportional-font digits change.
   const updateTimeLabel = () => {
     const label = timeLabelRef.current;
-    const ws = wavesurfer.current;
+    const ws = player.current;
     if (!label || !ws) return;
     const text = formatTime(getDisplayTime());
     if (label.dataset.time === text) return;
@@ -134,10 +133,9 @@ export function TimelineStrip({
       }),
     );
   };
-  const audioHostRef = useRef<HTMLDivElement>(null);
   const timelineCanvasRef = useRef<HTMLCanvasElement>(null);
   const minimapCanvasRef = useRef<HTMLCanvasElement>(null);
-  const wavesurfer = useRef<WaveSurfer | null>(null);
+  const player = useRef<SongPlayer | null>(null);
 
   const peaksRef = useRef<Float32Array | null>(null);
   // While scrubbing the timeline, the playhead follows this local position;
@@ -168,7 +166,7 @@ export function TimelineStrip({
 
   const draw = () => {
     drawQueued.current = false;
-    const ws = wavesurfer.current;
+    const ws = player.current;
     const duration = ws?.getDuration() ?? 0;
     const progress = duration ? getDisplayTime() / duration : 0;
     publishTransportTime(getDisplayTime(), duration);
@@ -303,7 +301,7 @@ export function TimelineStrip({
   // straight from this array (drawBars), so there are no prerendered
   // images to scale and nothing to misalign or collapse.
   const buildPeaks = () => {
-    const decoded = wavesurfer.current?.getDecodedData();
+    const decoded = player.current?.getDecodedData();
     if (!decoded) {
       peaksRef.current = null;
       return;
@@ -352,46 +350,57 @@ export function TimelineStrip({
   }, [songUrl]);
 
   useEffect(() => {
-    const host = audioHostRef.current;
-    if (!songUrl || !host) return;
+    if (!songUrl) return;
 
-    // The whole file is fetched up front and handed over as a blob: URL,
-    // so the media element plays from memory. Streaming straight from the
-    // song URL instead leaves playback at the browser's mercy: it can
-    // drop buffered audio in a long-lived tab and stall mid-play on the
-    // refetch (play, hiccup, resume). Wavesurfer fully downloads the URL
-    // to decode peaks anyway, so this costs no extra transfer.
-    let cancelled = false;
-    let ws: WaveSurfer | null = null;
-    let objectUrl: string | null = null;
-    const setUp = (url: string) => {
-      if (cancelled) return;
-      ws = createWavesurfer(host, url);
-      // Setup is async (behind the fetch), so the volume and rate
-      // effects may already have run against no instance.
-      ws.setPlaybackRate(settings.current.playbackRate);
-      ws.setVolume(settings.current.volume);
-      wavesurfer.current = ws;
-      view.current = { startFrac: 0, zoom: 1 };
-      publishViewport();
-    };
-    fetch(songUrl)
-      .then((response) => {
-        if (!response.ok) throw new Error(String(response.status));
-        return response.blob();
-      })
-      .then((blob) => {
-        objectUrl = URL.createObjectURL(blob);
-        setUp(objectUrl);
-      })
-      // On any fetch failure, fall back to streaming from the source.
-      .catch(() => setUp(songUrl));
+    // SongPlayer fetches the whole file up front and plays it from a
+    // blob: URL, so playback and seeking run entirely from memory (no
+    // range requests, no mid-play rebuffering). It decodes once for
+    // peaks and tempo analysis, and emits rAF-rate timeupdates while
+    // playing so the playhead glides.
+    const instance = new SongPlayer(songUrl);
+    instance.on("play", () => setIsPlaying(true));
+    instance.on("pause", () => setIsPlaying(false));
+    instance.on("finish", () => setIsPlaying(false));
+    instance.on("decode", () => {
+      buildPeaks();
+      updateTimeLabel();
+      requestDraw();
+      // Tempo analysis runs in the background; the grid appears when done.
+      const decoded = instance.getDecodedData();
+      if (decoded)
+        analyzeBpm(decoded)
+          .then((analysis) => {
+            // The song may have been swapped mid-analysis.
+            if (player.current !== instance) return;
+            beatGrid.current = analysis;
+            setBpmInfo(analysis);
+            onBeatGridChange(
+              analysis
+                ? { ...analysis, durationSeconds: instance.getDuration() }
+                : null,
+            );
+            requestDraw();
+          })
+          .catch(() => {});
+    });
+    instance.on("timeupdate", () => {
+      // The viewport never follows the playhead: the minimap is the only
+      // thing that moves the view, and playback is free to run off-screen.
+      updateTimeLabel();
+      requestDraw();
+    });
+    // The volume and rate effects only fire on later changes; apply the
+    // current values to the fresh instance.
+    instance.setPlaybackRate(settings.current.playbackRate);
+    instance.setVolume(settings.current.volume);
+    player.current = instance;
+    view.current = { startFrac: 0, zoom: 1 };
+    publishViewport();
+    instance.load();
 
     return () => {
-      cancelled = true;
-      ws?.destroy();
-      if (objectUrl) URL.revokeObjectURL(objectUrl);
-      wavesurfer.current = null;
+      instance.destroy();
+      player.current = null;
       peaksRef.current = null;
       beatGrid.current = null;
       setBpmInfo(null);
@@ -403,56 +412,12 @@ export function TimelineStrip({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [songUrl]);
 
-  const createWavesurfer = (host: HTMLElement, url: string) => {
-    const ws = WaveSurfer.create({
-      container: host,
-      url,
-      height: 0,
-      interact: false,
-      // Wavesurfer's own follow-the-playhead behaviors; its container is
-      // hidden, but leaving them on costs scroll work per timeupdate.
-      autoScroll: false,
-      autoCenter: false,
-    });
-    ws.on("play", () => setIsPlaying(true));
-    ws.on("pause", () => setIsPlaying(false));
-    ws.on("finish", () => setIsPlaying(false));
-    ws.on("decode", () => {
-      buildPeaks();
-      requestDraw();
-      // Tempo analysis runs in the background; the grid appears when done.
-      const decoded = ws.getDecodedData();
-      if (decoded)
-        analyzeBpm(decoded)
-          .then((analysis) => {
-            // The song may have been swapped mid-analysis.
-            if (wavesurfer.current !== ws) return;
-            beatGrid.current = analysis;
-            setBpmInfo(analysis);
-            onBeatGridChange(
-              analysis
-                ? { ...analysis, durationSeconds: ws.getDuration() }
-                : null,
-            );
-            requestDraw();
-          })
-          .catch(() => {});
-    });
-    ws.on("timeupdate", () => {
-      // The viewport never follows the playhead: the minimap is the only
-      // thing that moves the view, and playback is free to run off-screen.
-      updateTimeLabel();
-      requestDraw();
-    });
-    return ws;
-  };
-
   useEffect(() => {
-    wavesurfer.current?.setPlaybackRate(playbackRate);
+    player.current?.setPlaybackRate(playbackRate);
   }, [playbackRate, songUrl]);
 
   useEffect(() => {
-    wavesurfer.current?.setVolume(volume);
+    player.current?.setVolume(volume);
   }, [volume, songUrl]);
 
   // Spacebar toggles play/stop, unless typing in a field. preventDefault
@@ -464,7 +429,7 @@ export function TimelineStrip({
       const target = event.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
       event.preventDefault();
-      wavesurfer.current?.playPause();
+      player.current?.playPause();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
@@ -473,7 +438,7 @@ export function TimelineStrip({
   const removeSong = () => onSongChange(null);
 
   const seekToFraction = (frac: number) => {
-    const ws = wavesurfer.current;
+    const ws = player.current;
     if (!ws || !ws.getDuration()) return;
     ws.setTime(clamp(frac, 0, 1) * ws.getDuration());
     updateTimeLabel();
@@ -482,7 +447,7 @@ export function TimelineStrip({
 
   const onMinimapPointerDown = (event: React.PointerEvent) => {
     const canvas = minimapCanvasRef.current;
-    if (!canvas || !wavesurfer.current?.getDuration()) return;
+    if (!canvas || !player.current?.getDuration()) return;
     event.preventDefault();
 
     const rect = canvas.getBoundingClientRect();
@@ -544,7 +509,7 @@ export function TimelineStrip({
   const onMinimapHover = (event: React.PointerEvent) => {
     if (drag.current) return;
     const canvas = minimapCanvasRef.current;
-    if (!canvas || !wavesurfer.current?.getDuration()) return;
+    if (!canvas || !player.current?.getDuration()) return;
     const rect = canvas.getBoundingClientRect();
     const frac = (event.clientX - rect.left) / rect.width;
     const viewFractions = getViewFractions();
@@ -561,7 +526,7 @@ export function TimelineStrip({
   // and unreliable).
   const onTimelinePointerDown = (event: React.PointerEvent) => {
     const canvas = timelineCanvasRef.current;
-    const ws = wavesurfer.current;
+    const ws = player.current;
     if (!canvas || !ws?.getDuration()) return;
     event.preventDefault();
     try {
@@ -622,10 +587,10 @@ export function TimelineStrip({
           canPlay={!!songUrl}
           isPlaying={isPlaying}
           playbackRate={playbackRate}
-          onPlayStop={() => wavesurfer.current?.playPause()}
+          onPlayStop={() => player.current?.playPause()}
           onGoToStart={() => seekToFraction(0)}
           onGoToEnd={() => seekToFraction(1)}
-          onSkip={(seconds) => wavesurfer.current?.skip(seconds)}
+          onSkip={(seconds) => player.current?.skip(seconds)}
           onRateChange={setPlaybackRate}
         />
       </div>
@@ -646,7 +611,6 @@ export function TimelineStrip({
           }`}
           data-doc="timeline"
         >
-          <div ref={audioHostRef} className={styles.audioHost} />
           {songUrl ? (
             <>
               <canvas
