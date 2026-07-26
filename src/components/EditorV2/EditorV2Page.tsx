@@ -27,11 +27,14 @@ import {
   loadAutosave,
   loadSave,
   restoreEntries,
+  seedDemoExperience,
   SerializedEditorState,
   serializeEditorState,
   writeAutosave,
   writeSave,
 } from "@/src/components/EditorV2/experiencePersistence";
+import { IS_DEMO } from "@/src/utils/demo";
+import demoExperience from "@/src/components/EditorV2/demoExperience.json";
 import { Pattern } from "@/src/types/Pattern";
 import { Song } from "@/src/types/Song";
 import { formatDisplayName } from "@/src/components/EditorV2/formatDisplayName";
@@ -307,6 +310,9 @@ export function EditorV2Page() {
 
   const didRestore = useRef(false);
   useEffect(() => {
+    // The static demo ships a starter experience for first-time visitors.
+    if (IS_DEMO)
+      seedDemoExperience(demoExperience as unknown as SerializedEditorState);
     const saved = loadSave();
     if (saved) {
       setEntries(restoreSnapshot(saved));

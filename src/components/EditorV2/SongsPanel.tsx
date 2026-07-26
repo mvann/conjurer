@@ -6,6 +6,7 @@ import { sanitize } from "@/src/utils/sanitize";
 import { uploadAudioFileToServer } from "@/src/utils/uploadAudio";
 import { formatDisplayName } from "@/src/components/EditorV2/formatDisplayName";
 import { publishPanelInset } from "@/src/components/EditorV2/panelInsets";
+import { DEMO_SONGS, IS_DEMO } from "@/src/utils/demo";
 
 // The spell crafter always works against local data for now; the plugin/role
 // integration will thread the real setting through later.
@@ -37,10 +38,14 @@ export function SongsPanel({ isOpen, onClose, onSelectSong }: Props) {
     return () => publishPanelInset("right", 0);
   }, [isOpen, isUploadOpen]);
 
-  const { data: songs, isPending } = trpc.song.listSongs.useQuery(
+  // The static demo has no backend: the library is the bundled list and
+  // uploads are hidden.
+  const { data: fetchedSongs, isPending } = trpc.song.listSongs.useQuery(
     { usingLocalData: USING_LOCAL_DATA },
-    { refetchOnWindowFocus: false, enabled: isOpen },
+    { refetchOnWindowFocus: false, enabled: isOpen && !IS_DEMO },
   );
+  const songs = IS_DEMO ? DEMO_SONGS : fetchedSongs;
+  const isLoading = !IS_DEMO && isPending;
 
   useEffect(() => {
     if (!isOpen) return;
@@ -90,8 +95,8 @@ export function SongsPanel({ isOpen, onClose, onSelectSong }: Props) {
           <div className={styles.panelColumn} data-doc="song-library">
             <div className={styles.panelSectionLabel}>Songs</div>
 
-            {isPending && <div className={styles.panelEmpty}>Loading…</div>}
-            {!isPending && songs?.length === 0 && (
+            {isLoading && <div className={styles.panelEmpty}>Loading…</div>}
+            {!isLoading && songs?.length === 0 && (
               <div className={styles.panelEmpty}>No songs yet</div>
             )}
 
@@ -117,13 +122,15 @@ export function SongsPanel({ isOpen, onClose, onSelectSong }: Props) {
               ))}
             </ul>
 
-            <button
-              data-doc="upload-song"
-              className={styles.addPattern}
-              onClick={() => setIsUploadOpen(true)}
-            >
-              Upload Song
-            </button>
+            {!IS_DEMO && (
+              <button
+                data-doc="upload-song"
+                className={styles.addPattern}
+                onClick={() => setIsUploadOpen(true)}
+              >
+                Upload Song
+              </button>
+            )}
           </div>
         </div>
       </aside>

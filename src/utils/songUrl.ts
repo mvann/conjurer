@@ -5,10 +5,11 @@ import {
   LOCAL_ASSET_DIRECTORY,
 } from "@/src/utils/assets";
 import type { Song } from "@/src/types/Song";
+import { DEMO_BASE_PATH } from "@/src/utils/demo";
 
 export function getSongUrl(song: Song, usingLocalData: boolean) {
   if (!song.filename) return undefined;
   return usingLocalData
-    ? `${location.origin}/${LOCAL_ASSET_DIRECTORY}${AUDIO_ASSET_PREFIX}${song.filename}`
+    ? `${location.origin}${DEMO_BASE_PATH}/${LOCAL_ASSET_DIRECTORY}${AUDIO_ASSET_PREFIX}${song.filename}`
     : `https://${ASSET_BUCKET_NAME}.s3.${ASSET_BUCKET_REGION}.amazonaws.com/${AUDIO_ASSET_PREFIX}${song.filename}`;
 }

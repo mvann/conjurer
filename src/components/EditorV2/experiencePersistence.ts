@@ -143,6 +143,14 @@ const writeSlot = (key: string, state: SerializedEditorState) => {
 
 export const loadSave = () => readSlot(SAVE_KEY);
 export const loadAutosave = () => readSlot(AUTOSAVE_KEY);
+
+// Static-demo seeding: the bundled starter experience lands in the save
+// slots once, and only when both are empty, so a visitor's own edits
+// always win on later visits.
+export const seedDemoExperience = (state: SerializedEditorState) => {
+  if (loadSave() || loadAutosave()) return;
+  writeSave(state);
+};
 export const writeAutosave = (state: SerializedEditorState) =>
   writeSlot(AUTOSAVE_KEY, state);
 export const writeSave = (state: SerializedEditorState) => {

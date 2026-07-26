@@ -1,0 +1,103 @@
+{
+  "savedAt": 1785102090649,
+  "song": {
+    "id": 2,
+    "name": "shiny_2",
+    "artist": "no homework",
+    "filename": "no homework - shiny_2.mp3",
+    "createdAt": "2026-07-25 04:53:07",
+    "updatedAt": "2026-07-25 04:53:07"
+  },
+  "entries": [
+    {
+      "pattern": "Nebula",
+      "id": 1,
+      "params": {
+        "u_palette": {
+          "a": [
+            0.4578141942070545,
+            0.13747096755858157,
+            0.6218188281115182
+          ],
+          "b": [
+            0.4672476443540443,
+            0.4642310181462297,
+            0.6766260507523637
+          ],
+          "c": [
+            0.17720996009264467,
+            0.14253811784468085,
+            0.8633613193190549
+          ],
+          "d": [
+            0.04930616403488419,
+            0.850407449162364,
+            0.4605103864304909
+          ]
+        },
+        "u_timeFactor": 0.2519497400346621,
+        "u_period": 2.5,
+        "u_warp": 1.1347487001733105,
+        "u_octaves": 5,
+        "u_threshold": 0.47,
+        "u_softness": 0.17,
+        "u_colorShift": 0.12,
+        "u_seed": 0
+      },
+      "visible": true,
+      "expanded": true,
+      "automatedParams": [
+        "u_warp",
+        "u_timeFactor"
+      ],
+      "automation": {
+        "u_warp": {
+          "keyframes": [
+            {
+              "time": 0.17968750000000003,
+              "value": 1.1347487001733105
+            },
+            {
+              "time": 0.453125,
+              "value": 4.137348353552859
+            },
+            {
+              "time": 0.7265625,
+              "value": 1.8756499133448878
+            }
+          ],
+          "segments": [
+            {
+              "type": "curve",
+              "bend": 1
+            },
+            {
+              "type": "curve",
+              "bend": 1
+            }
+          ],
+          "active": true
+        },
+        "u_timeFactor": {
+          "keyframes": [
+            {
+              "time": 0.125,
+              "value": 0.2519497400346621
+            },
+            {
+              "time": 0.8359375,
+              "value": 0.7502166377816291
+            }
+          ],
+          "segments": [
+            {
+              "type": "curve",
+              "bend": 1
+            }
+          ],
+          "active": true
+        }
+      }
+    }
+  ]
+}

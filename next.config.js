@@ -1,6 +1,19 @@
+// Static-demo build for GitHub Pages (scripts/deployDemo.sh): export the
+// spell crafter as plain files served under /<repo>.
+const isSpellDemo = process.env.NEXT_PUBLIC_SPELL_DEMO === "1";
+
 /** @type {import('next').NextConfig} */
 const nextConfig = {
   reactStrictMode: true,
+  ...(isSpellDemo
+    ? {
+        output: "export",
+        basePath: "/conjurer",
+        assetPrefix: "/conjurer",
+        trailingSlash: true,
+        images: { unoptimized: true },
+      }
+    : {}),
   experimental: {
     optimizePackageImports: [
       "recharts",
