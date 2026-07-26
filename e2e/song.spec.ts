@@ -1,5 +1,5 @@
 import { expect, test } from "@playwright/test";
-import { gotoEditorClean, loadSeededSong } from "./helpers";
+import { gotoEditorClean, loadSeededSong, seededSongItem } from "./helpers";
 
 test.describe("song, timeline, transport", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
@@ -8,9 +8,7 @@ test.describe("song, timeline, transport", () => {
     page,
   }) => {
     await page.getByRole("button", { name: "Add Song" }).click();
-    await expect(
-      page.locator("[class*=songItem]").filter({ hasText: "no homework" }),
-    ).toBeVisible();
+    await expect(seededSongItem(page)).toBeVisible();
 
     await page.getByRole("button", { name: "Upload Song" }).click();
     await expect(page.locator("aside", { hasText: "Upload Song" })).toHaveClass(

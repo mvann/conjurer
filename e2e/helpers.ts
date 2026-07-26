@@ -53,13 +53,17 @@ export const addLaneOnParam = async (page: Page, paramName: string) => {
   await page.getByRole("button", { name: "Add Automation Lane" }).click();
 };
 
+// The seeded song's library row, by its exact accessible name so user
+// uploads with similar names never collide with it.
+export const seededSongItem = (page: Page) =>
+  page.getByRole("button", { name: "Shiny_2 no homework", exact: true });
+
 // Loads the seeded local song and waits for it to be ready to play.
 export const loadSeededSong = async (page: Page) => {
   await page.getByRole("button", { name: "Add Song" }).click();
-  await page
-    .locator("[class*=songItem]")
-    .filter({ hasText: "no homework" })
-    .click();
+  // Exact name: the library may hold user uploads whose names contain
+  // the seeded song's name as a prefix.
+  await seededSongItem(page).click();
   await expect(page.locator("canvas[class*=waveform]")).toBeVisible();
   await expect(page.getByLabel("Play", { exact: true })).toBeEnabled({
     timeout: 20_000,

@@ -6,6 +6,7 @@ import { SongsPanel } from "@/src/components/EditorV2/SongsPanel";
 import { analyzeBpm, BpmAnalysis } from "@/src/components/EditorV2/bpm";
 import { getSongUrl } from "@/src/utils/songUrl";
 import { SongPlayer } from "@/src/components/EditorV2/songPlayer";
+import { computePeaks } from "@/src/components/EditorV2/waveformPeaks";
 import { Song } from "@/src/types/Song";
 import {
   publishTimeViewport,
@@ -302,27 +303,9 @@ export function TimelineStrip({
   // images to scale and nothing to misalign or collapse.
   const buildPeaks = () => {
     const decoded = player.current?.getDecodedData();
-    if (!decoded) {
-      peaksRef.current = null;
-      return;
-    }
-    const data = decoded.getChannelData(0);
-    const columns = Math.min(PEAK_COLUMNS, data.length);
-    const samplesPerColumn = Math.max(1, Math.floor(data.length / columns));
-    const stride = Math.max(1, Math.floor(samplesPerColumn / 16));
-
-    const peaks = new Float32Array(columns);
-    for (let column = 0; column < columns; column++) {
-      const start = column * samplesPerColumn;
-      const end = Math.min(start + samplesPerColumn, data.length);
-      let max = 0;
-      for (let i = start; i < end; i += stride) {
-        const value = Math.abs(data[i]);
-        if (value > max) max = value;
-      }
-      peaks[column] = max;
-    }
-    peaksRef.current = peaks;
+    peaksRef.current = decoded
+      ? computePeaks(decoded.getChannelData(0), PEAK_COLUMNS)
+      : null;
   };
 
   // Size the visible canvases to their containers in device pixels.
