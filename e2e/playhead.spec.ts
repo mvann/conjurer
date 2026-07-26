@@ -109,4 +109,51 @@ test.describe("playhead motion", () => {
       expect(samples[i].t).toBeGreaterThanOrEqual(samples[i - 1].t);
     expect(longestStall(samples)).toBeLessThan(200);
   });
+
+  test("pausing lands the playhead where it was rendered, never behind", async ({
+    page,
+  }) => {
+    await loadSeededSong(page);
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(500);
+
+    // Freeze the media clock but let writes through (and become the
+    // authoritative reading): the smoothed clock pulls ahead of the
+    // frozen raw clock, then pause must write the rendered time back
+    // into the media element instead of snapping to the stale clock.
+    await page.evaluate(() => {
+      const player = (
+        window as unknown as Record<string, { media: HTMLMediaElement }>
+      ).__editorSongPlayer;
+      const media = player.media;
+      const descriptor = Object.getOwnPropertyDescriptor(
+        HTMLMediaElement.prototype,
+        "currentTime",
+      )!;
+      let value = descriptor.get!.call(media) as number;
+      Object.defineProperty(media, "currentTime", {
+        configurable: true,
+        get: () => value,
+        set: (next: number) => {
+          value = next;
+          descriptor.set!.call(media, next);
+        },
+      });
+    });
+    await page.waitForTimeout(350);
+
+    const readSeconds = () =>
+      page.evaluate(
+        () =>
+          (window as unknown as Record<string, { seconds: number }>)
+            .__editorTransportTime.seconds,
+      );
+    const beforePause = await readSeconds();
+    await page.keyboard.press("Space");
+    await page.waitForTimeout(200);
+    const afterPause = await readSeconds();
+
+    expect(afterPause).toBeGreaterThanOrEqual(beforePause - 0.03);
+    expect(Math.abs(afterPause - beforePause)).toBeLessThan(0.15);
+  });
 });

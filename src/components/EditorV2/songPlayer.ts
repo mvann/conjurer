@@ -17,13 +17,14 @@ const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
 // The rendered playback clock never trusts media.currentTime frame to
-// frame: around playback start, Chromium's media clock can run briefly,
-// freeze for a few hundred milliseconds while output syncs to the audio
-// hardware clock, then jump forward — which a naive playhead renders as
-// move, stop, continue. While playing, time is projected on the wall
-// clock and only BENT toward the media clock, within these rate limits
-// (fractions of playback speed), so brief clock freezes and the
-// catch-up jump after them are both absorbed invisibly.
+// frame: around playback start, browser media clocks (WebKit and
+// Chromium both) can run briefly, freeze for a few hundred milliseconds
+// while output syncs to the audio hardware clock, then jump forward —
+// which a naive playhead renders as move, stop, continue. While
+// playing, time is projected on the wall clock and only BENT toward the
+// media clock, within these rate limits (fractions of playback speed),
+// so brief clock freezes and the catch-up jump after them are both
+// absorbed invisibly.
 const MAX_SLOWDOWN = 0.1; // cursor never runs slower than 0.9x
 const MAX_CATCHUP = 0.5; // nor faster than 1.5x
 // Drift beyond this is a genuine discontinuity (external seek): snap.
@@ -132,10 +133,17 @@ export class SongPlayer {
   }
 
   setPlaybackRate(rate: number) {
-    // preservesPitch is the default, matching the previous behavior;
-    // set explicitly since some browsers default it off.
-    this.media.preservesPitch = true;
-    this.media.playbackRate = rate;
+    // preservesPitch is the default, matching the previous behavior; set
+    // explicitly since some browsers default it off. Older Safari only
+    // has the webkit-prefixed property.
+    const media = this.media as HTMLAudioElement & {
+      preservesPitch?: boolean;
+      webkitPreservesPitch?: boolean;
+    };
+    if (typeof media.preservesPitch === "boolean") media.preservesPitch = true;
+    else if (typeof media.webkitPreservesPitch === "boolean")
+      media.webkitPreservesPitch = true;
+    media.playbackRate = rate;
   }
 
   destroy() {
@@ -225,6 +233,15 @@ export class SongPlayer {
 
   private onPause = () => {
     this.stopTicking();
+    // Land the audio exactly where the playhead was rendered: the
+    // smoothed clock can differ from the media clock by the drift it was
+    // bridging, and falling back to the raw clock would snap the
+    // playhead backward on every pause.
+    if (
+      this.smoothed !== null &&
+      Math.abs(this.smoothed - this.media.currentTime) < SNAP_SECONDS
+    )
+      this.media.currentTime = clamp(this.smoothed, 0, this.getDuration());
     this.smoothed = null;
     this.emit("pause");
     this.emit("timeupdate");
