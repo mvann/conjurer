@@ -64,6 +64,19 @@ export const loadSeededSong = async (page: Page) => {
   await expect(page.getByLabel("Play", { exact: true })).toBeEnabled({
     timeout: 20_000,
   });
+  // Song setup is async (fetch, decode); the transport publishes a real
+  // duration only once the audio is actually playable and scrubable.
+  await expect
+    .poll(
+      () =>
+        page.evaluate(
+          () =>
+            (window as unknown as Record<string, { durationSeconds: number }>)
+              .__editorTransportTime?.durationSeconds ?? 0,
+        ),
+      { timeout: 20_000 },
+    )
+    .toBeGreaterThan(0);
 };
 
 export const scaleTicks = (page: Page) =>

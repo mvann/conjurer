@@ -25,7 +25,12 @@ export const publishTransportTime = (
   transportTime.durationSeconds = durationSeconds;
 };
 
-// Test hook: e2e tests read the live viewport through this.
-if (typeof window !== "undefined")
+// Test hooks: e2e tests read the live viewport and transport through
+// these (transport readiness in particular: durationSeconds turns
+// nonzero once the song is fetched, decoded, and playable).
+if (typeof window !== "undefined") {
   (window as unknown as Record<string, unknown>).__editorTimeViewport =
     timeViewport;
+  (window as unknown as Record<string, unknown>).__editorTransportTime =
+    transportTime;
+}

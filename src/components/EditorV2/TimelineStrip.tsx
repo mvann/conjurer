@@ -103,6 +103,9 @@ export function TimelineStrip({
   const [isSongPanelOpen, setIsSongPanelOpen] = useState(false);
   const [isPlaying, setIsPlaying] = useState(false);
   const [playbackRate, setPlaybackRate] = useState(1);
+  // Latest values for the async wavesurfer setup (see setUp below).
+  const settings = useRef({ playbackRate: 1, volume });
+  settings.current = { playbackRate, volume };
   const [bpmInfo, setBpmInfo] = useState<BpmAnalysis | null>(null);
   const beatGrid = useRef<BpmAnalysis | null>(null);
   const timeLabelRef = useRef<HTMLSpanElement>(null);
@@ -349,11 +352,61 @@ export function TimelineStrip({
   }, [songUrl]);
 
   useEffect(() => {
-    if (!songUrl || !audioHostRef.current) return;
+    const host = audioHostRef.current;
+    if (!songUrl || !host) return;
 
+    // The whole file is fetched up front and handed over as a blob: URL,
+    // so the media element plays from memory. Streaming straight from the
+    // song URL instead leaves playback at the browser's mercy: it can
+    // drop buffered audio in a long-lived tab and stall mid-play on the
+    // refetch (play, hiccup, resume). Wavesurfer fully downloads the URL
+    // to decode peaks anyway, so this costs no extra transfer.
+    let cancelled = false;
+    let ws: WaveSurfer | null = null;
+    let objectUrl: string | null = null;
+    const setUp = (url: string) => {
+      if (cancelled) return;
+      ws = createWavesurfer(host, url);
+      // Setup is async (behind the fetch), so the volume and rate
+      // effects may already have run against no instance.
+      ws.setPlaybackRate(settings.current.playbackRate);
+      ws.setVolume(settings.current.volume);
+      wavesurfer.current = ws;
+      view.current = { startFrac: 0, zoom: 1 };
+      publishViewport();
+    };
+    fetch(songUrl)
+      .then((response) => {
+        if (!response.ok) throw new Error(String(response.status));
+        return response.blob();
+      })
+      .then((blob) => {
+        objectUrl = URL.createObjectURL(blob);
+        setUp(objectUrl);
+      })
+      // On any fetch failure, fall back to streaming from the source.
+      .catch(() => setUp(songUrl));
+
+    return () => {
+      cancelled = true;
+      ws?.destroy();
+      if (objectUrl) URL.revokeObjectURL(objectUrl);
+      wavesurfer.current = null;
+      peaksRef.current = null;
+      beatGrid.current = null;
+      setBpmInfo(null);
+      onBeatGridChange(null);
+      publishTimeViewport(0, 1);
+      publishTransportTime(0, 0);
+      setIsPlaying(false);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [songUrl]);
+
+  const createWavesurfer = (host: HTMLElement, url: string) => {
     const ws = WaveSurfer.create({
-      container: audioHostRef.current,
-      url: songUrl,
+      container: host,
+      url,
       height: 0,
       interact: false,
       // Wavesurfer's own follow-the-playhead behaviors; its container is
@@ -391,23 +444,8 @@ export function TimelineStrip({
       updateTimeLabel();
       requestDraw();
     });
-    wavesurfer.current = ws;
-    view.current = { startFrac: 0, zoom: 1 };
-    publishViewport();
-
-    return () => {
-      ws.destroy();
-      wavesurfer.current = null;
-      peaksRef.current = null;
-      beatGrid.current = null;
-      setBpmInfo(null);
-      onBeatGridChange(null);
-      publishTimeViewport(0, 1);
-      publishTransportTime(0, 0);
-      setIsPlaying(false);
-    };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [songUrl]);
+    return ws;
+  };
 
   useEffect(() => {
     wavesurfer.current?.setPlaybackRate(playbackRate);
