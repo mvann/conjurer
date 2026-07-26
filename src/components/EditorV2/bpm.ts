@@ -39,8 +39,9 @@ const HOP = 512;
 // kicks (yarn test:bpm asserts grid-to-kick alignment).
 const ONSET_CORRECTION_FRAMES = 1.15;
 
-// RBJ cookbook biquad lowpass, applied in place per pass.
-const lowpass = (
+// RBJ cookbook biquad lowpass, applied in place per pass. Shared with
+// the transient analyzer.
+export const lowpass = (
   input: Float32Array,
   sampleRate: number,
   cutoff: number,

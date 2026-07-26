@@ -4,6 +4,7 @@ import styles from "@/styles/EditorV2.module.css";
 import { TransportBar } from "@/src/components/EditorV2/TransportBar";
 import { SongsPanel } from "@/src/components/EditorV2/SongsPanel";
 import { analyzeBpm, BpmAnalysis } from "@/src/components/EditorV2/bpm";
+import { analyzeTransients } from "@/src/components/EditorV2/transients";
 import { getSongUrl } from "@/src/utils/songUrl";
 import { SongPlayer } from "@/src/components/EditorV2/songPlayer";
 import { computePeaks } from "@/src/components/EditorV2/waveformPeaks";
@@ -91,6 +92,9 @@ type Props = {
   onBeatGridChange: (
     grid: (BpmAnalysis & { durationSeconds: number }) | null,
   ) => void;
+  // Detected onset times as fractions of the song (the editor's time
+  // domain), for snap-to-transient editing.
+  onTransientsChange: (times: number[] | null) => void;
 };
 
 export function TimelineStrip({
@@ -98,6 +102,7 @@ export function TimelineStrip({
   onSongChange,
   volume,
   onBeatGridChange,
+  onTransientsChange,
 }: Props) {
   const songUrl = song ? (getSongUrl(song, true) ?? null) : null;
   const [isSongPanelOpen, setIsSongPanelOpen] = useState(false);
@@ -363,6 +368,20 @@ export function TimelineStrip({
                 : null,
             );
             requestDraw();
+            // Transient detection follows on its own tick (both are
+            // main-thread work; the gap lets a frame paint between them).
+            setTimeout(() => {
+              if (player.current !== instance) return;
+              analyzeTransients(decoded)
+                .then((times) => {
+                  if (player.current !== instance) return;
+                  const duration = instance.getDuration();
+                  onTransientsChange(
+                    duration ? times.map((time) => time / duration) : null,
+                  );
+                })
+                .catch(() => {});
+            }, 50);
           })
           .catch(() => {});
     });
@@ -393,6 +412,7 @@ export function TimelineStrip({
       beatGrid.current = null;
       setBpmInfo(null);
       onBeatGridChange(null);
+      onTransientsChange(null);
       publishTimeViewport(0, 1);
       publishTransportTime(0, 0);
       setIsPlaying(false);

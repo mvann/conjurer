@@ -47,6 +47,9 @@ export function EditorV2Page() {
   const [volume, setVolume] = useState(1);
   const [dust, setDust] = useState(0);
   const [beatGrid, setBeatGrid] = useState<BeatGrid | null>(null);
+  // Detected onset times (fractions of the song), for snap-to-transient
+  // editing.
+  const [transients, setTransients] = useState<number[] | null>(null);
   const [autosavePrompt, setAutosavePrompt] =
     useState<SerializedEditorState | null>(null);
   // True when the latest autosave is ahead of the last save; the Save
@@ -368,9 +371,12 @@ export function EditorV2Page() {
     [visibleKey],
   );
 
-  // Test hook: e2e and diagnostics read the live entries through this.
+  // Test hooks: e2e and diagnostics read live editor state through these.
   useEffect(() => {
-    (window as unknown as Record<string, unknown>).__editorEntries = entries;
+    const hooks = window as unknown as Record<string, unknown>;
+    hooks.__editorEntries = entries;
+    hooks.__editorBeatGrid = beatGrid;
+    hooks.__editorTransients = transients;
   });
 
   return (
@@ -401,6 +407,7 @@ export function EditorV2Page() {
             key={`${selectedLane.entryId}:${selectedLane.uniform}`}
             param={selectedResolved.param}
             beatGrid={beatGrid}
+            transients={transients}
             curve={selectedEntry.automation[selectedLane.uniform] ?? null}
             onCurveChange={(curve) =>
               updateEntry(selectedLane.entryId, {
@@ -447,6 +454,7 @@ export function EditorV2Page() {
         onSongChange={changeSong}
         volume={volume}
         onBeatGridChange={setBeatGrid}
+        onTransientsChange={setTransients}
       />
 
       <AutomationPane

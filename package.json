@@ -15,6 +15,7 @@
     "test:clipboard": "ts-node --project tsconfig.script.json src/scripts/testClipboard.ts",
     "test:bpm": "ts-node --project tsconfig.script.json src/scripts/testBpm.ts",
     "test:peaks": "ts-node --project tsconfig.script.json src/scripts/testPeaks.ts",
+    "test:transients": "ts-node --project tsconfig.script.json src/scripts/testTransients.ts",
     "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate --config=drizzle-local.config.ts",
     "db:local:migrate": "drizzle-kit migrate --config=drizzle-local.config.ts",

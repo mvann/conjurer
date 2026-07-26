@@ -1418,6 +1418,27 @@
     filter 0.18s ease;
 }
 
+.contextMenuItem:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Hairline between the segment-type and snap sections. */
+.contextMenuSeparator {
+  height: 1px;
+  margin: 6px 4px;
+  background: rgba(232, 236, 244, 0.14);
+}
+
+/* Small-caps section heading inside the menu. */
+.contextMenuLabel {
+  padding: 6px 12px 2px;
+  color: #8f96a8;
+  font-size: 11px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+}
+
 .contextMenuItem:hover {
   color: #ffffff;
   filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))

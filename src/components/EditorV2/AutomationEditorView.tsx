@@ -100,6 +100,8 @@ type Props = {
   param: PatternParam;
   curve: AutomationCurve | null;
   beatGrid: (BpmAnalysis & { durationSeconds: number }) | null;
+  // Detected onset times as fractions of the song, sorted ascending.
+  transients: number[] | null;
   onCurveChange: (curve: AutomationCurve) => void;
   onClose: () => void;
 };
@@ -115,6 +117,7 @@ export function AutomationEditorView({
   param,
   curve,
   beatGrid,
+  transients,
   onCurveChange,
   onClose,
 }: Props) {
@@ -278,14 +281,51 @@ export function AutomationEditorView({
   const areaRef = useRef<HTMLDivElement>(null);
 
   // Segment interaction state: the selected segment (highlighted, edited
-  // in the inspector) and the right-click type menu.
+  // in the inspector) and the right-click menu. The menu opens on a
+  // segment (index set: segment types plus snap options) or on empty
+  // space (index null: snap options only).
   const [selectedSegment, setSelectedSegment] = useState<number | null>(null);
   const [segmentMenu, setSegmentMenu] = useState<{
-    index: number;
+    index: number | null;
     x: number;
     y: number;
   } | null>(null);
   const menuRef = useRef<HTMLDivElement>(null);
+
+  // Snap mode for time edits: keyframe drags and creation, the edit
+  // cursor, and time-selection edges all land on the chosen targets.
+  const [snapMode, setSnapMode] = useState<"off" | "grid" | "transients">(
+    "off",
+  );
+  // Nearest snap target to a time (song fraction); identity when off or
+  // when the mode's targets are unavailable.
+  const snapTime = (time: number): number => {
+    if (snapMode === "grid") {
+      if (!beatGrid || !beatGrid.durationSeconds) return time;
+      const beat = 60 / beatGrid.bpm / beatGrid.durationSeconds;
+      const offset = beatGrid.offsetSeconds / beatGrid.durationSeconds;
+      const k = Math.max(0, Math.round((time - offset) / beat));
+      return Math.min(1, Math.max(0, offset + k * beat));
+    }
+    if (snapMode === "transients") {
+      if (!transients || transients.length === 0) return time;
+      // Binary search for the nearest onset (transients are fractions,
+      // sorted).
+      let lo = 0;
+      let hi = transients.length - 1;
+      while (lo < hi) {
+        const mid = (lo + hi) >> 1;
+        if (transients[mid] < time) lo = mid + 1;
+        else hi = mid;
+      }
+      const after = transients[lo];
+      const before = transients[lo - 1];
+      const nearest =
+        before !== undefined && time - before < after - time ? before : after;
+      return Math.min(1, Math.max(0, nearest));
+    }
+    return time;
+  };
 
   // A highlighted window of time, made by dragging horizontally across
   // empty space. Copy lifts the curve inside it to the clipboard; Delete
@@ -600,7 +640,9 @@ export function AutomationEditorView({
   const onAreaDoubleClick = (event: React.MouseEvent) => {
     const rect = areaRef.current?.getBoundingClientRect();
     if (!rect) return;
-    const time = xFracToTime((event.clientX - rect.left) / rect.width);
+    const time = snapTime(
+      xFracToTime((event.clientX - rect.left) / rect.width),
+    );
     addKeyframe(time, clampToBounds(clientYToValue(event.clientY)));
   };
 
@@ -782,7 +824,9 @@ export function AutomationEditorView({
     const rect = areaRef.current?.getBoundingClientRect();
     if (!rect) return;
     const startClientX = event.clientX;
-    const startTime = xFracToTime((startClientX - rect.left) / rect.width);
+    const startTime = snapTime(
+      xFracToTime((startClientX - rect.left) / rect.width),
+    );
     let dragging = false;
     const onMove = (moveEvent: PointerEvent) => {
       // Value lanes have no window operations; clicks still place the
@@ -793,7 +837,9 @@ export function AutomationEditorView({
       // a fresh one.
       if (!dragging) setEditCursor(null);
       dragging = true;
-      const time = xFracToTime((moveEvent.clientX - rect.left) / rect.width);
+      const time = snapTime(
+        xFracToTime((moveEvent.clientX - rect.left) / rect.width),
+      );
       setTimeSelection({
         t0: Math.min(startTime, time),
         t1: Math.max(startTime, time),
@@ -871,8 +917,10 @@ export function AutomationEditorView({
         const maxTime = nextKeyframes[index + 1]?.time ?? 1;
         nextKeyframes[index] = {
           ...nextKeyframes[index],
+          // Snap first, then bound by the neighbors (a snap target
+          // beyond a neighbor pins at the neighbor).
           time: clamp(
-            xFracToTime((moveEvent.clientX - rect.left) / rect.width),
+            snapTime(xFracToTime((moveEvent.clientX - rect.left) / rect.width)),
             minTime,
             Math.max(maxTime, minTime),
           ),
@@ -989,6 +1037,12 @@ export function AutomationEditorView({
         className={styles.editorLineArea}
         onDoubleClick={onAreaDoubleClick}
         onPointerDown={onAreaPointerDown}
+        onContextMenu={(event) => {
+          // Right-clicking empty space opens the snap menu; segments
+          // intercept their own context menu (types plus snap).
+          event.preventDefault();
+          setSegmentMenu({ index: null, x: event.clientX, y: event.clientY });
+        }}
       >
         {(() => {
           // Dashed horizontal guides at value multiples of the magnitude
@@ -1339,22 +1393,55 @@ export function AutomationEditorView({
           style={{ left: segmentMenu.x, top: segmentMenu.y }}
           data-doc="segment-menu"
         >
-          {SEGMENT_TYPES.map((option) => (
-            <button
-              key={option.type}
-              className={`${styles.contextMenuItem} ${
-                segments[segmentMenu.index]?.type === option.type
-                  ? styles.contextMenuItemActive
-                  : ""
-              }`}
-              onClick={() => {
-                setSegmentType(segmentMenu.index, option.type);
-                setSegmentMenu(null);
-              }}
-            >
-              {option.label}
-            </button>
-          ))}
+          {segmentMenu.index !== null && (
+            <>
+              {SEGMENT_TYPES.map((option) => (
+                <button
+                  key={option.type}
+                  className={`${styles.contextMenuItem} ${
+                    segments[segmentMenu.index!]?.type === option.type
+                      ? styles.contextMenuItemActive
+                      : ""
+                  }`}
+                  onClick={() => {
+                    setSegmentType(segmentMenu.index!, option.type);
+                    setSegmentMenu(null);
+                  }}
+                >
+                  {option.label}
+                </button>
+              ))}
+              <div className={styles.contextMenuSeparator} />
+            </>
+          )}
+          <div data-doc="snap-menu">
+            <div className={styles.contextMenuLabel}>Snap to</div>
+            {(
+              [
+                { mode: "off", label: "Off", available: true },
+                { mode: "grid", label: "BPM Grid", available: !!beatGrid },
+                {
+                  mode: "transients",
+                  label: "Transients",
+                  available: !!transients && transients.length > 0,
+                },
+              ] as const
+            ).map((option) => (
+              <button
+                key={option.mode}
+                className={`${styles.contextMenuItem} ${
+                  snapMode === option.mode ? styles.contextMenuItemActive : ""
+                }`}
+                disabled={!option.available}
+                onClick={() => {
+                  setSnapMode(option.mode);
+                  setSegmentMenu(null);
+                }}
+              >
+                {option.label}
+              </button>
+            ))}
+          </div>
         </div>
       )}
 

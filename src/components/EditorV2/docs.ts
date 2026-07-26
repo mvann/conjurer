@@ -428,7 +428,14 @@ Dashed horizontal guides cross the editor at every multiple of an eighth of the 
 
 Curve is the default: a straight line that bends toward the cursor when dragged up or down. Flat holds the first keyframe's value for the whole segment, then steps to the second. Linear is a fixed straight line that does not bend. Wave oscillates around the straight line between the keyframes with a sine, square, or triangle shape. Easing travels between the keyframes along a named easing function.
 
-The current type is marked in the menu. Choosing a type resets the segment's parameters to defaults; the inspector card then edits them. Splitting a segment with a new keyframe gives both halves the original segment's type and parameters.`,
+The current type is marked in the menu. Choosing a type resets the segment's parameters to defaults; the inspector card then edits them. Splitting a segment with a new keyframe gives both halves the original segment's type and parameters. Below the types, the menu also carries the Snap to options; right clicking empty space opens those on their own.`,
+  },
+  "snap-menu": {
+    title: "Snap To",
+    short: "Snaps time edits to the beat grid or the song's transients.",
+    long: `Right click anywhere in the automation editor to choose a snap mode. Off places time edits exactly where the pointer is. BPM Grid lands them on the nearest beat of the detected tempo grid. Transients lands them on the nearest detected hit in the song itself: kicks, snares, and other onsets found by analyzing the audio, which is often tighter than the grid for humanized material.
+
+Snapping applies to dragging keyframes, creating keyframes with a double click, placing the edit cursor, and both edges of a time selection. A grid or transient option is dimmed until a song is loaded and its analysis has finished.`,
   },
   "segment-inspector": {
     title: "Segment Inspector",
