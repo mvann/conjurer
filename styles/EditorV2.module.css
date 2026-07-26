@@ -1989,6 +1989,36 @@
 /* The current value, printed just above and right of the time dot. A
    heavy static black glow sits behind the gold so it stays readable over
    the bright curve. */
+/* Right-click value editor for a keyframe: the dot label's glowing text
+   made editable, in silver (gold stays reserved for time). */
+.keyframeValueInput {
+  position: absolute;
+  transform: translate(9px, -115%);
+  width: 72px;
+  padding: 0;
+  background: none;
+  border: none;
+  outline: none;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8ecf4;
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 1),
+    0 0 4px rgba(0, 0, 0, 1),
+    0 0 7px rgba(0, 0, 0, 1),
+    0 0 12px rgba(0, 0, 0, 1),
+    0 0 18px rgba(0, 0, 0, 1),
+    0 0 28px rgba(0, 0, 0, 0.95),
+    0 0 4px rgba(232, 236, 244, 0.5);
+  caret-color: #e8ecf4;
+  z-index: 3;
+}
+
+.keyframeValueInput::selection {
+  background: rgba(232, 236, 244, 0.25);
+}
+
 .timeDotLabel {
   position: absolute;
   transform: translate(9px, -115%);

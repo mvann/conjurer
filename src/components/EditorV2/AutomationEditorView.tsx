@@ -301,6 +301,28 @@ export function AutomationEditorView({
   // See-through mode: the editor's backdrop thins so the canopy shows
   // through while editing.
   const [seeThrough, setSeeThrough] = useState(false);
+
+  // Right-clicking a keyframe types its value directly: a glowing field
+  // in the dot-label position, committed on Enter or blur.
+  const [keyframeValueEdit, setKeyframeValueEdit] = useState<{
+    index: number;
+    draft: string;
+  } | null>(null);
+  const commitKeyframeValueEdit = () => {
+    if (!keyframeValueEdit) return;
+    const current = curveRef.current;
+    const parsed = parseFloat(keyframeValueEdit.draft);
+    setKeyframeValueEdit(null);
+    if (!current || !current.keyframes[keyframeValueEdit.index]) return;
+    if (isNaN(parsed)) return;
+    const value = clampToBounds(parsed);
+    commitCurve({
+      ...current,
+      keyframes: current.keyframes.map((keyframe, i) =>
+        i === keyframeValueEdit.index ? { ...keyframe, value } : keyframe,
+      ),
+    });
+  };
   // Nearest snap target to a time (song fraction); identity when off or
   // when the mode's targets are unavailable.
   const snapTime = (time: number): number => {
@@ -361,18 +383,25 @@ export function AutomationEditorView({
   // selection. Capture phase, so the page-level close handler (bubble)
   // never sees the consumed press.
   useEffect(() => {
-    if (!segmentMenu && selectedSegment === null && !timeSelection) return;
+    if (
+      !segmentMenu &&
+      selectedSegment === null &&
+      !timeSelection &&
+      !keyframeValueEdit
+    )
+      return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.stopImmediatePropagation();
       event.preventDefault();
-      if (segmentMenu) setSegmentMenu(null);
+      if (keyframeValueEdit) setKeyframeValueEdit(null);
+      else if (segmentMenu) setSegmentMenu(null);
       else if (selectedSegment !== null) setSelectedSegment(null);
       else setTimeSelection(null);
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [segmentMenu, selectedSegment, timeSelection]);
+  }, [segmentMenu, selectedSegment, timeSelection, keyframeValueEdit]);
 
   // The menu closes on any press outside it.
   useEffect(() => {
@@ -1290,8 +1319,49 @@ export function AutomationEditorView({
               event.stopPropagation();
               deleteKeyframe(index);
             }}
+            onContextMenu={(event) => {
+              // Right click types a value for this keyframe (numeric
+              // lanes; value lanes edit through the inspector instead).
+              event.preventDefault();
+              event.stopPropagation();
+              if (isValueLane) return;
+              setKeyframeValueEdit({
+                index,
+                draft: String(parseFloat(keyframe.value.toFixed(3))),
+              });
+            }}
           />
         ))}
+
+        {keyframeValueEdit && keyframes[keyframeValueEdit.index] && (
+          <input
+            className={styles.keyframeValueInput}
+            data-doc="keyframe-value"
+            style={{
+              left: `${timeToX(keyframes[keyframeValueEdit.index].time)}%`,
+              top: `${valueToTopPct(keyframes[keyframeValueEdit.index].value)}%`,
+            }}
+            value={keyframeValueEdit.draft}
+            autoFocus
+            onFocus={(event) => event.target.select()}
+            onChange={(event) =>
+              setKeyframeValueEdit({
+                ...keyframeValueEdit,
+                draft: event.target.value,
+              })
+            }
+            onPointerDown={(event) => event.stopPropagation()}
+            onDoubleClick={(event) => event.stopPropagation()}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") commitKeyframeValueEdit();
+              else if (event.key === "Escape") {
+                event.stopPropagation();
+                setKeyframeValueEdit(null);
+              }
+            }}
+            onBlur={commitKeyframeValueEdit}
+          />
+        )}
 
         {timeSelection && (
           <div

@@ -145,6 +145,50 @@ test.describe("automation editor", () => {
     await expect(page.locator("[class*=keyframeDot]")).toHaveCount(1);
   });
 
+  test("right-clicking a keyframe types its value; Enter commits, Escape cancels", async ({
+    page,
+  }) => {
+    await openTimeFactorLane(page);
+    const area = page.locator("[class*=editorLineArea]");
+    const box = (await area.boundingBox())!;
+    await page.mouse.dblclick(box.x + box.width * 0.4, box.y + box.height / 2);
+    const dot = page.locator("[class*=keyframeDot]").first();
+    await expect(dot).toBeVisible();
+
+    const laneValue = () =>
+      page.evaluate(() => {
+        const entries = (
+          window as unknown as Record<
+            string,
+            { automation: Record<string, { keyframes: { value: number }[] }> }[]
+          >
+        ).__editorEntries;
+        return Object.values(entries[0].automation)[0].keyframes[0].value;
+      });
+
+    // Type an exact value; it commits on Enter.
+    await dot.click({ button: "right" });
+    const input = page.locator("[data-doc=keyframe-value]");
+    await expect(input).toBeVisible();
+    await input.fill("0.62");
+    await input.press("Enter");
+    await expect(input).toHaveCount(0);
+    expect(await laneValue()).toBeCloseTo(0.62, 9);
+
+    // Out-of-range values clamp to the parameter's bounds (0..1 here).
+    await dot.click({ button: "right" });
+    await input.fill("5");
+    await input.press("Enter");
+    expect(await laneValue()).toBe(1);
+
+    // Escape cancels without committing.
+    await dot.click({ button: "right" });
+    await input.fill("0.11");
+    await input.press("Escape");
+    await expect(input).toHaveCount(0);
+    expect(await laneValue()).toBe(1);
+  });
+
   test("keyframes drag to the song start and stack at the same time", async ({
     page,
   }) => {

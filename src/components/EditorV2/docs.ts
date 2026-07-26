@@ -430,6 +430,11 @@ Curve is the default: a straight line that bends toward the cursor when dragged 
 
 The current type is marked in the menu. Choosing a type resets the segment's parameters to defaults; the inspector card then edits them. Splitting a segment with a new keyframe gives both halves the original segment's type and parameters. Below the types, the menu also carries the Snap to options; right clicking empty space opens those on their own.`,
   },
+  "keyframe-value": {
+    title: "Keyframe Value",
+    short: "Types an exact value for the right-clicked keyframe.",
+    long: `Right click a keyframe to type its value directly: a glowing field opens beside the dot, pre-filled and selected. Enter or clicking away commits (clamped to the parameter's declared range); Escape cancels. Dragging remains the way to move a keyframe in time; typing pins its value exactly. Color and palette keyframes are edited through the inspector instead.`,
+  },
   "see-through": {
     title: "See Through",
     short: "Thins the editor's backdrop so the canopy shows behind it.",
