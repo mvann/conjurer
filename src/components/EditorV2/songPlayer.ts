@@ -16,6 +16,19 @@ type PlayerEvent = "play" | "pause" | "finish" | "decode" | "timeupdate";
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
+// The rendered playback clock never trusts media.currentTime frame to
+// frame: around playback start, Chromium's media clock can run briefly,
+// freeze for a few hundred milliseconds while output syncs to the audio
+// hardware clock, then jump forward — which a naive playhead renders as
+// move, stop, continue. While playing, time is projected on the wall
+// clock and only BENT toward the media clock, within these rate limits
+// (fractions of playback speed), so brief clock freezes and the
+// catch-up jump after them are both absorbed invisibly.
+const MAX_SLOWDOWN = 0.1; // cursor never runs slower than 0.9x
+const MAX_CATCHUP = 0.5; // nor faster than 1.5x
+// Drift beyond this is a genuine discontinuity (external seek): snap.
+const SNAP_SECONDS = 1;
+
 export class SongPlayer {
   private media = new Audio();
   private decoded: AudioBuffer | null = null;
@@ -23,6 +36,11 @@ export class SongPlayer {
   private frame: number | null = null;
   private objectUrl: string | null = null;
   private destroyed = false;
+  // Smoothed playback clock (see the constants above); null when the
+  // raw media clock is authoritative (paused, or just seeked).
+  private smoothed: number | null = null;
+  private lastTickWall = 0;
+  private lastDriftWarn = 0;
 
   constructor(private url: string) {
     this.media.preload = "auto";
@@ -81,15 +99,23 @@ export class SongPlayer {
   }
 
   getCurrentTime() {
-    return this.media.currentTime;
+    return this.isPlaying() && this.smoothed !== null
+      ? this.smoothed
+      : this.media.currentTime;
   }
 
   setTime(seconds: number) {
-    this.media.currentTime = clamp(seconds, 0, this.getDuration());
+    const target = clamp(seconds, 0, this.getDuration());
+    this.media.currentTime = target;
+    // Deliberate seeks move the rendered clock instantly.
+    if (this.smoothed !== null) {
+      this.smoothed = target;
+      this.lastTickWall = performance.now();
+    }
   }
 
   skip(seconds: number) {
-    this.setTime(this.media.currentTime + seconds);
+    this.setTime(this.getCurrentTime() + seconds);
   }
 
   isPlaying() {
@@ -133,15 +159,56 @@ export class SongPlayer {
   }
 
   // Media timeupdate only fires a few times a second; while playing, a
-  // rAF loop emits our timeupdate every frame so the playhead glides.
+  // rAF loop advances the smoothed clock and emits our timeupdate every
+  // frame so the playhead glides.
   private tick = () => {
     if (this.destroyed || !this.isPlaying()) {
       this.frame = null;
       return;
     }
+    this.advanceClock();
     this.emit("timeupdate");
     this.frame = requestAnimationFrame(this.tick);
   };
+
+  // One smoothing step: project the rendered clock forward on the wall
+  // clock, then bend it toward the raw media clock within the rate
+  // limits. A media-clock freeze slows the cursor to at worst 0.9x; the
+  // jump when it recovers plays back at at most 1.5x; neither reads as
+  // a stall or a jump.
+  private advanceClock() {
+    const now = performance.now();
+    const raw = this.media.currentTime;
+    if (this.smoothed === null) {
+      this.smoothed = raw;
+      this.lastTickWall = now;
+      return;
+    }
+    const rate = this.media.playbackRate;
+    // Clamped so a background-tab gap doesn't project far past the audio.
+    const dt = clamp((now - this.lastTickWall) / 1000, 0, 0.1);
+    this.lastTickWall = now;
+    let next = this.smoothed + dt * rate;
+    const drift = raw - next;
+    if (Math.abs(drift) > SNAP_SECONDS) {
+      // A discontinuity we didn't cause (external seek): follow it.
+      next = raw;
+    } else {
+      const limit = dt * rate * (drift > 0 ? MAX_CATCHUP : MAX_SLOWDOWN);
+      next += clamp(drift, -limit, limit);
+      // Breadcrumb for chasing playback-clock trouble in the field: a
+      // drift this large means the media clock froze or leapt underneath
+      // the (still-smooth) playhead.
+      if (Math.abs(drift) > 0.3 && now - this.lastDriftWarn > 2_000) {
+        this.lastDriftWarn = now;
+        console.warn(
+          `[SongPlayer] media clock drifted ${drift.toFixed(3)}s from ` +
+            `smooth playback at t=${raw.toFixed(3)}s; bridging.`,
+        );
+      }
+    }
+    this.smoothed = next;
+  }
 
   private stopTicking() {
     if (this.frame !== null) cancelAnimationFrame(this.frame);
@@ -149,6 +216,8 @@ export class SongPlayer {
   }
 
   private onPlay = () => {
+    this.smoothed = this.media.currentTime;
+    this.lastTickWall = performance.now();
     this.emit("play");
     this.stopTicking();
     this.frame = requestAnimationFrame(this.tick);
@@ -156,12 +225,14 @@ export class SongPlayer {
 
   private onPause = () => {
     this.stopTicking();
+    this.smoothed = null;
     this.emit("pause");
     this.emit("timeupdate");
   };
 
   private onEnded = () => {
     this.stopTicking();
+    this.smoothed = null;
     this.emit("finish");
     this.emit("timeupdate");
   };

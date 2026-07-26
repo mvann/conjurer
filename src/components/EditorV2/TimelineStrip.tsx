@@ -394,6 +394,10 @@ export function TimelineStrip({
     instance.setPlaybackRate(settings.current.playbackRate);
     instance.setVolume(settings.current.volume);
     player.current = instance;
+    // Test hook: e2e playhead-smoothness tests reach the live player
+    // (and its media element) through this.
+    (window as unknown as Record<string, unknown>).__editorSongPlayer =
+      instance;
     view.current = { startFrac: 0, zoom: 1 };
     publishViewport();
     instance.load();
@@ -401,6 +405,7 @@ export function TimelineStrip({
     return () => {
       instance.destroy();
       player.current = null;
+      (window as unknown as Record<string, unknown>).__editorSongPlayer = null;
       peaksRef.current = null;
       beatGrid.current = null;
       setBpmInfo(null);
