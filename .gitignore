@@ -45,3 +45,8 @@ local.sql
 
 # robots
 .claude/worktrees
+.gstack/
+
+# playwright
+/test-results/
+/playwright-report/

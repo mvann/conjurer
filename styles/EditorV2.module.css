@@ -1,0 +1,2350 @@
+/* Editor v2 — style guide derived from Beckon (mvann/beckon), with the gold
+   ember palette swapped for white/silver moonlight:
+     accent        #ffd9a0 -> #e8ecf4
+     accent hover  #ffe9c8 -> #ffffff
+     ember glow    orange  -> cool silver-blue
+     section label #d6a878 -> #a9b2c4
+   Kept from Beckon: near-black indigo background, display serif via
+   --font-mystical, uppercase letter-spaced section labels, hairline
+   separators (no boxes), thin glowing accent bars, breathing CTA glow.
+
+   Layout: full-bleed. Panes run edge to edge with hairline separators —
+   no cards, no floating panels. The canopy pane flexes to fill the
+   viewport; the timeline strip sits at the bottom. */
+
+.page {
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  background: #07060f;
+  color: #eceef4;
+  /* Nothing on the page is selectable; typed inputs opt back in below. */
+  user-select: none;
+  -webkit-user-select: none;
+  font-family:
+    ui-sans-serif,
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    Helvetica,
+    Arial,
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+  overflow: hidden;
+}
+
+.page input,
+.page textarea {
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.header {
+  display: flex;
+  align-items: baseline;
+  gap: 14px;
+  padding: 10px 20px 8px;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.1);
+}
+
+/* Static 25% glow; deliberately not breathing. */
+.title {
+  margin: 0;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 27px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: #e8ecf4;
+  text-shadow: 0 1px 14px rgba(0, 0, 0, 0.75);
+  filter: drop-shadow(0 0 6px rgba(200, 214, 240, 0.25))
+    drop-shadow(0 0 14px rgba(150, 170, 220, 0.25));
+}
+
+.subtitle {
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: #8f96a8;
+}
+
+/* Save: boxless text at the header's right end. Quiet when everything is
+   saved; breathes with the glow only when there is unsaved progress. */
+.saveButton {
+  margin-left: auto;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  color: #8f96a8;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+}
+
+.saveButton:hover {
+  color: #cdd3e0;
+}
+
+.saveButtonDirty {
+  color: #e8ecf4;
+  animation: cta-breathe 2.8s ease-in-out infinite;
+}
+
+.saveButtonDirty:hover {
+  color: #ffffff;
+}
+
+/* Autosave-found prompt: overlays the canopy view, world blurred behind. */
+.autosaveOverlay {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 22px;
+  padding: 0 24px;
+  text-align: center;
+  background: rgba(4, 5, 10, 0.45);
+  backdrop-filter: blur(6px);
+  -webkit-backdrop-filter: blur(6px);
+}
+
+.autosaveText {
+  max-width: 520px;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 20px;
+  color: #e8ecf4;
+  text-shadow:
+    0 0 2px rgba(210, 220, 245, 0.7),
+    0 1px 14px rgba(0, 0, 0, 0.75);
+}
+
+.autosaveActions {
+  display: flex;
+  align-items: center;
+  gap: 36px;
+}
+
+.bannerAction {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  color: #e8ecf4;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  animation: cta-breathe 2.8s ease-in-out infinite;
+}
+
+.bannerAction:hover {
+  color: #ffffff;
+}
+
+.bannerDismiss {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  color: #8f96a8;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.bannerDismiss:hover {
+  color: #cdd3e0;
+}
+
+/* Uppercase section labels, from Beckon's .sb-section-label. Overlaid on the
+   pane's top-left corner so the pane itself owns the full viewport width. */
+.paneLabel {
+  position: absolute;
+  top: 10px;
+  left: 20px;
+  z-index: 1;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: #a9b2c4;
+  pointer-events: none;
+  user-select: none;
+}
+
+/* The canopy pane fills all space between header and timeline, edge to edge. */
+.canopyPane {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  /* Fallback wash behind the canvas; the scene itself paints the real black. */
+  background: radial-gradient(
+    120% 90% at 50% 0%,
+    rgba(150, 165, 205, 0.05),
+    rgba(150, 165, 205, 0) 55%
+  );
+}
+
+/* Corner controls over the canopy view: volume and dust, each popping a
+   vertical slider above itself. */
+.canopyControls {
+  position: absolute;
+  right: 14px;
+  bottom: 12px;
+  z-index: 2;
+  display: flex;
+  gap: 4px;
+}
+
+.cornerControl {
+  position: relative;
+  display: flex;
+  justify-content: center;
+}
+
+.cornerButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #8f96a8;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.cornerButton:hover,
+.cornerButtonActive {
+  color: #e8ecf4;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.8))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.5));
+}
+
+/* Vertical slider in a slim frosted stalk above the button. */
+.sliderPopover {
+  position: absolute;
+  bottom: 36px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: flex;
+  justify-content: center;
+  width: 26px;
+  height: 116px;
+  padding: 12px 0;
+  background: linear-gradient(
+      135deg,
+      rgba(244, 248, 255, 0.05),
+      rgba(244, 248, 255, 0) 60%
+    ),
+    rgba(6, 7, 12, 0.92);
+  border: 1px solid rgba(232, 236, 244, 0.16);
+  border-radius: 999px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(4px);
+  -webkit-backdrop-filter: blur(4px);
+  cursor: pointer;
+  touch-action: none;
+}
+
+.sliderTrack {
+  position: relative;
+  width: 2px;
+  border-radius: 2px;
+  background: rgba(232, 236, 244, 0.14);
+}
+
+.sliderFill {
+  position: absolute;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  border-radius: 2px;
+  background: #e8ecf4;
+  box-shadow: 0 0 6px rgba(220, 230, 250, 0.55);
+}
+
+.sliderHandle {
+  position: absolute;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #ffffff;
+  box-shadow:
+    0 0 4px rgba(225, 233, 250, 0.95),
+    0 0 10px rgba(170, 190, 235, 0.6);
+  pointer-events: none;
+}
+
+/* The timeline area: the transport chamber on the left spans the full
+   height; to its right, the minimap rides above the timeline. */
+.timelineArea {
+  display: flex;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(232, 236, 244, 0.1);
+  background: rgba(255, 255, 255, 0.02);
+}
+
+.timelineRight {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+}
+
+/* The minimap: the whole song in miniature above the timeline, with a
+   viewfinder marking the visible portion. Drag it sideways to pan; drag up
+   to widen (zoom out); drag down to narrow (zoom in). */
+.minimapRow {
+  position: relative;
+  height: 16px;
+  flex-shrink: 0;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.1);
+  background: rgba(255, 255, 255, 0.01);
+}
+
+/* One canvas draws the mini waveform and the viewfinder rectangle. */
+.minimapCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+}
+
+/* The transport chamber: current time above two rows of playback controls.
+   Its width must match .laneLabel so automation lanes align with the
+   timeline ticks. */
+.transport {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  width: 120px;
+  flex-shrink: 0;
+  padding: 4px 0;
+  border-right: 1px solid rgba(232, 236, 244, 0.1);
+}
+
+.transportRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+}
+
+.transportButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 24px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #e8ecf4;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.transportButton:hover:not(:disabled) {
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.7));
+}
+
+.transportButton:disabled {
+  color: #8f96a8;
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* Playback rate: a bare select, no box. */
+.transportRate {
+  width: 42px;
+  height: 22px;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.2);
+  border-radius: 0;
+  color: #e8ecf4;
+  font-family: inherit;
+  font-size: 11px;
+  text-align: center;
+  cursor: pointer;
+  outline: none;
+}
+
+.transportRate:disabled {
+  color: #8f96a8;
+  opacity: 0.35;
+  cursor: default;
+}
+
+.transportRate option {
+  background: #0e0f18;
+  color: #e8ecf4;
+}
+
+.timelineTicks {
+  position: relative;
+  height: 64px;
+  flex-shrink: 0;
+}
+
+/* Decorative ruler for the empty state only; with a song loaded, the beat
+   grid drawn on the canvas is the only grid. */
+.timelineTicksEmpty {
+  background:
+    /* major ticks */
+    repeating-linear-gradient(
+      90deg,
+      rgba(232, 236, 244, 0.14) 0px,
+      rgba(232, 236, 244, 0.14) 1px,
+      transparent 1px,
+      transparent 96px
+    ),
+    /* minor ticks */
+      repeating-linear-gradient(
+        90deg,
+        rgba(232, 236, 244, 0.05) 0px,
+        rgba(232, 236, 244, 0.05) 1px,
+        transparent 1px,
+        transparent 24px
+      );
+}
+
+.playhead {
+  position: absolute;
+  left: 24px;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  background: #e8ecf4;
+  box-shadow: 0 0 8px rgba(220, 230, 250, 0.7);
+}
+
+/* The automation pane: empty for now, resized by dragging its top edge.
+   Will hold Ableton-style automation channels. */
+.automationPane {
+  position: relative;
+  flex-shrink: 0;
+  border-top: 1px solid rgba(232, 236, 244, 0.1);
+  background: rgba(255, 255, 255, 0.015);
+}
+
+/* Lane rows fill the pane below its corner label. */
+.lanes {
+  position: absolute;
+  inset: 0;
+  padding-top: 32px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.laneRow {
+  display: flex;
+  height: 56px;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.07);
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.laneRow:hover {
+  background: rgba(232, 236, 244, 0.03);
+}
+
+/* The value line's area stops short of the scale column. */
+/* Spans the full editor width. The visible time window maps onto the
+   region right of the lanes' 120px label column (so times line up with
+   the lanes and timeline below); the strip to its left shows time from
+   before the window, bounded by the song start line. The value scale
+   overlays the right edge without consuming width. */
+.editorLineArea {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  right: 0;
+  overflow: hidden;
+}
+
+/* The song's start inside the editor: the curve begins here. Deliberately
+   lightweight so it reads as a boundary, not part of the curve. */
+.songStartLine {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(232, 236, 244, 0.45);
+  box-shadow: 0 0 6px rgba(200, 214, 240, 0.25);
+  pointer-events: none;
+}
+
+/* The automation curve. */
+.curveSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+}
+
+.curvePath {
+  fill: none;
+  stroke: #e8ecf4;
+  stroke-width: 2;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 4px rgba(220, 230, 250, 0.45));
+  pointer-events: none;
+}
+
+/* Wide invisible stroke over each segment for grabbing; drag bends it. */
+.curveHit {
+  fill: none;
+  stroke: transparent;
+  stroke-width: 16;
+  vector-effect: non-scaling-stroke;
+  pointer-events: stroke;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.keyframeDot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ffffff;
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 0 4px rgba(225, 233, 250, 0.95),
+    0 0 10px rgba(170, 190, 235, 0.6);
+  cursor: grab;
+  touch-action: none;
+}
+
+.keyframeDot:active {
+  cursor: grabbing;
+}
+
+/* Beat grid inside the automation editor, matching the timeline's. */
+.gridSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+.gridBar {
+  stroke: rgba(232, 236, 244, 0.22);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+.gridBeat {
+  stroke: rgba(232, 236, 244, 0.08);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+}
+
+/* Value scale along the right side of the automation editor. */
+.valueScale {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  right: 10px;
+  width: 56px;
+  pointer-events: none;
+  user-select: none;
+}
+
+.valueTick {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.valueTickLabel {
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  color: #cdd3e0;
+}
+
+.valueTickMark {
+  width: 8px;
+  height: 1px;
+  background: rgba(232, 236, 244, 0.25);
+}
+
+/* Close for the automation editor view, top right, clear of the value
+   scale on the far right edge. */
+.automationEditorClose {
+  position: absolute;
+  top: 10px;
+  right: 82px;
+  z-index: 1;
+  background: none;
+  border: none;
+  padding: 6px;
+  color: #8f96a8;
+  font-size: 45px;
+  line-height: 1;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.automationEditorClose:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.6));
+}
+
+/* The lane currently expanded in the automation editor view. */
+.laneRowSelected {
+  background: rgba(232, 236, 244, 0.05);
+  box-shadow: inset 2px 0 0 rgba(232, 236, 244, 0.75);
+}
+
+/* The automation editor: the selected lane, expanded over the canopy space.
+   Full width (no label column), same vertical value mapping as the lane
+   below. Sits under the autosave overlay (z-index 3). */
+.automationEditor {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  background-color: #07060f;
+  background-image: linear-gradient(
+    rgba(255, 255, 255, 0.015),
+    rgba(255, 255, 255, 0.015)
+  );
+}
+
+/* Same width as the timeline's transport box, so lane areas line up with
+   the timeline ticks above. Pattern name over param name — clearer than a
+   separator in a box this narrow. */
+.laneLabel {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  width: 120px;
+  flex-shrink: 0;
+  padding: 0 10px;
+  border-right: 1px solid rgba(232, 236, 244, 0.1);
+  font-family: var(--font-mystical), Georgia, serif;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.laneLabelPattern {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  color: #8f96a8;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.laneLabelParam {
+  font-size: 12px;
+  color: #e8ecf4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.laneArea {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.laneCurveSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+}
+
+/* Dashed guides at each magnitude level (±1, ±10, ...) in the editor. */
+.magnitudeLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  border-top: 1px dashed rgba(232, 236, 244, 0.18);
+  pointer-events: none;
+}
+
+/* The underlying value: a constant silver line across the lane. */
+.laneValueLine {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: rgba(232, 236, 244, 0.6);
+  box-shadow: 0 0 6px rgba(220, 230, 250, 0.35);
+  pointer-events: none;
+}
+
+/* Grab zone straddling the pane's top hairline. The hairline itself ignites
+   silver on hover/drag (Beckon: accents glow, they don't thicken). */
+.resizeHandle {
+  position: absolute;
+  top: -4px;
+  left: 0;
+  right: 0;
+  height: 9px;
+  z-index: 2;
+  cursor: row-resize;
+  touch-action: none;
+}
+
+.resizeHandle::after {
+  content: "";
+  position: absolute;
+  top: 4px;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background: transparent;
+  transition:
+    background 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.resizeHandle:hover::after,
+.resizeHandle:active::after {
+  background: rgba(232, 236, 244, 0.55);
+  box-shadow: 0 0 8px rgba(220, 230, 250, 0.45);
+}
+
+/* ---- Slide-out pattern library (Beckon's .sb-panel/.sb-toggle, cooled) ---- */
+
+/* Bare chevron glyph at the screen's left edge — no box. Dark halo pops it
+   against bright scenes; hover swaps the halo for the silver glow. When open
+   it rides out to the panel's right edge and flips. */
+.panelToggle {
+  position: fixed;
+  top: 50%;
+  left: 0;
+  transform: translateY(-50%);
+  z-index: 60;
+  background: none;
+  border: none;
+  padding: 6px 12px;
+  color: #e8ecf4;
+  font-size: 44px;
+  line-height: 1;
+  cursor: pointer;
+  user-select: none;
+  -webkit-user-select: none;
+  text-shadow:
+    0 0 10px rgba(0, 0, 0, 0.95),
+    0 0 24px rgba(0, 0, 0, 0.8);
+  transition:
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    text-shadow 0.25s ease,
+    color 0.2s ease;
+}
+
+.panelToggle:hover {
+  color: #ffffff;
+  text-shadow:
+    0 0 8px rgba(225, 233, 250, 0.95),
+    0 0 18px rgba(170, 190, 235, 0.7),
+    0 0 34px rgba(130, 155, 215, 0.5);
+}
+
+.panelToggleOpen {
+  transform: translateX(min(300px, 84vw)) translateY(-50%);
+}
+
+/* Ride out further while the panel is widened for adding. */
+.panelToggleWide {
+  transform: translateX(min(380px, 92vw)) translateY(-50%);
+}
+
+.panelBackdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 40;
+  /* Dim the world rather than hide it, with a faint blur. */
+  background: rgba(4, 5, 10, 0.45);
+  backdrop-filter: blur(2px);
+  -webkit-backdrop-filter: blur(2px);
+}
+
+/* Light frosted glass, straight from Beckon with the warm sheen cooled.
+   Two columns ride inside on .panelTrack: the pattern list (300px) and the
+   add-pattern column (340px). Normally only the list shows. When adding, the
+   panel widens and the track slides left so the list is mostly off-screen —
+   just its right edge popping out — and the add column takes the stage.
+   Cancel slides it back. */
+.sidePanel {
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 50;
+  width: 300px;
+  max-width: 84vw;
+  background: linear-gradient(
+      135deg,
+      rgba(244, 248, 255, 0.03),
+      rgba(244, 248, 255, 0) 50%
+    ),
+    linear-gradient(180deg, rgb(179 179 179 / 0.025), rgb(179 179 179 / 0.015)),
+    rgba(6, 7, 12, 0.95);
+  border-right: 1px solid rgba(232, 236, 244, 0.16);
+  box-shadow:
+    inset -1px 0 0 rgba(232, 236, 244, 0.06),
+    8px 0 40px rgba(0, 0, 0, 0.5);
+  backdrop-filter: blur(3px) saturate(1.75);
+  -webkit-backdrop-filter: blur(3px) saturate(1.75);
+  font-family: var(--font-mystical), Georgia, serif;
+  transform: translateX(-100%);
+  transition:
+    transform 0.26s cubic-bezier(0.22, 1, 0.36, 1),
+    width 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  overflow: hidden;
+  /* No text selection in the pattern editor — it reads as visual noise when
+     interacting with rows and scrub controls. */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sidePanelOpen {
+  transform: translateX(0);
+}
+
+/* Widened for adding: 40px sliver of the pattern list + the add column. */
+.sidePanelWide {
+  width: min(380px, 92vw);
+}
+
+.panelTrack {
+  display: flex;
+  width: 640px;
+  height: 100%;
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sidePanelWide .panelTrack {
+  transform: translateX(-260px);
+}
+
+.panelColumn {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 300px;
+  padding: 18px;
+  overflow-y: auto;
+}
+
+/* While the list is parked off-screen, its exposed edge must not eat clicks
+   (a stray trash button under the cursor would be bad). */
+.sidePanelWide .panelColumn {
+  pointer-events: none;
+}
+
+/* ---- The songs panel: same anatomy, anchored to the RIGHT edge. The song
+   list column sits at the screen edge; Upload Song widens the panel and
+   slides the track so the upload form takes the stage with the list's edge
+   popping out on the right. ---- */
+.songsPanel {
+  left: auto;
+  right: 0;
+  border-right: none;
+  border-left: 1px solid rgba(232, 236, 244, 0.16);
+  box-shadow:
+    inset 1px 0 0 rgba(232, 236, 244, 0.06),
+    -8px 0 40px rgba(0, 0, 0, 0.5);
+  background: linear-gradient(
+      225deg,
+      rgba(244, 248, 255, 0.03),
+      rgba(244, 248, 255, 0) 50%
+    ),
+    linear-gradient(180deg, rgb(179 179 179 / 0.025), rgb(179 179 179 / 0.015)),
+    rgba(6, 7, 12, 0.95);
+  transform: translateX(100%);
+}
+
+.songsPanelOpen {
+  transform: translateX(0);
+}
+
+.songsPanelWide {
+  width: min(380px, 92vw);
+}
+
+/* Track: [upload 340 | song list 300]. Narrow shows the list; wide slides
+   right to show the upload form plus the list's left edge. */
+.songsTrack {
+  display: flex;
+  width: 640px;
+  height: 100%;
+  transform: translateX(-340px);
+  transition: transform 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.songsPanelWide .songsTrack {
+  transform: translateX(0);
+}
+
+.songsPanelWide .panelColumn {
+  pointer-events: none;
+}
+
+.uploadColumn {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 340px;
+  min-height: 0;
+  padding: 18px;
+  border-right: 1px solid rgba(232, 236, 244, 0.1);
+}
+
+/* Song list rows: name over artist, boxless, ignite on hover. */
+.songList {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.songItem {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1px;
+  width: 100%;
+  padding: 7px 8px 7px 12px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition: filter 0.18s ease;
+}
+
+.songItem:hover {
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.7));
+}
+
+.songName {
+  color: #e8ecf4;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+  transition: color 0.18s ease;
+}
+
+.songItem:hover .songName {
+  color: #ffffff;
+}
+
+.songArtist {
+  color: #8f96a8;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
+}
+
+/* ---- Upload form fields ---- */
+
+.uploadIntro {
+  color: #8f96a8;
+  font-size: 15px;
+  margin-bottom: 16px;
+}
+
+/* Boxless glowing file chooser, like the other text CTAs. */
+.fileButton {
+  align-self: flex-start;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  color: #e8ecf4;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  animation: cta-breathe 2.8s ease-in-out infinite;
+}
+
+.fileButton:hover {
+  color: #ffffff;
+}
+
+.fileName {
+  color: #8f96a8;
+  font-size: 14px;
+  margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.uploadField {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 18px;
+}
+
+.uploadFieldLabel {
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: #a9b2c4;
+}
+
+/* Underline field, no box. */
+.uploadInput {
+  width: 100%;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.2);
+  border-radius: 0;
+  color: #eceef4;
+  font-family: inherit;
+  font-size: 16px;
+  padding: 6px 2px;
+  outline: none;
+  transition: border-color 0.2s ease;
+  user-select: text;
+  -webkit-user-select: text;
+}
+
+.uploadInput:focus {
+  border-bottom-color: rgba(232, 236, 244, 0.7);
+}
+
+.footerCta:disabled {
+  opacity: 0.35;
+  cursor: default;
+  animation: none;
+  filter: none;
+}
+
+/* Invisible click target over the parked list's exposed edge — clicking the
+   sliver slides the add column away, same as Cancel. Brightens faintly on
+   hover so the affordance reads. */
+.sliverCancel {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 40px;
+  z-index: 2;
+  background: none;
+  border: none;
+  border-right: 1px solid rgba(232, 236, 244, 0.1);
+  padding: 0;
+  cursor: pointer;
+  transition: background 0.18s ease;
+}
+
+.sliverCancel:hover {
+  background: linear-gradient(
+    90deg,
+    rgba(232, 236, 244, 0),
+    rgba(232, 236, 244, 0.07)
+  );
+  box-shadow: inset -1px 0 0 rgba(232, 236, 244, 0.35);
+}
+
+/* Sliver on the right edge (the parked song list's exposed edge). */
+.sliverCancelRight {
+  left: auto;
+  right: 0;
+  border-right: none;
+  border-left: 1px solid rgba(232, 236, 244, 0.1);
+}
+
+.sliverCancelRight:hover {
+  background: linear-gradient(
+    270deg,
+    rgba(232, 236, 244, 0),
+    rgba(232, 236, 244, 0.07)
+  );
+  box-shadow: inset 1px 0 0 rgba(232, 236, 244, 0.35);
+}
+
+.addColumn {
+  display: flex;
+  flex-direction: column;
+  flex-shrink: 0;
+  width: 340px;
+  min-height: 0;
+  padding: 18px;
+  border-left: 1px solid rgba(232, 236, 244, 0.1);
+}
+
+/* Live canopy preview of the selected pattern: a square box. */
+.previewBox {
+  flex-shrink: 0;
+  aspect-ratio: 1;
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 10px;
+  overflow: hidden;
+  background: #000;
+}
+
+/* View selector under the preview: boxless micro-labels, selected ignites. */
+.previewModes {
+  display: flex;
+  justify-content: center;
+  gap: 16px;
+  padding: 8px 0 2px;
+}
+
+.previewModeOption {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  color: #8f96a8;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.previewModeOption:hover {
+  color: #cdd3e0;
+}
+
+.previewModeSelected {
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.9))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.55));
+}
+
+.previewName {
+  font-size: 16px;
+  color: #e8ecf4;
+  text-align: center;
+  padding: 8px 0 12px;
+}
+
+/* Wrapping grid of selectable pattern tiles, like the main app's drawer. */
+.tileGrid {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  display: flex;
+  flex-wrap: wrap;
+  align-content: flex-start;
+  gap: 6px;
+  padding: 2px;
+}
+
+.tile {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  border-radius: 8px;
+  padding: 7px 10px;
+  color: #cdd3e0;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    border-color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.tile:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 6px rgba(190, 205, 235, 0.4));
+}
+
+.tileSelected {
+  color: #ffffff;
+  border-color: rgba(232, 236, 244, 0.45);
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.9))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.55));
+}
+
+.panelFooter {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 28px;
+  padding-top: 14px;
+  margin-top: 10px;
+  border-top: 1px solid rgba(232, 236, 244, 0.1);
+}
+
+/* Boxless silver CTA (Beckon's .share), breathing. */
+.footerCta {
+  background: none;
+  border: none;
+  padding: 6px 0;
+  color: #e8ecf4;
+  font-family: inherit;
+  font-size: 17px;
+  font-weight: 600;
+  letter-spacing: 2px;
+  cursor: pointer;
+  animation: cta-breathe 2.8s ease-in-out infinite;
+}
+
+.footerCta:hover {
+  color: #ffffff;
+}
+
+.footerCancel {
+  background: none;
+  border: none;
+  padding: 6px 0;
+  color: #8f96a8;
+  font-family: inherit;
+  font-size: 15px;
+  letter-spacing: 1px;
+  cursor: pointer;
+  transition: color 0.18s ease;
+}
+
+.footerCancel:hover {
+  color: #cdd3e0;
+}
+
+.panelSectionLabel {
+  font-size: 14px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  color: #a9b2c4;
+  margin: 4px 0 12px;
+  padding-top: 16px;
+  border-top: 1px solid rgba(232, 236, 244, 0.1);
+}
+
+.panelEmpty {
+  color: #8f96a8;
+  font-size: 15px;
+  padding: 2px 0 10px;
+}
+
+/* ---- The pattern stack ---- */
+
+.patternStack {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.patternHidden .patternName {
+  opacity: 0.4;
+}
+
+.patternRow {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 5px 4px;
+  border-radius: 6px;
+}
+
+.patternName {
+  flex: 1;
+  min-width: 0;
+  color: #e8ecf4;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  transition: opacity 0.18s ease;
+}
+
+/* Boxless icon buttons; the glyph ignites on hover. */
+.rowButton {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #8f96a8;
+  font-size: 13px;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.rowButton:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.7));
+}
+
+/* An automated visibility toggle carries a persistent soft glow. */
+.rowButtonAutomated {
+  color: #e8ecf4;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.7))
+    drop-shadow(0 0 8px rgba(170, 190, 235, 0.4));
+}
+
+/* The trash ignites hot instead of silver. */
+.trashButton:hover {
+  color: #ff8e8e;
+  filter: drop-shadow(0 0 3px rgba(255, 142, 142, 0.9))
+    drop-shadow(0 0 10px rgba(255, 90, 90, 0.6));
+}
+
+/* Expanded parameters: hairline-indented rows, name left, value right. */
+.paramList {
+  list-style: none;
+  margin: 0 0 6px;
+  padding: 2px 8px 4px 30px;
+  display: flex;
+  flex-direction: column;
+}
+
+.paramRow {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 4px 0;
+  border-left: 1px solid rgba(232, 236, 244, 0.1);
+  padding-left: 12px;
+  margin-left: -12px;
+}
+
+/* A param with an automation lane: Beckon's glowing accent bar as marker. */
+.paramAutomated {
+  border-left: 2px solid rgba(232, 236, 244, 0.75);
+  box-shadow: inset 2px 0 6px -2px rgba(220, 230, 250, 0.5);
+}
+
+/* Right-click menu, same frosted glass as the panels. */
+.contextMenu {
+  position: fixed;
+  z-index: 70;
+  min-width: 210px;
+  padding: 4px;
+  background: linear-gradient(
+      135deg,
+      rgba(244, 248, 255, 0.08),
+      rgba(244, 248, 255, 0) 60%
+    ),
+    rgba(14, 15, 24, 0.85);
+  border: 1px solid rgba(232, 236, 244, 0.16);
+  border-radius: 10px;
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px) saturate(1.5);
+  -webkit-backdrop-filter: blur(6px) saturate(1.5);
+  font-family: var(--font-mystical), Georgia, serif;
+}
+
+.contextMenuItem {
+  display: block;
+  width: 100%;
+  padding: 8px 12px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: #cdd3e0;
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.contextMenuItem:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.6));
+}
+
+.paramName {
+  color: #c2c9d8;
+  font-size: 14px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.paramValue {
+  color: #cdd3e0;
+  font-size: 14px;
+  flex-shrink: 0;
+}
+
+/* Composite params: a small caret opens the component sub-rows. */
+.paramCaret {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #8f96a8;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.paramCaret:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95));
+}
+
+.paramComponentList {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 2px 16px;
+}
+
+/* Scrubbable number: drag up/down to change, double-click to type. */
+.paramScrub {
+  cursor: ns-resize;
+  user-select: none;
+  -webkit-user-select: none;
+  padding: 0 2px;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.paramScrub:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 4px rgba(200, 214, 240, 0.55));
+}
+
+/* Tiny type-in box — Beckon's underline field, no box. */
+.paramInput {
+  /* The one selectable thing in the panel — typing needs it. */
+  user-select: text;
+  -webkit-user-select: text;
+  width: 64px;
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.35);
+  border-radius: 0;
+  color: #ffffff;
+  font-family: inherit;
+  font-size: 14px;
+  text-align: right;
+  padding: 0 2px 1px;
+  outline: none;
+}
+
+.paramInput:focus {
+  border-bottom-color: rgba(232, 236, 244, 0.7);
+}
+
+/* ---- Add-pattern flow ---- */
+
+/* Boxless silver CTA with Beckon's breathing glow. */
+.addPattern {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  background: none;
+  border: none;
+  padding: 8px 0;
+  margin-top: 2px;
+  color: #e8ecf4;
+  font-family: inherit;
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  animation: cta-breathe 2.8s ease-in-out infinite;
+}
+
+.addPattern:hover {
+  color: #ffffff;
+}
+
+@keyframes cta-breathe {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 2px rgba(200, 214, 240, 0.4))
+      drop-shadow(0 0 6px rgba(150, 170, 220, 0.25));
+  }
+  50% {
+    filter: drop-shadow(0 0 3px rgba(235, 242, 255, 0.95))
+      drop-shadow(0 0 10px rgba(170, 190, 235, 0.7))
+      drop-shadow(0 0 20px rgba(130, 155, 215, 0.5));
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .addPattern {
+    animation: none;
+    filter: drop-shadow(0 0 6px rgba(170, 190, 235, 0.5));
+  }
+}
+
+/* ---- Docs strip + Read More overlay ---- */
+
+/* One line of contextual documentation at the very bottom of the editor. */
+.docsStrip {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  height: 30px;
+  flex-shrink: 0;
+  padding: 0 16px 0 20px;
+  border-top: 1px solid rgba(232, 236, 244, 0.1);
+  background: rgba(255, 255, 255, 0.015);
+  /* Shares the side panels' layer: sits above them and their backdrop,
+     and its margins squish it into the space between open panels (same
+     easing as the panel slide). Still in normal flow otherwise. */
+  position: relative;
+  z-index: 55;
+  transition: margin 0.26s cubic-bezier(0.22, 1, 0.36, 1);
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+}
+
+.docsTitle {
+  flex-shrink: 0;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8ecf4;
+  white-space: nowrap;
+}
+
+.docsText {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  color: #a9b2c4;
+}
+
+/* Glowing keyboard hint, breathing like Beckon's CTAs. */
+.readMore {
+  flex-shrink: 0;
+  padding: 2px 0;
+  color: #e8ecf4;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  user-select: none;
+  -webkit-user-select: none;
+  animation: cta-breathe 2.8s ease-in-out infinite;
+}
+
+/* Full-screen long-form docs, sliding up from the bottom. */
+.docsOverlay {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  overflow-y: auto;
+  background: linear-gradient(
+      160deg,
+      rgba(244, 248, 255, 0.05),
+      rgba(244, 248, 255, 0) 40%
+    ),
+    rgba(7, 6, 15, 0.97);
+  backdrop-filter: blur(8px);
+  -webkit-backdrop-filter: blur(8px);
+  animation: docs-rise 0.3s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+@keyframes docs-rise {
+  from {
+    transform: translateY(100%);
+  }
+  to {
+    transform: translateY(0);
+  }
+}
+
+/* Mirror of the rise, played while state is "closing"; the component
+   unmounts the overlay when the animation's duration has elapsed. */
+.docsOverlayClosing {
+  animation: docs-fall 0.26s cubic-bezier(0.22, 1, 0.36, 1) forwards;
+}
+
+@keyframes docs-fall {
+  from {
+    transform: translateY(0);
+  }
+  to {
+    transform: translateY(100%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .docsOverlay,
+  .docsOverlayClosing {
+    animation: none;
+  }
+}
+
+.docsOverlayClose {
+  position: fixed;
+  top: 18px;
+  right: 24px;
+  background: none;
+  border: none;
+  padding: 6px 0;
+  color: #8f96a8;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.docsOverlayClose:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.6));
+}
+
+.docsOverlayContent {
+  max-width: 680px;
+  margin: 0 auto;
+  padding: 12vh 32px 10vh;
+}
+
+.docsOverlayTitle {
+  margin: 0 0 28px;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 34px;
+  font-weight: 500;
+  letter-spacing: 1px;
+  color: #e8ecf4;
+  text-shadow:
+    0 0 2px rgba(210, 220, 245, 0.9),
+    0 1px 14px rgba(0, 0, 0, 0.75);
+}
+
+.docsOverlayParagraph {
+  margin: 0 0 22px;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 21px;
+  line-height: 1.65;
+  color: #c9cfdc;
+}
+
+/* Add Song: centered glowing call-to-action in the empty timeline. */
+.addSong {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: none;
+  border: none;
+  padding: 4px 8px;
+  color: #e8ecf4;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 13px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  animation: cta-breathe 2.8s ease-in-out infinite;
+}
+
+.addSong:hover {
+  color: #ffffff;
+}
+
+/* The timeline waveform canvas fills the ticks area. */
+.waveform {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  touch-action: none;
+  cursor: pointer;
+}
+
+/* Hidden host for the wavesurfer audio engine; it renders nothing. */
+.audioHost {
+  display: none;
+}
+
+/* Detected tempo, top-right of the timeline. */
+.bpmLabel {
+  position: absolute;
+  top: 3px;
+  right: 8px;
+  z-index: 2;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #e8ecf4;
+  text-shadow:
+    0 0 6px rgba(0, 0, 0, 0.9),
+    0 0 4px rgba(200, 214, 240, 0.35);
+  pointer-events: auto;
+  user-select: none;
+}
+
+/* Current playback time, atop the transport chamber. Digits sit in
+   fixed-width boxes so the proportional serif doesn't wiggle as they
+   change. */
+.timeLabel {
+  display: inline-flex;
+  justify-content: center;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 15px;
+  font-weight: 600;
+  letter-spacing: 1.2px;
+  color: #e8ecf4;
+  user-select: none;
+}
+
+.timeDigit {
+  display: inline-block;
+  width: 0.68em;
+  text-align: center;
+}
+
+.timeSeparator {
+  display: inline-block;
+  text-align: center;
+}
+
+/* Trash in the bottom-right corner of the timeline; ignites hot like other
+   removals. */
+.removeSong {
+  position: absolute;
+  right: 4px;
+  bottom: 2px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #8f96a8;
+  font-size: 12px;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.removeSong:hover {
+  color: #ff8e8e;
+  filter: drop-shadow(0 0 3px rgba(255, 142, 142, 0.9))
+    drop-shadow(0 0 10px rgba(255, 90, 90, 0.6));
+}
+
+/* ---- Segment types: menu, highlight, inspector ---- */
+
+/* The selected segment, brightened over the base curve stroke. */
+.segmentHighlight {
+  fill: none;
+  stroke: #ffffff;
+  stroke-width: 3;
+  vector-effect: non-scaling-stroke;
+  filter: drop-shadow(0 0 6px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 14px rgba(170, 190, 235, 0.65));
+  pointer-events: none;
+}
+
+/* The current type in the segment right-click menu. */
+.contextMenuItemActive {
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.6));
+}
+
+/* Inspector card for the selected segment, bottom left of the editor. */
+.segmentInspector {
+  position: absolute;
+  left: 18px;
+  top: 16px;
+  z-index: 2;
+  max-width: 380px;
+  padding: 14px 18px 16px;
+  background: linear-gradient(
+      135deg,
+      rgba(244, 248, 255, 0.08),
+      rgba(244, 248, 255, 0) 60%
+    ),
+    rgba(10, 11, 18, 0.88);
+  border: 1px solid rgba(232, 236, 244, 0.16);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.6);
+  backdrop-filter: blur(6px) saturate(1.5);
+  -webkit-backdrop-filter: blur(6px) saturate(1.5);
+  font-family: var(--font-mystical), Georgia, serif;
+}
+
+.inspectorTitle {
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: #8f96a8;
+}
+
+.inspectorRow {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  margin-top: 10px;
+}
+
+.inspectorLabel {
+  width: 88px;
+  font-size: 15px;
+  color: #cdd3e0;
+}
+
+/* Boxless glowing options (type, wave kind, easing family): bare words,
+   no borders. Hovered or selected words glow. */
+.pill {
+  padding: 2px 4px;
+  background: none;
+  border: none;
+  color: #8f96a8;
+  font-family: inherit;
+  font-size: 14px;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.pill:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.6));
+}
+
+.pillActive {
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.6));
+}
+
+/* The transport's current time riding the automation curve: a gold dot
+   the size of a keyframe. */
+.timeDot {
+  position: absolute;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #e4be5a;
+  transform: translate(-50%, -50%);
+  box-shadow:
+    0 0 4px rgba(232, 197, 106, 0.95),
+    0 0 10px rgba(212, 175, 55, 0.6);
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* The current value, printed just above and right of the time dot. A
+   heavy static black glow sits behind the gold so it stays readable over
+   the bright curve. */
+.timeDotLabel {
+  position: absolute;
+  transform: translate(9px, -115%);
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  color: #e8c56a;
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 1),
+    0 0 4px rgba(0, 0, 0, 1),
+    0 0 7px rgba(0, 0, 0, 1),
+    0 0 12px rgba(0, 0, 0, 1),
+    0 0 18px rgba(0, 0, 0, 1),
+    0 0 28px rgba(0, 0, 0, 0.95),
+    0 0 4px rgba(232, 197, 106, 0.5);
+  pointer-events: none;
+  white-space: nowrap;
+  user-select: none;
+  opacity: 0;
+}
+
+/* ---- Automation activation states ---- */
+
+/* Green edge: the lane's curve is active and driving the parameter. */
+.laneEdgeActive {
+  border-left-color: rgba(110, 231, 160, 0.8);
+  box-shadow: inset 2px 0 6px -2px rgba(110, 231, 160, 0.55);
+}
+
+/* Red edge: the curve is deactivated; the underlying value drives. */
+.laneEdgeInactive {
+  border-left-color: rgba(224, 108, 108, 0.85);
+  box-shadow: inset 2px 0 6px -2px rgba(224, 108, 108, 0.55);
+}
+
+/* A deactivated curve, drawn as a ghost behind the underlying value. */
+.curveDimmed .curvePath {
+  stroke: rgba(150, 156, 172, 0.4);
+  filter: none;
+}
+
+.curveDimmed .segmentHighlight {
+  stroke: rgba(180, 186, 200, 0.55);
+  filter: none;
+}
+
+.keyframeDotDimmed {
+  background: rgba(170, 176, 190, 0.55);
+  box-shadow: none;
+}
+
+/* The underlying value over a deactivated curve: bright and dashed, the
+   line that is actually driving the parameter. */
+.laneValueLineDashed {
+  height: 0;
+  background: none;
+  border-top: 2px dashed #ffffff;
+  box-shadow: none;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.9))
+    drop-shadow(0 0 9px rgba(170, 190, 235, 0.55));
+}
+
+/* Bottom left of a deactivated editor: boxless breathing text that turns
+   the automation back on. */
+.reenableAutomation {
+  position: absolute;
+  left: 18px;
+  bottom: 14px;
+  z-index: 2;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  color: #e8ecf4;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  animation: cta-breathe 2.8s ease-in-out infinite;
+}
+
+.reenableAutomation:hover {
+  color: #ffffff;
+}
+
+/* Grabbable wrapper around the editor's underlying value line: a taller
+   hit strip centered on the line, dragged up or down to set the value. */
+.valueLineHandle {
+  position: absolute;
+  right: 0;
+  height: 16px;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  cursor: ns-resize;
+  touch-action: none;
+  z-index: 1;
+}
+
+.valueLineHandle .laneValueLine {
+  position: static;
+  width: 100%;
+}
+
+/* ---- Time selection, playhead, clipboard ---- */
+
+/* Highlighted window of time, made by dragging across empty space. Gold,
+   like everything that talks about time. */
+.timeSelection {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(212, 175, 55, 0.1);
+  border-left: 1px solid rgba(228, 190, 90, 0.55);
+  border-right: 1px solid rgba(228, 190, 90, 0.55);
+  pointer-events: none;
+}
+
+/* Copy and Delete, floating at the top of the selection. */
+.selectionActions {
+  position: absolute;
+  top: 14px;
+  transform: translateX(-50%);
+  display: flex;
+  gap: 22px;
+  z-index: 2;
+}
+
+.selectionAction {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  color: #e8c56a;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  cursor: pointer;
+  text-shadow:
+    0 0 6px rgba(0, 0, 0, 1),
+    0 0 12px rgba(0, 0, 0, 0.9);
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.selectionAction:hover {
+  color: #ffe9b0;
+  filter: drop-shadow(0 0 4px rgba(232, 197, 106, 0.8));
+}
+
+/* The transport's position in the editor: the same solid 2px gold bar
+   as the timeline's cursor, no glow. */
+.editorPlayhead {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  transform: translateX(-1px);
+  background: #e4be5a;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* Bottom-left corner controls: re-enable automation, paste. */
+.editorCornerActions {
+  position: absolute;
+  left: 18px;
+  bottom: 14px;
+  z-index: 2;
+  display: flex;
+  gap: 28px;
+}
+
+.cornerActionText {
+  background: none;
+  border: none;
+  padding: 4px 0;
+  color: #e8ecf4;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  animation: cta-breathe 2.8s ease-in-out infinite;
+}
+
+.cornerActionText:hover {
+  color: #ffffff;
+}
+
+/* The cursor: a clicked position in time inside the automation editor.
+   Silver, so the gold playhead stays unmistakably the transport. */
+.editCursor {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(232, 236, 244, 0.65);
+  box-shadow: 0 0 5px rgba(200, 214, 240, 0.4);
+  pointer-events: none;
+}
+
+/* Bar under an automated visibility eye: green while the curve drives
+   it, red while deactivated. */
+.eyeBarActive,
+.eyeBarInactive {
+  position: relative;
+}
+
+.eyeBarActive::after,
+.eyeBarInactive::after {
+  content: "";
+  position: absolute;
+  left: 22%;
+  right: 22%;
+  bottom: 1px;
+  height: 2px;
+  border-radius: 1px;
+}
+
+.eyeBarActive::after {
+  background: rgba(110, 231, 160, 0.8);
+  box-shadow: 0 0 5px rgba(110, 231, 160, 0.5);
+}
+
+.eyeBarInactive::after {
+  background: rgba(224, 108, 108, 0.85);
+  box-shadow: 0 0 5px rgba(224, 108, 108, 0.5);
+}
+
+/* Re-enable automation, just left of the close button. */
+.reenableTopRight {
+  position: absolute;
+  top: 26px;
+  right: 150px;
+  z-index: 2;
+  background: none;
+  border: none;
+  padding: 4px 0;
+  color: #e8ecf4;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 1.4px;
+  cursor: pointer;
+  transition: color 0.2s ease;
+  animation: cta-breathe 2.8s ease-in-out infinite;
+  white-space: nowrap;
+}
+
+.reenableTopRight:hover {
+  color: #ffffff;
+}
+
+/* ---- Value lanes (color, palette): strips, editors ---- */
+
+/* Value lanes have no vertical meaning: a neutral straight line. */
+.valueBaseline {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  right: 0;
+  height: 2px;
+  transform: translateY(-50%);
+  background: rgba(232, 236, 244, 0.3);
+  pointer-events: none;
+}
+
+/* A period's color (or palette gradient): a tiny bordered rectangle
+   hovering above the middle of its span. */
+.valueSwatch {
+  position: absolute;
+  top: 50%;
+  width: 26px;
+  height: 15px;
+  padding: 0;
+  transform: translate(-50%, -190%);
+  border: 1px solid rgba(232, 236, 244, 0.45);
+  box-shadow: 0 0 8px rgba(0, 0, 0, 0.6);
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.valueSwatch:hover {
+  border-color: rgba(232, 236, 244, 0.9);
+  filter: drop-shadow(0 0 4px rgba(225, 233, 250, 0.55));
+}
+
+.valueSwatchSelected {
+  border-color: #ffffff;
+  filter: drop-shadow(0 0 4px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.6));
+}
+
+/* In the lane preview: smaller, centered on the line, display only. */
+.valueSwatchMini {
+  width: 18px;
+  height: 11px;
+  transform: translate(-50%, -50%);
+  cursor: default;
+  pointer-events: none;
+}
+
+.valueSwatchDimmed {
+  opacity: 0.35;
+}
+
+/* Shared color editor: react-colorful, restyled square and frameless. */
+.colorEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 10px;
+}
+
+.colorEditor :global(.react-colorful) {
+  width: 200px;
+  height: 150px;
+}
+
+.colorEditor :global(.react-colorful__saturation) {
+  border-radius: 0;
+  border-bottom: none;
+  margin-bottom: 8px;
+}
+
+.colorEditor :global(.react-colorful__hue) {
+  height: 10px;
+  border-radius: 0;
+}
+
+.colorEditor :global(.react-colorful__pointer) {
+  width: 14px;
+  height: 14px;
+  border-width: 2px;
+}
+
+.colorEditor .paramInput {
+  width: 90px;
+}
+
+/* Shared palette editor: gradient preview, preset swatches, and the
+   cosine coefficient grid. */
+.paletteEditor {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 10px;
+  /* Fill the container (pattern list row or inspector card), never
+     overflow it. */
+  width: 100%;
+  max-width: 260px;
+  min-width: 0;
+}
+
+.paletteEditorPreview {
+  height: 16px;
+  box-shadow: 0 0 10px rgba(0, 0, 0, 0.55);
+}
+
+.palettePresetSwatch {
+  width: 38px;
+  height: 12px;
+  border: 1px solid rgba(232, 236, 244, 0.2);
+  padding: 0;
+  cursor: pointer;
+  transition:
+    border-color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.palettePresetSwatch:hover {
+  border-color: rgba(232, 236, 244, 0.85);
+  filter: drop-shadow(0 0 4px rgba(225, 233, 250, 0.6));
+}
+
+.paletteCoefficients {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin-top: 4px;
+}
+
+.paletteCoefficientRow {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+}
+
+.paletteCoefficientRow .paramValue {
+  min-width: 44px;
+  text-align: right;
+}
+
+.paletteCoefficientName {
+  width: 12px;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 13px;
+  color: #8f96a8;
+}
+
+/* The value editor inline in the pattern list, under the composite row. */
+.compositeEditorWrap {
+  padding: 4px 14px 10px 26px;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}

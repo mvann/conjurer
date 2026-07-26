@@ -45,7 +45,9 @@ export const RoleSelector = observer(function RoleSelector() {
           <MenuItem
             onClick={action(() => {
               store.role = "experienceCreator";
-              experienceStore.openExperience(router, store.experienceName);
+              if (store.experienceName)
+                experienceStore.openExperience(router, store.experienceName);
+              else experienceStore.openEmptyExperience(router);
             })}
           >
             Experience Creator

@@ -10,6 +10,11 @@
     "lint": "next lint --dir src",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
+    "test:docs": "ts-node --project tsconfig.script.json src/scripts/testDocs.ts",
+    "test:autorange": "ts-node --project tsconfig.script.json src/scripts/testAutoRange.ts",
+    "test:clipboard": "ts-node --project tsconfig.script.json src/scripts/testClipboard.ts",
+    "test:bpm": "ts-node --project tsconfig.script.json src/scripts/testBpm.ts",
+    "test:e2e": "playwright test",
     "db:generate": "drizzle-kit generate --config=drizzle-local.config.ts",
     "db:local:migrate": "drizzle-kit migrate --config=drizzle-local.config.ts",
     "db:local:studio": "drizzle-kit studio --config=drizzle-local.config.ts",
@@ -77,6 +82,7 @@
     "zod": "^3.23.8"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.0",
     "@types/node": "^20.8.3",
     "@types/react": "^18.2.25",
     "@types/three": "^0.156.0",
