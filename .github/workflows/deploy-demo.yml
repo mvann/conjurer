@@ -1,0 +1,39 @@
+name: Deploy Spell Crafter Demo
+# Rebuilds the static demo (scripts/deployDemo.sh --build) and publishes
+# it to GitHub Pages on every push to dev. The demo song ships from the
+# repo (public/cloud-assets/audio); everything else the build needs is
+# self-contained.
+on:
+  push:
+    branches:
+      - dev
+  workflow_dispatch:
+
+# One deploy at a time; a newer push supersedes an in-flight one.
+concurrency:
+  group: deploy-demo
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "20.x"
+      - name: enable yarn (corepack)
+        run: corepack enable
+      - name: install dependencies
+        run: yarn install --immutable
+      - name: build static demo
+        run: ./scripts/deployDemo.sh --build
+      - name: publish to gh-pages
+        uses: peaceiris/actions-gh-pages@v4
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./out
+          publish_branch: gh-pages
+          force_orphan: true
