@@ -37,10 +37,10 @@ export const insertPattern = async (page: Page, name?: string) => {
 export const patternsEmptyHint = (page: Page) =>
   patternsAside(page).locator("[class*=panelEmpty]");
 
+// The pattern dock stays open on outside clicks; Escape closes it.
 export const closePanel = async (page: Page) => {
-  await page
-    .locator("[class*=panelBackdrop]")
-    .click({ position: { x: 700, y: 400 } });
+  await page.keyboard.press("Escape");
+  await expect(patternsAside(page)).not.toHaveClass(/patternsDockOpen/);
 };
 
 // Right-clicks a param row and adds an automation lane for it.

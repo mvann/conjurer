@@ -20,13 +20,17 @@ test.describe("layout and pattern panel", () => {
     await expect(page.getByLabel("Play", { exact: true })).toBeDisabled();
   });
 
-  test("chevron opens the pattern panel; Escape closes it", async ({
+  test("chevron opens the pattern dock; it stays open on outside clicks", async ({
     page,
   }) => {
     await openPatternPanel(page);
     await expect(patternsEmptyHint(page)).toHaveText("No patterns yet");
+    // The dock pushes the main column aside instead of overlaying it, so
+    // clicking the canopy area must NOT close it.
+    await page.mouse.click(800, 300);
+    await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
     await page.keyboard.press("Escape");
-    await expect(patternsAside(page)).not.toHaveClass(/sidePanelOpen/);
+    await expect(patternsAside(page)).not.toHaveClass(/patternsDockOpen/);
   });
 
   test("add pattern flow inserts into the stack and starts expanded", async ({
@@ -46,9 +50,9 @@ test.describe("layout and pattern panel", () => {
   test("sliver click returns from the add-pattern view", async ({ page }) => {
     await openPatternPanel(page);
     await page.getByRole("button", { name: "Add Pattern" }).click();
-    await expect(patternsAside(page)).toHaveClass(/sidePanelWide/);
+    await expect(patternsAside(page)).toHaveClass(/patternsDockWide/);
     await page.getByLabel("Back to pattern list").click();
-    await expect(patternsAside(page)).not.toHaveClass(/sidePanelWide/);
+    await expect(patternsAside(page)).not.toHaveClass(/patternsDockWide/);
   });
 
   test("visibility toggle and trash work", async ({ page }) => {

@@ -22,7 +22,6 @@ import {
 } from "@/src/components/EditorV2/automation";
 import { isVector4 } from "@/src/utils/object";
 import { isPalette, Palette } from "@/src/params/palette/Palette";
-import { publishPanelInset } from "@/src/components/EditorV2/panelInsets";
 import {
   ColorValueEditor,
   PaletteValueEditor,
@@ -346,17 +345,9 @@ export function PatternsPanel({
     setContextMenu(null);
   };
 
-  // The docs strip shares the panels' layer and shrinks out from under
-  // them; tell it how wide this panel currently is.
-  useEffect(() => {
-    const width = !isOpen
-      ? 0
-      : isPicking
-        ? Math.min(380, window.innerWidth * 0.92)
-        : 300;
-    publishPanelInset("left", width);
-    return () => publishPanelInset("left", 0);
-  }, [isOpen, isPicking]);
+  // The dock sits in normal flow beside the main column, so the info
+  // strip below never needs to shrink for it (the songs panel, still an
+  // overlay, keeps publishing its inset).
 
   useEffect(() => {
     if (!isOpen && !isPicking) return;
@@ -375,19 +366,10 @@ export function PatternsPanel({
 
   return (
     <>
-      {isOpen && (
-        <div
-          className={styles.panelBackdrop}
-          onClick={() => {
-            setIsPicking(false);
-            setIsOpen(false);
-          }}
-        />
-      )}
       <aside
-        className={`${styles.sidePanel} ${isOpen ? styles.sidePanelOpen : ""} ${
-          isPicking ? styles.sidePanelWide : ""
-        }`}
+        className={`${styles.patternsDock} ${
+          isOpen ? styles.patternsDockOpen : ""
+        } ${isPicking ? styles.patternsDockWide : ""}`}
       >
         {isPicking && (
           <button

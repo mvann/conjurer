@@ -475,87 +475,94 @@ export function EditorV2Page() {
         </button>
       </header>
 
-      <section className={styles.canopyPane} data-doc="canopy">
-        <div className={styles.paneLabel}>
-          {selectedResolved && selectedEntry
-            ? `Automation · ${formatDisplayName(selectedEntry.pattern.name)}${
-                "effectName" in selectedResolved && selectedResolved.effectName
-                  ? ` · ${selectedResolved.effectName}`
-                  : ""
-              } · ${selectedResolved.paramName}`
-            : "Canopy"}
-        </div>
-        <CanopyPane patterns={visiblePatterns} dust={dust} />
-        {selectedResolved && selectedLane && selectedEntry && (
-          <AutomationEditorView
-            key={`${selectedLane.entryId}:${selectedLane.uniform}`}
-            param={selectedResolved.param}
-            beatGrid={beatGrid}
-            transients={transients}
-            curve={selectedEntry.automation[selectedLane.uniform] ?? null}
-            onCurveChange={(curve) =>
-              updateEntry(selectedLane.entryId, {
-                automation: {
-                  ...selectedEntry.automation,
-                  [selectedLane.uniform]: curve,
-                },
-              })
-            }
-            onClose={() => setSelectedLane(null)}
-          />
-        )}
-        {autosavePrompt && (
-          <div className={styles.autosaveOverlay} data-doc="autosave">
-            <span className={styles.autosaveText}>
-              An auto save was found that is ahead of your current save. Would
-              you like to open it?
-            </span>
-            <div className={styles.autosaveActions}>
-              <button className={styles.bannerAction} onClick={openAutosave}>
-                Open Auto Save
-              </button>
-              <button
-                className={styles.bannerDismiss}
-                onClick={() => setAutosavePrompt(null)}
-              >
-                Dismiss
-              </button>
+      <div className={styles.contentRow}>
+        <PatternsPanel
+          entries={entries}
+          onAdd={addPattern}
+          onUpdate={updateEntry}
+          onRemove={removeEntry}
+          onAddEffect={addEffect}
+          onRemoveEffect={removeEffect}
+          onMoveEffect={moveEffect}
+        />
+        <div className={styles.mainColumn}>
+          <section className={styles.canopyPane} data-doc="canopy">
+            <div className={styles.paneLabel}>
+              {selectedResolved && selectedEntry
+                ? `Automation · ${formatDisplayName(selectedEntry.pattern.name)}${
+                    "effectName" in selectedResolved &&
+                    selectedResolved.effectName
+                      ? ` · ${selectedResolved.effectName}`
+                      : ""
+                  } · ${selectedResolved.paramName}`
+                : "Canopy"}
             </div>
-          </div>
-        )}
-        {!selectedResolved && (
-          <CanopyControls
+            <CanopyPane patterns={visiblePatterns} dust={dust} />
+            {selectedResolved && selectedLane && selectedEntry && (
+              <AutomationEditorView
+                key={`${selectedLane.entryId}:${selectedLane.uniform}`}
+                param={selectedResolved.param}
+                beatGrid={beatGrid}
+                transients={transients}
+                curve={selectedEntry.automation[selectedLane.uniform] ?? null}
+                onCurveChange={(curve) =>
+                  updateEntry(selectedLane.entryId, {
+                    automation: {
+                      ...selectedEntry.automation,
+                      [selectedLane.uniform]: curve,
+                    },
+                  })
+                }
+                onClose={() => setSelectedLane(null)}
+              />
+            )}
+            {autosavePrompt && (
+              <div className={styles.autosaveOverlay} data-doc="autosave">
+                <span className={styles.autosaveText}>
+                  An auto save was found that is ahead of your current save.
+                  Would you like to open it?
+                </span>
+                <div className={styles.autosaveActions}>
+                  <button
+                    className={styles.bannerAction}
+                    onClick={openAutosave}
+                  >
+                    Open Auto Save
+                  </button>
+                  <button
+                    className={styles.bannerDismiss}
+                    onClick={() => setAutosavePrompt(null)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
+            )}
+            {!selectedResolved && (
+              <CanopyControls
+                volume={volume}
+                onVolumeChange={setVolume}
+                dust={dust}
+                onDustChange={setDust}
+              />
+            )}
+          </section>
+
+          <TimelineStrip
+            song={song}
+            onSongChange={changeSong}
             volume={volume}
-            onVolumeChange={setVolume}
-            dust={dust}
-            onDustChange={setDust}
+            onBeatGridChange={setBeatGrid}
+            onTransientsChange={setTransients}
           />
-        )}
-      </section>
 
-      <TimelineStrip
-        song={song}
-        onSongChange={changeSong}
-        volume={volume}
-        onBeatGridChange={setBeatGrid}
-        onTransientsChange={setTransients}
-      />
-
-      <AutomationPane
-        entries={entries}
-        selectedLane={selectedLane}
-        onSelectLane={toggleLane}
-      />
-
-      <PatternsPanel
-        entries={entries}
-        onAdd={addPattern}
-        onUpdate={updateEntry}
-        onRemove={removeEntry}
-        onAddEffect={addEffect}
-        onRemoveEffect={removeEffect}
-        onMoveEffect={moveEffect}
-      />
+          <AutomationPane
+            entries={entries}
+            selectedLane={selectedLane}
+            onSelectLane={toggleLane}
+          />
+        </div>
+      </div>
 
       <DocsStrip />
     </div>
