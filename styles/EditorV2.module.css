@@ -683,12 +683,54 @@
   z-index: 4;
 }
 
-/* The backdrop menu opens upward from the corner button. */
+/* The backdrop menu opens upward from the corner button: boxless
+   right-justified glowing text over whatever the editor shows, kept
+   readable by the static black glow behind each label. */
 .backdropMenu {
   position: absolute;
-  right: 0;
-  bottom: 36px;
-  min-width: 120px;
+  right: 6px;
+  bottom: 34px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+}
+
+.backdropMenuItem {
+  background: none;
+  border: none;
+  padding: 2px 0;
+  font-family: inherit;
+  font-size: 14px;
+  letter-spacing: 0.6px;
+  text-align: right;
+  color: #8f96a8;
+  cursor: pointer;
+  white-space: nowrap;
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 1),
+    0 0 4px rgba(0, 0, 0, 1),
+    0 0 7px rgba(0, 0, 0, 1),
+    0 0 12px rgba(0, 0, 0, 1),
+    0 0 18px rgba(0, 0, 0, 1),
+    0 0 28px rgba(0, 0, 0, 0.95);
+  transition: color 0.18s ease;
+}
+
+.backdropMenuItem:hover {
+  color: #ffffff;
+}
+
+.backdropMenuItemActive {
+  color: #e8ecf4;
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 1),
+    0 0 4px rgba(0, 0, 0, 1),
+    0 0 7px rgba(0, 0, 0, 1),
+    0 0 12px rgba(0, 0, 0, 1),
+    0 0 18px rgba(0, 0, 0, 1),
+    0 0 28px rgba(0, 0, 0, 0.95),
+    0 0 6px rgba(232, 236, 244, 0.65);
 }
 
 /* The song's waveform behind the automation curve (Waveform backdrop). */

@@ -1747,14 +1747,14 @@ export function AutomationEditorView({
         data-doc="see-through"
       >
         {backdropMenuOpen && (
-          <div className={`${styles.contextMenu} ${styles.backdropMenu}`}>
+          <div className={styles.backdropMenu}>
             {/* Independent toggles: the menu stays open so both can be
                 flipped in one visit. */}
             {(["canopy", "waveform"] as const).map((layer) => (
               <button
                 key={layer}
-                className={`${styles.contextMenuItem} ${
-                  backdrop[layer] ? styles.contextMenuItemActive : ""
+                className={`${styles.backdropMenuItem} ${
+                  backdrop[layer] ? styles.backdropMenuItemActive : ""
                 }`}
                 onClick={() =>
                   setBackdrop((current) => ({
