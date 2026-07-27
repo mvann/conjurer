@@ -674,13 +674,30 @@
   background-color: rgba(7, 6, 15, 0.35);
 }
 
-/* Bottom-right corner of the editor: the see-through toggle, styled
+/* Bottom-right corner of the editor: the backdrop dropdown, styled
    like the canopy's corner controls. */
 .editorCornerToggle {
   position: absolute;
   right: 10px;
   bottom: 8px;
   z-index: 4;
+}
+
+/* The backdrop menu opens upward from the corner button. */
+.backdropMenu {
+  position: absolute;
+  right: 0;
+  bottom: 36px;
+  min-width: 120px;
+}
+
+/* The song's waveform behind the automation curve (Waveform backdrop). */
+.editorWaveformCanvas {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
 }
 
 /* Same width as the timeline's transport box, so lane areas line up with

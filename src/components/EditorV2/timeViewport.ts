@@ -25,6 +25,14 @@ export const publishTransportTime = (
   transportTime.durationSeconds = durationSeconds;
 };
 
+// The loaded song's waveform peaks, shared the same way (the automation
+// editor's waveform backdrop draws from them). Null without a song.
+export const sharedWaveform: { peaks: Float32Array | null } = { peaks: null };
+
+export const publishWaveformPeaks = (peaks: Float32Array | null) => {
+  sharedWaveform.peaks = peaks;
+};
+
 // Test hooks: e2e tests read the live viewport and transport through
 // these (transport readiness in particular: durationSeconds turns
 // nonzero once the song is fetched, decoded, and playable).

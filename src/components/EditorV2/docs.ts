@@ -387,9 +387,11 @@ Effects apply in order, top to bottom: use the arrows to reorder the chain and t
     long: `Click to open the effect catalog inline, then click an effect (tints, masks, kaleidoscopes, projections and more) to append it to this pattern's chain. Reorder or remove it from its header row; automate its parameters like any others.`,
   },
   "see-through": {
-    title: "See Through",
-    short: "Toggles a translucent editor so the canopy shows behind it.",
-    long: `Click to thin the editor's backdrop and watch the live canopy through it while shaping a curve; curves and controls stay at full strength on top. Click again to restore the solid backdrop.`,
+    title: "Backdrop",
+    short: "Toggle the canopy and the waveform behind the curve.",
+    long: `Click the corner button, then toggle each backdrop layer on or off; the menu stays open for both. Canopy (on by default) thins the editor so the live canopy renders through it; use it to watch what a curve does while shaping it. Waveform draws the song's waveform dimly behind the curve, lined up with the editor's time axis; use it to place automation against the audio by eye. Turn both on to stack them, or both off for the plain solid backdrop.
+
+Curves, keyframes, and controls stay at full strength over any backdrop. Waveform needs a loaded song.`,
   },
   "snap-menu": {
     title: "Snap To",

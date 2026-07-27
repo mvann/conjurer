@@ -7,11 +7,15 @@ import { analyzeBpm, BpmAnalysis } from "@/src/components/EditorV2/bpm";
 import { analyzeTransients } from "@/src/components/EditorV2/transients";
 import { getSongUrl } from "@/src/utils/songUrl";
 import { SongPlayer } from "@/src/components/EditorV2/songPlayer";
-import { computePeaks } from "@/src/components/EditorV2/waveformPeaks";
+import {
+  computePeaks,
+  drawBars,
+} from "@/src/components/EditorV2/waveformPeaks";
 import { Song } from "@/src/types/Song";
 import {
   publishTimeViewport,
   publishTransportTime,
+  publishWaveformPeaks,
 } from "@/src/components/EditorV2/timeViewport";
 
 const MAX_ZOOM = 64;
@@ -21,39 +25,6 @@ const MAX_ZOOM = 64;
 const PEAK_COLUMNS = 32000;
 const DIM_COLOR = "rgba(232, 236, 244, 0.35)";
 const BRIGHT_COLOR = "rgba(232, 236, 244, 0.8)";
-
-// Draw waveform bars for the time window [viewLeft, viewLeft + viewWidth)
-// straight from the peak array, restricted to destination columns
-// [fromX, toX). Each screen column max-pools its exact share of peak
-// columns, so peaks stay crisp at every zoom, positions are exact, and
-// there is no image scaling or level-of-detail switching to snap.
-const drawBars = (
-  ctx: CanvasRenderingContext2D,
-  peaks: Float32Array,
-  viewLeft: number,
-  viewWidth: number,
-  destWidth: number,
-  height: number,
-  fromX: number,
-  toX: number,
-  color: string,
-) => {
-  ctx.fillStyle = color;
-  const first = Math.max(0, Math.floor(fromX));
-  const last = Math.min(destWidth, Math.ceil(toX));
-  for (let x = first; x < last; x++) {
-    const f0 = viewLeft + viewWidth * (x / destWidth);
-    const f1 = viewLeft + viewWidth * ((x + 1) / destWidth);
-    const i0 = Math.floor(f0 * peaks.length);
-    const i1 = Math.max(i0 + 1, Math.ceil(f1 * peaks.length));
-    if (i0 < 0 || i0 >= peaks.length) continue;
-    let max = 0;
-    for (let i = i0; i < i1 && i < peaks.length; i++)
-      if (peaks[i] > max) max = peaks[i];
-    const barHeight = Math.max(1, max * height);
-    ctx.fillRect(x, (height - barHeight) / 2, 1, barHeight);
-  }
-};
 
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
@@ -311,6 +282,8 @@ export function TimelineStrip({
     peaksRef.current = decoded
       ? computePeaks(decoded.getChannelData(0), PEAK_COLUMNS)
       : null;
+    // Shared with the automation editor's waveform backdrop.
+    publishWaveformPeaks(peaksRef.current);
   };
 
   // Size the visible canvases to their containers in device pixels.
@@ -409,6 +382,7 @@ export function TimelineStrip({
       player.current = null;
       (window as unknown as Record<string, unknown>).__editorSongPlayer = null;
       peaksRef.current = null;
+      publishWaveformPeaks(null);
       beatGrid.current = null;
       setBpmInfo(null);
       onBeatGridChange(null);

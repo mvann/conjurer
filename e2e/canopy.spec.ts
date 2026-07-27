@@ -123,11 +123,10 @@ test.describe("canopy pixel smoke", () => {
     expect(diffBytes(early, late)).toBeGreaterThan(2_000);
   });
 
-  test("see-through mode shows the animating canopy behind the editor", async ({
+  test("backdrop dropdown: canopy by default, off is solid, waveform draws", async ({
     page,
   }) => {
-    // Nebula at full motion, then open an automation lane editor over it:
-    // the opaque backdrop hides the animation until see-through thins it.
+    // Nebula at full motion, then open an automation lane editor over it.
     await openPatternPanel(page);
     await insertPattern(page, "Nebula");
     await page
@@ -139,25 +138,48 @@ test.describe("canopy pixel smoke", () => {
     await page.locator("[class*=laneRow]").first().click();
     await page.waitForTimeout(600);
 
-    const opaque1 = await shoot(page);
-    await page.waitForTimeout(900);
-    const opaque2 = await shoot(page);
-    expect(diffBytes(opaque1, opaque2)).toBeLessThan(100);
+    // Each menu item is an independent toggle; the menu stays open.
+    const toggleLayer = async (label: string) => {
+      await page.getByLabel("Backdrop").click();
+      await page
+        .locator("[class*=backdropMenu]")
+        .getByRole("button", { name: label })
+        .click();
+      await page.keyboard.press("Escape");
+      await page.waitForTimeout(400);
+    };
 
-    await page.getByLabel("See through to canopy").click();
-    await page.waitForTimeout(400);
-    const through1 = await shoot(page);
+    // Default is Canopy on: the animation shows through the backdrop.
+    const canopy1 = await shoot(page);
     await page.waitForTimeout(900);
-    const through2 = await shoot(page);
-    expect(diffBytes(through1, through2)).toBeGreaterThan(2_000);
+    const canopy2 = await shoot(page);
+    expect(diffBytes(canopy1, canopy2)).toBeGreaterThan(2_000);
 
-    // Toggling back restores the solid backdrop.
-    await page.getByLabel("See through to canopy").click();
-    await page.waitForTimeout(400);
+    // Canopy off leaves the solid backdrop: nothing moves.
+    await toggleLayer("Canopy");
     const solid1 = await shoot(page);
     await page.waitForTimeout(900);
     const solid2 = await shoot(page);
     expect(diffBytes(solid1, solid2)).toBeLessThan(100);
+
+    // Waveform on (with a song loaded, canopy still off): the song's
+    // peaks draw behind the curve, static but visibly different.
+    await loadSeededSong(page);
+    await page.waitForTimeout(400);
+    const plain = await shoot(page);
+    await toggleLayer("Waveform");
+    const wave = await shoot(page);
+    expect(diffBytes(plain, wave)).toBeGreaterThan(2_000);
+    const wave2 = await shoot(page);
+    expect(diffBytes(wave, wave2)).toBeLessThan(100);
+
+    // Both layers on stack: the waveform stays put while the canopy
+    // animates through behind it.
+    await toggleLayer("Canopy");
+    const stacked1 = await shoot(page);
+    await page.waitForTimeout(900);
+    const stacked2 = await shoot(page);
+    expect(diffBytes(stacked1, stacked2)).toBeGreaterThan(2_000);
   });
 
   test("param edits still repaint after an undo", async ({ page }) => {

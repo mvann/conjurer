@@ -33,9 +33,11 @@ import { isVector4 } from "@/src/utils/object";
 import { isPalette } from "@/src/params/palette/Palette";
 import {
   TIME_VIEWPORT_EVENT,
+  sharedWaveform,
   timeViewport,
   transportTime,
 } from "@/src/components/EditorV2/timeViewport";
+import { drawBars } from "@/src/components/EditorV2/waveformPeaks";
 import {
   computeTargetView,
   easeView,
@@ -298,9 +300,24 @@ export function AutomationEditorView({
   const [snapMode, setSnapMode] = useState<"off" | "grid" | "transients">(
     "off",
   );
-  // See-through mode: the editor's backdrop thins so the canopy shows
-  // through while editing.
-  const [seeThrough, setSeeThrough] = useState(false);
+  // The editor's backdrop layers, each an independent toggle in the
+  // corner dropdown: Canopy thins the editor so the live canopy shows
+  // through (on by default), Waveform draws the song's waveform behind
+  // the curve. Both on stacks them; both off is the plain solid
+  // backdrop.
+  const [backdrop, setBackdrop] = useState({ canopy: true, waveform: false });
+  const [backdropMenuOpen, setBackdropMenuOpen] = useState(false);
+  const backdropMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!backdropMenuOpen) return;
+    const onPointerDown = (event: PointerEvent) => {
+      if (backdropMenuRef.current?.contains(event.target as Node)) return;
+      setBackdropMenuOpen(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [backdropMenuOpen]);
 
   // Right-clicking a keyframe types its value directly: a glowing field
   // in the dot-label position, committed on Enter or blur.
@@ -387,7 +404,8 @@ export function AutomationEditorView({
       !segmentMenu &&
       selectedSegment === null &&
       !timeSelection &&
-      !keyframeValueEdit
+      !keyframeValueEdit &&
+      !backdropMenuOpen
     )
       return;
     const onKeyDown = (event: KeyboardEvent) => {
@@ -395,13 +413,20 @@ export function AutomationEditorView({
       event.stopImmediatePropagation();
       event.preventDefault();
       if (keyframeValueEdit) setKeyframeValueEdit(null);
+      else if (backdropMenuOpen) setBackdropMenuOpen(false);
       else if (segmentMenu) setSegmentMenu(null);
       else if (selectedSegment !== null) setSelectedSegment(null);
       else setTimeSelection(null);
     };
     window.addEventListener("keydown", onKeyDown, true);
     return () => window.removeEventListener("keydown", onKeyDown, true);
-  }, [segmentMenu, selectedSegment, timeSelection, keyframeValueEdit]);
+  }, [
+    segmentMenu,
+    selectedSegment,
+    timeSelection,
+    keyframeValueEdit,
+    backdropMenuOpen,
+  ]);
 
   // The menu closes on any press outside it.
   useEffect(() => {
@@ -471,6 +496,43 @@ export function AutomationEditorView({
     return () => window.removeEventListener("resize", update);
   }, []);
   const labelPct = (120 / areaWidth) * 100;
+
+  // Waveform backdrop: the song's peaks drawn dimly behind the curve,
+  // through the same time mapping as everything else in the editor, so
+  // automation lines up against the audio it rides on. Redrawn whenever
+  // the viewport, the area size, or the mode changes.
+  const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    if (!backdrop.waveform) return;
+    const canvas = waveformCanvasRef.current;
+    const area = areaRef.current;
+    if (!canvas || !area) return;
+    const dpr = window.devicePixelRatio || 1;
+    const rect = area.getBoundingClientRect();
+    canvas.width = Math.max(1, Math.floor(rect.width * dpr));
+    canvas.height = Math.max(1, Math.floor(rect.height * dpr));
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    const peaks = sharedWaveform.peaks;
+    if (!peaks) return;
+    // The area spans [xFracToTime(0), xFracToTime(1)]: the visible window
+    // plus the label strip's stretch of pre-window time on the left.
+    const viewLeft =
+      timeView.left - (labelPct * timeView.width) / (100 - labelPct);
+    const viewWidth = (timeView.width * 100) / (100 - labelPct);
+    drawBars(
+      ctx,
+      peaks,
+      viewLeft,
+      viewWidth,
+      canvas.width,
+      canvas.height,
+      0,
+      canvas.width,
+      "rgba(232, 236, 244, 0.16)",
+    );
+  }, [backdrop.waveform, timeView, labelPct]);
   const timeToX = (timeFrac: number) =>
     labelPct + ((timeFrac - timeView.left) / timeView.width) * (100 - labelPct);
   const xFracToTime = (frac: number) =>
@@ -1066,7 +1128,7 @@ export function AutomationEditorView({
   return (
     <div
       className={`${styles.automationEditor} ${
-        seeThrough ? styles.automationEditorSeeThrough : ""
+        backdrop.canopy ? styles.automationEditorSeeThrough : ""
       }`}
       data-doc="automation-editor"
     >
@@ -1082,6 +1144,12 @@ export function AutomationEditorView({
           setSegmentMenu({ index: null, x: event.clientX, y: event.clientY });
         }}
       >
+        {backdrop.waveform && (
+          <canvas
+            ref={waveformCanvasRef}
+            className={styles.editorWaveformCanvas}
+          />
+        )}
         {(() => {
           // Dashed horizontal guides at value multiples of the magnitude
           // step (an eighth of the settled radius: 0.125 in the -1..1
@@ -1673,13 +1741,41 @@ export function AutomationEditorView({
         ✕
       </button>
 
-      <div className={styles.editorCornerToggle} data-doc="see-through">
+      <div
+        ref={backdropMenuRef}
+        className={styles.editorCornerToggle}
+        data-doc="see-through"
+      >
+        {backdropMenuOpen && (
+          <div className={`${styles.contextMenu} ${styles.backdropMenu}`}>
+            {/* Independent toggles: the menu stays open so both can be
+                flipped in one visit. */}
+            {(["canopy", "waveform"] as const).map((layer) => (
+              <button
+                key={layer}
+                className={`${styles.contextMenuItem} ${
+                  backdrop[layer] ? styles.contextMenuItemActive : ""
+                }`}
+                onClick={() =>
+                  setBackdrop((current) => ({
+                    ...current,
+                    [layer]: !current[layer],
+                  }))
+                }
+              >
+                {layer === "canopy" ? "Canopy" : "Waveform"}
+              </button>
+            ))}
+          </div>
+        )}
         <button
           className={`${styles.cornerButton} ${
-            seeThrough ? styles.cornerButtonActive : ""
+            backdrop.canopy || backdrop.waveform
+              ? styles.cornerButtonActive
+              : ""
           }`}
-          onClick={() => setSeeThrough((current) => !current)}
-          aria-label="See through to canopy"
+          onClick={() => setBackdropMenuOpen((open) => !open)}
+          aria-label="Backdrop"
         >
           <MdOpacity />
         </button>
