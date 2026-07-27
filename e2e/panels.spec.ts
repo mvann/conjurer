@@ -70,12 +70,23 @@ test.describe("layout and pattern panel", () => {
     await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
     await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
 
+    // Over an automatable row the badge turns green; elsewhere it is
+    // silver.
+    const warpRow = page
+      .locator("[data-doc=param-row]")
+      .filter({ hasText: "Warp" });
+    await warpRow.hover();
+    await expect(page.locator("[class*=assignCursor]")).toHaveClass(
+      /assignCursorHot/,
+    );
+    await page.mouse.move(900, 300);
+    await expect(page.locator("[class*=assignCursor]")).not.toHaveClass(
+      /assignCursorHot/,
+    );
+
     // Clicking a parameter creates its lane and ends the mode; the dock
     // stays open.
-    await page
-      .locator("[data-doc=param-row]")
-      .filter({ hasText: "Warp" })
-      .click();
+    await warpRow.click();
     await expect(page.locator("[class*=laneRow]")).toHaveCount(1);
     await expect(page.locator("[class*=laneRow]")).toContainText("Warp");
     await expect(page.locator("[class*=assignCursor]")).toHaveCount(0);

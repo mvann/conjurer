@@ -432,6 +432,11 @@ export function EditorV2Page() {
       badge.style.left = `${event.clientX + 14}px`;
       badge.style.top = `${event.clientY - 24}px`;
       badge.style.opacity = "1";
+      // Green over anything automatable (a parameter row).
+      const hot = !!(event.target as HTMLElement | null)?.closest?.(
+        '[data-doc="param-row"]',
+      );
+      badge.classList.toggle(styles.assignCursorHot, hot);
     };
     document.addEventListener("pointermove", onMove);
     return () => document.removeEventListener("pointermove", onMove);
