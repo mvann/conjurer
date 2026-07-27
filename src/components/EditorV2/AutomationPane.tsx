@@ -44,6 +44,9 @@ type Props = {
   entries: StackEntry[];
   selectedLane: { entryId: number; uniform: string } | null;
   onSelectLane: (lane: { entryId: number; uniform: string }) => void;
+  // Starts assign mode: the pattern editor opens and the next parameter
+  // clicked gets an automation lane.
+  onStartAssign: () => void;
 };
 
 // Resolves a lane's display name and param. Lane keys are a uniform name,
@@ -355,7 +358,12 @@ export function ManualValueLine({
 // as the timeline's transport box so the lane areas align with the timeline
 // ticks. Lane content itself is still to come. The pane is resized by
 // dragging its top edge.
-export function AutomationPane({ entries, selectedLane, onSelectLane }: Props) {
+export function AutomationPane({
+  entries,
+  selectedLane,
+  onSelectLane,
+  onStartAssign,
+}: Props) {
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
   // Lanes share the timeline's visible time window.
   const [timeView, setTimeView] = useState({
@@ -470,6 +478,15 @@ export function AutomationPane({ entries, selectedLane, onSelectLane }: Props) {
             </div>
           </div>
         ))}
+        {/* The final lane is the way in: click, then pick a parameter
+            in the pattern editor. */}
+        <button
+          className={styles.addLaneRow}
+          data-doc="add-lane"
+          onClick={onStartAssign}
+        >
+          Add New Automation
+        </button>
       </div>
     </section>
   );

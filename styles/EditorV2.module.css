@@ -220,6 +220,59 @@
   -webkit-user-select: none;
 }
 
+/* The final pseudo-lane: centered glowing text that starts assign mode. */
+.addLaneRow {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  min-height: 30px;
+  background: none;
+  border: none;
+  border-top: 1px solid rgba(232, 236, 244, 0.06);
+  color: #8f96a8;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 12px;
+  letter-spacing: 1.6px;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    text-shadow 0.18s ease;
+}
+
+.addLaneRow:hover {
+  color: #ffffff;
+  text-shadow:
+    0 0 8px rgba(225, 233, 250, 0.95),
+    0 0 18px rgba(170, 190, 235, 0.6);
+}
+
+/* The badge riding beside the cursor during assign mode: a miniature
+   automation lane, glowing, over everything. */
+.assignCursor {
+  position: fixed;
+  z-index: 90;
+  opacity: 0;
+  pointer-events: none;
+  color: #e8ecf4;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.9))
+    drop-shadow(0 0 8px rgba(0, 0, 0, 1));
+}
+
+/* Assign mode: each parameter row is one click target. */
+.paramRowAssign {
+  cursor: pointer;
+}
+
+.paramRowAssign * {
+  pointer-events: none;
+}
+
+.paramRowAssign:hover {
+  background: rgba(232, 236, 244, 0.07);
+}
+
 .patternsDockOpen {
   width: min(300px, 84vw);
   border-right: 1px solid rgba(232, 236, 244, 0.16);

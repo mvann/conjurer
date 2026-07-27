@@ -81,6 +81,11 @@ type Props = {
   onAddEffect: (entryId: number, factory: () => Pattern) => void;
   onRemoveEffect: (entryId: number, effectId: number) => void;
   onMoveEffect: (entryId: number, effectId: number, delta: -1 | 1) => void;
+  // Assign mode (Add New Automation): clicking any parameter row gives
+  // it a lane instead of its normal interaction.
+  assigning: boolean;
+  onAssignParam: (entryId: number, laneKey: string) => void;
+  onCancelAssign: () => void;
 };
 
 // Slide-out pattern stack, after Beckon's sidebar: a bare chevron at the
@@ -103,9 +108,17 @@ export function PatternsPanel({
   onAddEffect,
   onRemoveEffect,
   onMoveEffect,
+  assigning,
+  onAssignParam,
+  onCancelAssign,
 }: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
+  // Starting an assignment opens the dock; it stays open when the
+  // assignment ends or cancels.
+  useEffect(() => {
+    if (assigning) setIsOpen(true);
+  }, [assigning]);
   const [contextMenu, setContextMenu] = useState<ParamContextMenu | null>(null);
   // The entry whose inline effect picker is open, if any.
   const [effectPickerFor, setEffectPickerFor] = useState<number | null>(null);
@@ -206,14 +219,23 @@ export function PatternsPanel({
             y: event.clientY,
           });
         };
+        // Assign mode: the whole row becomes one click target (children
+        // stop intercepting) and a click gives the parameter its lane.
+        const assignProps = assigning
+          ? {
+              onClick: () => onAssignParam(entry.id, laneKey),
+            }
+          : {};
+        const assignClass = assigning ? styles.paramRowAssign : "";
         const components = getParamComponents(param);
         if (!components)
           return (
             <li
               key={laneKey}
               data-doc="param-row"
-              className={`${styles.paramRow} ${laneEdgeClass(entry, laneKey)}`}
+              className={`${styles.paramRow} ${assignClass} ${laneEdgeClass(entry, laneKey)}`}
               onContextMenu={openMenu}
+              {...assignProps}
             >
               <span className={styles.paramName}>
                 {formatDisplayName(param.name)}
@@ -245,8 +267,9 @@ export function PatternsPanel({
           <li key={laneKey}>
             <div
               data-doc="param-row"
-              className={`${styles.paramRow} ${laneEdgeClass(entry, laneKey)}`}
+              className={`${styles.paramRow} ${assignClass} ${laneEdgeClass(entry, laneKey)}`}
               onContextMenu={openMenu}
+              {...assignProps}
             >
               <button
                 className={styles.paramCaret}
@@ -350,23 +373,26 @@ export function PatternsPanel({
   // overlay, keeps publishing its inset).
 
   useEffect(() => {
-    if (!isOpen && !isPicking) return;
+    if (!isOpen && !isPicking && !assigning) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       // Consume the Escape so layers below (the automation editor view)
       // stay open.
       event.stopImmediatePropagation();
-      if (isPicking) setIsPicking(false);
+      // An in-flight assignment cancels first; the dock stays open.
+      if (assigning) onCancelAssign();
+      else if (isPicking) setIsPicking(false);
       else setIsOpen(false);
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [isOpen, isPicking]);
+  }, [isOpen, isPicking, assigning, onCancelAssign]);
 
   return (
     <>
       <aside
+        data-panel="patterns"
         className={`${styles.patternsDock} ${
           isOpen ? styles.patternsDockOpen : ""
         } ${isPicking ? styles.patternsDockWide : ""}`}

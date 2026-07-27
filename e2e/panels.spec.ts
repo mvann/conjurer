@@ -55,6 +55,55 @@ test.describe("layout and pattern panel", () => {
     await expect(patternsAside(page)).not.toHaveClass(/patternsDockWide/);
   });
 
+  test("Add New Automation assigns a lane from the pattern editor", async ({
+    page,
+  }) => {
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+    await page.keyboard.press("Escape");
+    await expect(patternsAside(page)).not.toHaveClass(/patternsDockOpen/);
+
+    // Clicking the final lane opens the dock and arms assignment (the
+    // cursor badge appears).
+    await page.getByRole("button", { name: "Add New Automation" }).click();
+    await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
+    await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
+
+    // Clicking a parameter creates its lane and ends the mode; the dock
+    // stays open.
+    await page
+      .locator("[data-doc=param-row]")
+      .filter({ hasText: "Warp" })
+      .click();
+    await expect(page.locator("[class*=laneRow]")).toHaveCount(1);
+    await expect(page.locator("[class*=laneRow]")).toContainText("Warp");
+    await expect(page.locator("[class*=assignCursor]")).toHaveCount(0);
+    await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
+  });
+
+  test("assignment cancels on Escape and on outside clicks; dock stays open", async ({
+    page,
+  }) => {
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+
+    // Escape cancels the assignment but leaves the dock open.
+    await page.getByRole("button", { name: "Add New Automation" }).click();
+    await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[class*=assignCursor]")).toHaveCount(0);
+    await expect(page.locator("[class*=laneRow]")).toHaveCount(0);
+    await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
+
+    // A click outside the pattern editor cancels too.
+    await page.getByRole("button", { name: "Add New Automation" }).click();
+    await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
+    await page.mouse.click(900, 300);
+    await expect(page.locator("[class*=assignCursor]")).toHaveCount(0);
+    await expect(page.locator("[class*=laneRow]")).toHaveCount(0);
+    await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
+  });
+
   test("visibility toggle and trash work", async ({ page }) => {
     await openPatternPanel(page);
     await insertPattern(page);

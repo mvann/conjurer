@@ -62,6 +62,11 @@ export function EditorV2Page() {
     entryId: number;
     uniform: string;
   } | null>(null);
+  // Assign mode (the Add New Automation lane): the pattern editor opens
+  // and the next parameter clicked gets a lane. Escape or a click
+  // outside the pattern editor cancels; the editor stays open either
+  // way.
+  const [assigningLane, setAssigningLane] = useState(false);
   const nextId = useRef(1);
   const allocateId = () => nextId.current++;
 
@@ -341,6 +346,49 @@ export function EditorV2Page() {
     scheduleAutosave();
   };
 
+  // ---- Assign mode plumbing. ----
+
+  const assignLane = (entryId: number, laneKey: string) => {
+    const entry = entries.find((candidate) => candidate.id === entryId);
+    if (entry && !entry.automatedParams.includes(laneKey))
+      updateEntry(entryId, {
+        automatedParams: [...entry.automatedParams, laneKey],
+      });
+    setAssigningLane(false);
+  };
+
+  // A click outside the pattern editor cancels the assignment (the
+  // pattern editor itself stays open). The listener attaches after the
+  // starting click, so that click never cancels its own mode.
+  useEffect(() => {
+    if (!assigningLane) return;
+    const onPointerDown = (event: PointerEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('[data-panel="patterns"]')) return;
+      if (target.closest('[data-doc="add-lane"]')) return;
+      setAssigningLane(false);
+    };
+    document.addEventListener("pointerdown", onPointerDown, true);
+    return () =>
+      document.removeEventListener("pointerdown", onPointerDown, true);
+  }, [assigningLane]);
+
+  // The badge riding beside the cursor while assigning: positioned
+  // imperatively (a re-render per mousemove would be noise).
+  const assignCursorRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!assigningLane) return;
+    const onMove = (event: PointerEvent) => {
+      const badge = assignCursorRef.current;
+      if (!badge) return;
+      badge.style.left = `${event.clientX + 14}px`;
+      badge.style.top = `${event.clientY - 24}px`;
+      badge.style.opacity = "1";
+    };
+    document.addEventListener("pointermove", onMove);
+    return () => document.removeEventListener("pointermove", onMove);
+  }, [assigningLane]);
+
   // ---- Automation editor view: a lane, expanded over the canopy space. ----
 
   const selectedEntry = selectedLane
@@ -484,6 +532,9 @@ export function EditorV2Page() {
           onAddEffect={addEffect}
           onRemoveEffect={removeEffect}
           onMoveEffect={moveEffect}
+          assigning={assigningLane}
+          onAssignParam={assignLane}
+          onCancelAssign={() => setAssigningLane(false)}
         />
         <div className={styles.mainColumn}>
           <section className={styles.canopyPane} data-doc="canopy">
@@ -560,9 +611,26 @@ export function EditorV2Page() {
             entries={entries}
             selectedLane={selectedLane}
             onSelectLane={toggleLane}
+            onStartAssign={() => setAssigningLane(true)}
           />
         </div>
       </div>
+
+      {assigningLane && (
+        <div ref={assignCursorRef} className={styles.assignCursor}>
+          {/* A miniature automation lane: two keyframes and their curve. */}
+          <svg width="20" height="12" viewBox="0 0 20 12">
+            <path
+              d="M 2 10 C 8 10 12 2 18 2"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.4"
+            />
+            <circle cx="2" cy="10" r="2" fill="currentColor" />
+            <circle cx="18" cy="2" r="2" fill="currentColor" />
+          </svg>
+        </div>
+      )}
 
       <DocsStrip />
     </div>

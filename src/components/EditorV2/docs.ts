@@ -262,7 +262,14 @@ Canopy renders it onto the LED geometry in three dimensions, orbitable by draggi
     short: "Click a lane to edit its curve. Drag the top edge to resize.",
     long: `Each lane here is one automated parameter. Click a lane to expand it into the automation editor; click it again, or press Escape, to close it.
 
-To create a lane, right click a parameter in the pattern editor and choose Add Automation Lane; delete it from the same menu. Drag the pane's top edge to resize it.`,
+To create a lane, click Add New Automation at the bottom of the lanes and pick a parameter, or right click a parameter in the pattern editor and choose Add Automation Lane; delete it from that same menu. Drag the pane's top edge to resize it.`,
+  },
+  "add-lane": {
+    title: "Add New Automation",
+    short: "Click, then pick a parameter in the pattern editor.",
+    long: `Click to start an assignment: the pattern editor opens and a small curve badge rides beside the cursor. Click any parameter (pattern or effect) to give it an automation lane; the new lane appears here.
+
+Press Escape, or click anywhere outside the pattern editor, to cancel. The pattern editor stays open either way.`,
   },
   "automation-resize": {
     title: "Resize Automation Pane",
