@@ -81,6 +81,14 @@ export const loadSeededSong = async (page: Page) => {
       { timeout: 20_000 },
     )
     .toBeGreaterThan(0);
+  // Mute playback for the test run: Chromium is launched muted by
+  // Playwright, but WebKit has no browser-level mute and would play the
+  // song through the machine's speakers.
+  await page.evaluate(() =>
+    (
+      window as unknown as Record<string, { setVolume(v: number): void }>
+    ).__editorSongPlayer?.setVolume(0),
+  );
 };
 
 export const scaleTicks = (page: Page) =>
