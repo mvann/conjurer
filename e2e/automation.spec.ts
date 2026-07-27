@@ -751,7 +751,10 @@ test.describe("segment types", () => {
     await page.mouse.move(box.x + box.width * 0.55, lowY, { steps: 5 });
     await page.mouse.up();
     await expect(page.locator("[data-doc=time-selection]")).toBeVisible();
-    await page.getByRole("button", { name: "Copy" }).click();
+    await page
+      .locator("[class*=selectionActions]")
+      .getByRole("button", { name: "Copy" })
+      .click();
 
     // A plain click places the silver cursor and drops the selection;
     // the transport does not move. Paste appears once both the clipboard
@@ -779,7 +782,10 @@ test.describe("segment types", () => {
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * 0.6, lowY, { steps: 5 });
     await page.mouse.up();
-    await page.getByRole("button", { name: "Delete" }).click();
+    await page
+      .locator("[class*=selectionActions]")
+      .getByRole("button", { name: "Delete" })
+      .click();
     await expect(page.locator("[data-doc=time-selection]")).toHaveCount(0);
     await expect(
       page.locator("[class*=automationEditor__] [class*=curvePath]"),
