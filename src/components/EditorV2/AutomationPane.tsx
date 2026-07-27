@@ -102,9 +102,9 @@ export const resolveLane = (entry: StackEntry, laneKey: string) => {
 const clamp01 = (value: number) => Math.min(Math.max(value, 0), 1);
 
 // The value range a lane maps through: the same range the expanded
-// editor would settle on. Shared by the mini curve, the underlying value
+// editor would settle on. Shared by the mini curve, the manual value
 // line, and the time dot so they always agree. A deactivated lane keeps
-// the underlying value in range, since that line drives the parameter.
+// the manual value in range, since that line drives the parameter.
 const laneViewRange = (curve: AutomationCurve | null, param: PatternParam) => {
   // A parameter that declares both bounds pins the lane to exactly that
   // range, matching the expanded editor.
@@ -274,7 +274,7 @@ function LaneTimeDot({
       if (!dot) return;
       const { seconds, durationSeconds } = transportTime;
       // A deactivated curve is not driving the parameter: the dot follows
-      // the underlying value instead. Value lanes (color, palette) have
+      // the manual value instead. Value lanes (color, palette) have
       // no numeric dot at all.
       const driving =
         !!curve &&
@@ -306,14 +306,14 @@ function LaneTimeDot({
   return <div ref={dotRef} className={styles.timeDot} />;
 }
 
-// The "underlying value": what the param is when no automation is active —
+// The "manual value": what the param is when no automation is active —
 // i.e. the value set in the pattern editor. Rendered as a constant horizontal
 // line across the lane, mapped through the lane's shared value range.
 // Dashed and bright when it overlays a deactivated curve, since it is the
 // line actually driving the parameter then. Scrubs in the pattern editor
 // mutate param.value outside React, so the line tracks it with a per-frame
 // read and writes style.top directly — no re-renders.
-export function UnderlyingValueLine({
+export function ManualValueLine({
   param,
   curve = null,
   dashed = false,
@@ -456,7 +456,7 @@ export function AutomationPane({ entries, selectedLane, onSelectLane }: Props) {
                     timeView={timeView}
                   />
                   {!isCurveActive(lane.curve) && (
-                    <UnderlyingValueLine
+                    <ManualValueLine
                       param={lane.param}
                       curve={lane.curve}
                       dashed
@@ -464,7 +464,7 @@ export function AutomationPane({ entries, selectedLane, onSelectLane }: Props) {
                   )}
                 </>
               ) : (
-                <UnderlyingValueLine param={lane.param} />
+                <ManualValueLine param={lane.param} />
               )}
               <LaneTimeDot curve={lane.curve} param={lane.param} />
             </div>

@@ -201,22 +201,18 @@
   min-width: 0;
 }
 
-/* The pattern editor as an in-flow dock: same glass as .sidePanel but
-   it occupies layout width instead of overlaying, stays open until
-   toggled, and dims nothing. The fixed-width .panelTrack inside keeps
-   content from reflowing while the width animates. */
+/* The pattern editor as an in-flow dock: it occupies layout width
+   instead of overlaying, stays open until toggled, and dims nothing.
+   On the main panes' level it wears their surface (the timeline's
+   faint wash over the page black), not the overlay panels' frosted
+   glass. The fixed-width .panelTrack inside keeps content from
+   reflowing while the width animates. */
 .patternsDock {
   position: relative;
   width: 0;
   height: 100%;
   flex-shrink: 0;
-  background: linear-gradient(
-      135deg,
-      rgba(244, 248, 255, 0.03),
-      rgba(244, 248, 255, 0) 50%
-    ),
-    linear-gradient(180deg, rgb(179 179 179 / 0.025), rgb(179 179 179 / 0.015)),
-    rgba(6, 7, 12, 0.95);
+  background: rgba(255, 255, 255, 0.015);
   font-family: var(--font-mystical), Georgia, serif;
   transition: width 0.26s cubic-bezier(0.22, 1, 0.36, 1);
   overflow: hidden;
@@ -866,7 +862,7 @@
   pointer-events: none;
 }
 
-/* The underlying value: a constant silver line across the lane. */
+/* The manual value: a constant silver line across the lane. */
 .laneValueLine {
   position: absolute;
   left: 0;
@@ -2261,13 +2257,13 @@
   box-shadow: inset 2px 0 6px -2px rgba(110, 231, 160, 0.55);
 }
 
-/* Red edge: the curve is deactivated; the underlying value drives. */
+/* Red edge: the curve is deactivated; the manual value drives. */
 .laneEdgeInactive {
   border-left-color: rgba(224, 108, 108, 0.85);
   box-shadow: inset 2px 0 6px -2px rgba(224, 108, 108, 0.55);
 }
 
-/* A deactivated curve, drawn as a ghost behind the underlying value. */
+/* A deactivated curve, drawn as a ghost behind the manual value. */
 .curveDimmed .curvePath {
   stroke: rgba(150, 156, 172, 0.4);
   filter: none;
@@ -2283,7 +2279,7 @@
   box-shadow: none;
 }
 
-/* The underlying value over a deactivated curve: bright and dashed, the
+/* The manual value over a deactivated curve: bright and dashed, the
    line that is actually driving the parameter. */
 .laneValueLineDashed {
   height: 0;
@@ -2319,7 +2315,7 @@
   color: #ffffff;
 }
 
-/* Grabbable wrapper around the editor's underlying value line: a taller
+/* Grabbable wrapper around the editor's manual value line: a taller
    hit strip centered on the line, dragged up or down to set the value. */
 .valueLineHandle {
   position: absolute;

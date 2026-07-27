@@ -112,7 +112,7 @@ type Props = {
   onClose: () => void;
 };
 
-// The expanded automation lane over the canopy space. Shows the underlying
+// The expanded automation lane over the canopy space. Shows the manual
 // value line and the lane's automation curve. Double click adds a keyframe:
 // the first is a constant; the outermost keyframes extend horizontally; in
 // between, segments are straight lines that drag up or down into curves.
@@ -130,7 +130,7 @@ export function AutomationEditorView({
   const keyframes = curve?.keyframes ?? [];
   const segments = curve ? getSegments(curve) : [];
   // A deactivated lane: the curve is drawn dimmed, a bright dashed line
-  // marks the underlying value that is actually driving the parameter,
+  // marks the manual value that is actually driving the parameter,
   // and any curve edit reactivates.
   const suspended = !!curve && keyframes.length > 0 && !isCurveActive(curve);
 
@@ -243,12 +243,12 @@ export function AutomationEditorView({
   const curveRef = useRef(curve);
   curveRef.current = curve;
 
-  // The underlying value only drives the view when there is no automation;
-  // with keyframes present, the curve IS the value and the underlying
+  // The manual value only drives the view when there is no automation;
+  // with keyframes present, the curve IS the value and the manual
   // param value is not shown separately. The range fits the curve's real
   // extremes (wave peaks, easing overshoots), not just its keyframes
   // (curveExtremes memoizes per curve object). A deactivated lane also
-  // keeps the underlying value in range, since that line is what drives
+  // keeps the manual value in range, since that line is what drives
   // the parameter.
   const currentExtremes = () => {
     const current = curveRef.current;
@@ -448,7 +448,7 @@ export function AutomationEditorView({
   }, [segmentMenu]);
 
   // Persistent loop: each frame, recompute the target range from the curve
-  // (or the live underlying value) and ease the view toward it. Frozen
+  // (or the live manual value) and ease the view toward it. Frozen
   // while dragging; renders only happen while the view is moving.
   useEffect(() => {
     let frame: number;
@@ -591,7 +591,7 @@ export function AutomationEditorView({
       }
       const current = curveRef.current;
       // A deactivated curve is not driving the parameter: the dot follows
-      // the underlying value instead.
+      // the manual value instead.
       const value = isValueLane
         ? null
         : current && current.keyframes.length > 0 && isCurveActive(current)
@@ -627,7 +627,7 @@ export function AutomationEditorView({
     return () => cancelAnimationFrame(frame);
   }, [param]);
 
-  // The underlying value line tracks param.value (mutated outside React by
+  // The manual value line tracks param.value (mutated outside React by
   // scrubs) through the current view range.
   useEffect(() => {
     let frame: number;
@@ -829,13 +829,13 @@ export function AutomationEditorView({
       });
     };
 
-  // Drag the underlying value line up or down, unbounded. The pointer's
+  // Drag the manual value line up or down, unbounded. The pointer's
   // delta maps through the CURRENT span, so a wide range moves the value
   // a lot per pixel and a tight range moves it a little. The range is
   // frozen while dragging and refits around the new value on release
-  // (the underlying value drives the range only while it is the active
+  // (the manual value drives the range only while it is the active
   // driver: no keyframes, or a deactivated curve).
-  const onUnderlyingPointerDown = (event: React.PointerEvent) => {
+  const onManualValuePointerDown = (event: React.PointerEvent) => {
     if (event.button !== 0 || typeof param.value !== "number") return;
     event.preventDefault();
     event.stopPropagation();
@@ -1332,7 +1332,7 @@ export function AutomationEditorView({
             ref={lineRef}
             className={styles.valueLineHandle}
             style={{ left: `${Math.max(timeToX(0), 0)}%` }}
-            onPointerDown={onUnderlyingPointerDown}
+            onPointerDown={onManualValuePointerDown}
           >
             <div
               className={`${styles.laneValueLine} ${

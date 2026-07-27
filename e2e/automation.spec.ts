@@ -47,7 +47,7 @@ test.describe("automation editor", () => {
     await expect(page.locator("[class*=automationEditor__]")).toHaveCount(0);
   });
 
-  test("no keyframes: the curve is a line at the underlying value; bounds pin the range", async ({
+  test("no keyframes: the curve is a line at the manual value; bounds pin the range", async ({
     page,
   }) => {
     await openTimeFactorLane(page);
@@ -126,7 +126,7 @@ test.describe("automation editor", () => {
       parseFloat(m[1]),
     );
     expect(Math.max(...ys) - Math.min(...ys)).toBeLessThan(0.01);
-    // The separate underlying line is gone once a keyframe exists.
+    // The separate manual value line is gone once a keyframe exists.
     await expect(
       page.locator("[class*=automationEditor__] [class*=laneValueLine]"),
     ).toHaveCount(0);
@@ -856,7 +856,7 @@ test.describe("segment types", () => {
     await expect(row).toHaveClass(/laneEdgeActive/);
 
     // Scrubbing the param takes over: red edge, and the lane draws the
-    // curve dimmed under a dashed underlying value line. Wait out the
+    // curve dimmed under a dashed manual value line. Wait out the
     // panel's slide-in so the measured position is where the drag lands.
     await page.waitForTimeout(500);
     const scrub = row.locator("[class*=paramScrub]");

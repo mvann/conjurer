@@ -162,7 +162,7 @@ export function PatternsPanel({
   };
 
   // A user edit on an automated param takes over: the value becomes the
-  // underlying value and the curve deactivates until it is edited again.
+  // manual value and the curve deactivates until it is edited again.
   const deactivateLane = (entry: StackEntry, laneKey: string) => () => {
     const curve = entry.automation[laneKey];
     if (!curve || curve.keyframes.length === 0 || !isCurveActive(curve)) return;

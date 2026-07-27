@@ -137,7 +137,7 @@ export type AutomationCurve = {
   bends?: number[];
   segments?: SegmentSpec[];
   // A deactivated curve (false) stops driving its parameter: the
-  // underlying value takes over until the curve is edited again.
+  // manual value takes over until the curve is edited again.
   // Undefined means active.
   active?: boolean;
   // Value lanes only: the color or palette of the period BEFORE the

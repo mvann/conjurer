@@ -276,7 +276,7 @@ To create a lane, right click a parameter in the pattern editor and choose Add A
 
 The label names the pattern (and effect, for effect parameters) above the parameter. The miniature shows the curve, its keyframes, and the gold dot marking the value at the playhead.
 
-While a song is loaded, an active curve drives the parameter. To take manual control, just edit the parameter in the pattern editor: the curve deactivates (drawn dimmed, with a bright dashed line at the value now in charge) and the row's edge turns red. Edit the curve in any way to hand control back to it. To disable or re-enable without editing, use the parameter's right click menu.
+While a song is loaded, an active curve drives the parameter. To take manual control, just edit the parameter in the pattern editor: the edit becomes the manual value, the curve deactivates (drawn dimmed, with a bright dashed line at the manual value now driving the parameter), and the row's edge turns red. Edit the curve in any way to hand control back to it. To disable or re-enable without editing, use the parameter's right click menu.
 
 To delete the lane, right click its parameter and choose Delete Automation Lane.`,
   },
