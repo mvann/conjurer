@@ -187,6 +187,14 @@ test.describe("automation editor", () => {
     await input.press("Escape");
     await expect(input).toHaveCount(0);
     expect(await laneValue()).toBe(1);
+
+    // Hover plus E opens the same field.
+    await dot.hover();
+    await page.keyboard.press("e");
+    await expect(input).toBeVisible();
+    await input.fill("0.4");
+    await input.press("Enter");
+    expect(await laneValue()).toBeCloseTo(0.4, 9);
   });
 
   test("keyframes drag to the song start and stack at the same time", async ({

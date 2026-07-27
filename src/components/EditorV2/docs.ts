@@ -391,7 +391,7 @@ Below the types sit the Snap to options; right click empty space to reach those 
   "keyframe-value": {
     title: "Keyframe Value",
     short: "Type the exact value, then press Enter.",
-    long: `Right click a keyframe to open this field, pre-filled and selected. Type a value and press Enter, or click away, to commit; press Escape to cancel. Values clamp to the parameter's declared range.
+    long: `Right click a keyframe, or hover it and press E, to open this field, pre-filled and selected. Type a value and press Enter, or click away, to commit; press Escape to cancel. Values clamp to the parameter's declared range.
 
 Drag the keyframe itself to move it in time. Color and palette keyframes edit through the inspector instead.`,
   },

@@ -326,12 +326,35 @@ export function AutomationEditorView({
       document.removeEventListener("pointerdown", onPointerDown, true);
   }, [backdropMenuOpen]);
 
-  // Right-clicking a keyframe types its value directly: a glowing field
-  // in the dot-label position, committed on Enter or blur.
+  // Right-clicking a keyframe (or hovering it and pressing E) types its
+  // value directly: a glowing field in the dot-label position, committed
+  // on Enter or blur.
   const [keyframeValueEdit, setKeyframeValueEdit] = useState<{
     index: number;
     draft: string;
   } | null>(null);
+  const hoveredKeyframe = useRef<number | null>(null);
+  const openKeyframeValueEdit = (index: number) => {
+    const keyframe = curveRef.current?.keyframes[index];
+    if (!keyframe || isValueLane) return;
+    setKeyframeValueEdit({
+      index,
+      draft: String(parseFloat(keyframe.value.toFixed(3))),
+    });
+  };
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key !== "e" && event.key !== "E") return;
+      const target = event.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+      if (hoveredKeyframe.current === null) return;
+      event.preventDefault();
+      openKeyframeValueEdit(hoveredKeyframe.current);
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isValueLane]);
   const commitKeyframeValueEdit = () => {
     if (!keyframeValueEdit) return;
     const current = curveRef.current;
@@ -1397,6 +1420,11 @@ export function AutomationEditorView({
               top: isValueLane ? "50%" : `${valueToTopPct(keyframe.value)}%`,
             }}
             onPointerDown={onKeyframePointerDown(index)}
+            onPointerEnter={() => (hoveredKeyframe.current = index)}
+            onPointerLeave={() => {
+              if (hoveredKeyframe.current === index)
+                hoveredKeyframe.current = null;
+            }}
             onDoubleClick={(event) => {
               event.stopPropagation();
               deleteKeyframe(index);
@@ -1406,11 +1434,7 @@ export function AutomationEditorView({
               // lanes; value lanes edit through the inspector instead).
               event.preventDefault();
               event.stopPropagation();
-              if (isValueLane) return;
-              setKeyframeValueEdit({
-                index,
-                draft: String(parseFloat(keyframe.value.toFixed(3))),
-              });
+              openKeyframeValueEdit(index);
             }}
           />
         ))}
