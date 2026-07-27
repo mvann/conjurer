@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { MdOpacity } from "react-icons/md";
 import styles from "@/styles/EditorV2.module.css";
@@ -493,14 +493,21 @@ export function AutomationEditorView({
   // window maps onto the region right of the lanes' label column, so a
   // given time lines up vertically with the timeline and lanes below.
   // The leftmost 120px show time from before the window (before the song
-  // itself when fully zoomed out). The width is state, refreshed on mount
-  // and resize, because the ref has no size on the first render.
+  // itself when fully zoomed out). The width is state because the ref has
+  // no size on the first render: a layout effect measures it BEFORE the
+  // first paint (a plain effect would paint one frame mapped through the
+  // initial guess, visibly snapping), and a ResizeObserver keeps it
+  // current through container changes a window resize never reports,
+  // like the pattern dock animating open beside the editor.
   const [areaWidth, setAreaWidth] = useState(1280);
-  useEffect(() => {
-    const update = () => setAreaWidth(areaRef.current?.clientWidth ?? 1280);
+  useLayoutEffect(() => {
+    const area = areaRef.current;
+    if (!area) return;
+    const update = () => setAreaWidth(area.clientWidth || 1280);
     update();
-    window.addEventListener("resize", update);
-    return () => window.removeEventListener("resize", update);
+    const observer = new ResizeObserver(update);
+    observer.observe(area);
+    return () => observer.disconnect();
   }, []);
   const labelPct = (120 / areaWidth) * 100;
 

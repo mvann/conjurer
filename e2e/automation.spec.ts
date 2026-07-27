@@ -370,6 +370,18 @@ test.describe("automation editor", () => {
     expect(
       Math.abs(editorBox.x + editorBox.width - (laneBox.x + laneBox.width)),
     ).toBeLessThan(1);
+
+    // Alignment must survive a CONTAINER resize with no window resize:
+    // opening the pattern dock pushes the editor narrower while it is
+    // open (regression: the width refreshed only on window resize, so
+    // the mapping went stale and everything sat shifted).
+    await openPatternPanel(page);
+    await page.waitForTimeout(500);
+    const laneAfter = (await page.locator("[class*=laneArea]").boundingBox())!;
+    const startAfter = (await page
+      .locator("[class*=songStartLine]")
+      .boundingBox())!;
+    expect(Math.abs(startAfter.x + 1 - laneAfter.x)).toBeLessThan(1.5);
   });
 
   test("dashed guides sit at every multiple of the magnitude step", async ({
