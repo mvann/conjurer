@@ -723,66 +723,6 @@ test.describe("segment types", () => {
     });
   });
 
-  test("Insert Segment carves the highlighted window without moving the curve", async ({
-    page,
-  }) => {
-    await openTimeFactorLane(page);
-    const box = await makeOneSegment(page);
-
-    const laneKeyframes = () =>
-      page.evaluate(() => {
-        const entries = (
-          window as unknown as Record<
-            string,
-            {
-              automation: Record<
-                string,
-                { keyframes: { time: number; value: number }[] }
-              >;
-            }[]
-          >
-        ).__editorEntries;
-        return Object.values(entries[0].automation)[0].keyframes;
-      });
-    const before = await laneKeyframes();
-    expect(before).toHaveLength(2);
-
-    // Highlight a middle window and carve it.
-    const lowY = box.y + box.height * 0.92;
-    await page.mouse.move(box.x + box.width * 0.4, lowY);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.6, lowY, { steps: 5 });
-    await page.mouse.up();
-    await page.getByRole("button", { name: "Insert Segment" }).click();
-
-    // Two boundary keyframes joined the originals, ON the line between
-    // them (the shape is unchanged), and the carved segment is selected
-    // so the inspector is open.
-    const after = await laneKeyframes();
-    expect(after).toHaveLength(4);
-    const [first, a, b, last] = after;
-    for (const boundary of [a, b]) {
-      const t = (boundary.time - first.time) / (last.time - first.time);
-      const expected = first.value + (last.value - first.value) * t;
-      expect(Math.abs(boundary.value - expected)).toBeLessThan(1e-6);
-    }
-    await expect(page.locator("[data-doc=time-selection]")).toHaveCount(0);
-    await expect(page.locator("[data-doc=segment-inspector]")).toBeVisible();
-
-    // A window out in the right extension carves a flat segment at the
-    // last keyframe's value.
-    await page.keyboard.press("Escape");
-    await page.mouse.move(box.x + box.width * 0.85, lowY);
-    await page.mouse.down();
-    await page.mouse.move(box.x + box.width * 0.95, lowY, { steps: 5 });
-    await page.mouse.up();
-    await page.getByRole("button", { name: "Insert Segment" }).click();
-    const extended = await laneKeyframes();
-    expect(extended).toHaveLength(6);
-    expect(Math.abs(extended[4].value - extended[3].value)).toBeLessThan(1e-6);
-    expect(Math.abs(extended[5].value - extended[3].value)).toBeLessThan(1e-6);
-  });
-
   test("time selection copies, deletes, and pastes at the clicked playhead", async ({
     page,
   }) => {

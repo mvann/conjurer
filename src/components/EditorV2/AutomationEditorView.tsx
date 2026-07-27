@@ -17,7 +17,6 @@ import {
   deleteCurveWindow,
   evaluateCurve,
   getSegments,
-  insertBoundary,
   isCurveActive,
   payloadAtTime,
   pasteClipAt,
@@ -924,69 +923,6 @@ export function AutomationEditorView({
     if (next && next !== curveRef.current) commitCurve(next);
   };
 
-  // Insert Segment: pin keyframes exactly on the curve at both selection
-  // edges, carving the window into its own segment. The curve's shape is
-  // unchanged; the new segment is selected, ready to retype or reshape.
-  const doInsertSegment = () => {
-    if (isValueLane || !timeSelection) return;
-    const t0 = clamp(timeSelection.t0, 0, 1);
-    const t1 = clamp(timeSelection.t1, 0, 1);
-    if (t1 - t0 < 1e-4) return;
-
-    // A boundary at time t: on the curve between keyframes (via
-    // insertBoundary), at the horizontal extension's value outside the
-    // keyframe span, or a no-op on an existing keyframe.
-    const withBoundary = (
-      curve: AutomationCurve,
-      t: number,
-    ): AutomationCurve => {
-      const { keyframes } = curve;
-      if (keyframes.some((keyframe) => Math.abs(keyframe.time - t) < 1e-6))
-        return curve;
-      const first = keyframes[0];
-      const last = keyframes[keyframes.length - 1];
-      if (keyframes.length >= 2 && t > first.time && t < last.time)
-        return insertBoundary(curve, t);
-      const value = evaluateCurve(curve, t) ?? 0;
-      const insertAt = keyframes.findIndex((keyframe) => keyframe.time > t);
-      const at = insertAt === -1 ? keyframes.length : insertAt;
-      const nextKeyframes = [...keyframes];
-      nextKeyframes.splice(at, 0, { time: t, value });
-      const segments = getSegments(curve);
-      // The extension is horizontal, so the new outer segment is too.
-      if (keyframes.length > 0) {
-        if (at === 0) segments.unshift({ type: "linear" });
-        else segments.push({ type: "linear" });
-      }
-      return { ...curve, keyframes: nextKeyframes, segments };
-    };
-
-    const current = curveRef.current;
-    let next: AutomationCurve;
-    if (!current || current.keyframes.length === 0) {
-      // An empty lane: the window becomes a segment at the manual value.
-      const value = clampToBounds(
-        typeof param.value === "number" ? param.value : 0,
-      );
-      next = {
-        ...(current ?? {}),
-        keyframes: [
-          { time: t0, value },
-          { time: t1, value },
-        ],
-        segments: [{ type: "curve", bend: 1 }],
-      };
-    } else {
-      next = withBoundary(withBoundary(current, t0), t1);
-    }
-    commitCurve(next);
-    setTimeSelection(null);
-    const index = next.keyframes.findIndex(
-      (keyframe) => Math.abs(keyframe.time - t0) < 1e-6,
-    );
-    if (index >= 0) setSelectedSegment(index);
-  };
-
   // Dragging horizontally across empty space selects a window of time; a
   // plain click sets the playhead there instead (and drops any
   // selection).
@@ -1522,12 +1458,6 @@ export function AutomationEditorView({
           >
             <button className={styles.selectionAction} onClick={doCopy}>
               Copy
-            </button>
-            <button
-              className={styles.selectionAction}
-              onClick={doInsertSegment}
-            >
-              Insert Segment
             </button>
             <button className={styles.selectionAction} onClick={doDelete}>
               Delete
