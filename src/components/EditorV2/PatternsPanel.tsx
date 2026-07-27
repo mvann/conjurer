@@ -81,7 +81,7 @@ type Props = {
   onAddEffect: (entryId: number, factory: () => Pattern) => void;
   onRemoveEffect: (entryId: number, effectId: number) => void;
   onMoveEffect: (entryId: number, effectId: number, delta: -1 | 1) => void;
-  // Assign mode (Add New Automation): clicking any parameter row gives
+  // Assign mode (Add Automation): clicking any parameter row gives
   // it a lane instead of its normal interaction.
   assigning: boolean;
   onAssignParam: (entryId: number, laneKey: string) => void;

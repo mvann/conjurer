@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { FaEye, FaEyeSlash, FaTrashAlt } from "react-icons/fa";
+import { FaEye, FaEyeSlash, FaPlus, FaTrashAlt } from "react-icons/fa";
 import styles from "@/styles/EditorV2.module.css";
 import {
   StackEntry,
@@ -612,13 +612,13 @@ export function AutomationPane({
           </div>
         ))}
         {/* The final lane is the way in: click, then pick a parameter
-            in the pattern editor. */}
+            in the pattern editor. Styled exactly like Add Pattern. */}
         <button
-          className={styles.addLaneRow}
+          className={`${styles.addPattern} ${styles.addLaneSpacing}`}
           data-doc="add-lane"
           onClick={onStartAssign}
         >
-          Add New Automation
+          <FaPlus size={11} /> Add Automation
         </button>
       </div>
     </section>

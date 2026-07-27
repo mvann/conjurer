@@ -62,7 +62,7 @@ export function EditorV2Page() {
     entryId: number;
     uniform: string;
   } | null>(null);
-  // Assign mode (the Add New Automation lane): the pattern editor opens
+  // Assign mode (the Add Automation lane): the pattern editor opens
   // and the next parameter clicked gets a lane. Escape or a click
   // outside the pattern editor cancels; the editor stays open either
   // way.

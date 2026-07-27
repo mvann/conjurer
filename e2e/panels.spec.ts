@@ -56,7 +56,7 @@ test.describe("layout and pattern panel", () => {
     await expect(patternsAside(page)).not.toHaveClass(/patternsDockWide/);
   });
 
-  test("Add New Automation assigns a lane from the pattern editor", async ({
+  test("Add Automation assigns a lane from the pattern editor", async ({
     page,
   }) => {
     await openPatternPanel(page);
@@ -66,7 +66,7 @@ test.describe("layout and pattern panel", () => {
 
     // Clicking the final lane opens the dock and arms assignment (the
     // cursor badge appears).
-    await page.getByRole("button", { name: "Add New Automation" }).click();
+    await page.getByRole("button", { name: "Add Automation" }).click();
     await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
     await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
 
@@ -104,7 +104,7 @@ test.describe("layout and pattern panel", () => {
     await insertPattern(page, "Nebula");
 
     // Escape cancels the assignment but leaves the dock open.
-    await page.getByRole("button", { name: "Add New Automation" }).click();
+    await page.getByRole("button", { name: "Add Automation" }).click();
     await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
     await page.keyboard.press("Escape");
     await expect(page.locator("[class*=assignCursor]")).toHaveCount(0);
@@ -112,7 +112,7 @@ test.describe("layout and pattern panel", () => {
     await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
 
     // A click outside the pattern editor cancels too.
-    await page.getByRole("button", { name: "Add New Automation" }).click();
+    await page.getByRole("button", { name: "Add Automation" }).click();
     await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
     await page.mouse.click(900, 300);
     await expect(page.locator("[class*=assignCursor]")).toHaveCount(0);
