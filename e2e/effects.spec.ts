@@ -5,6 +5,7 @@ import {
   insertPattern,
   loadSeededSong,
   openPatternPanel,
+  settleBox,
 } from "./helpers";
 
 // Effects on patterns: shaders chained after the pattern (u_texture in,
@@ -117,6 +118,7 @@ test.describe("effects", () => {
     await expect(page.locator("[class*=paneLabel]").first()).toContainText(
       "Color Tint",
     );
+    await settleBox(page, "[class*=editorLineArea]");
     const area = (await page.locator("[class*=editorLineArea]").boundingBox())!;
     await page.mouse.dblclick(
       area.x + area.width * 0.2,

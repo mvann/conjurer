@@ -7,6 +7,7 @@ import {
   openPatternPanel,
   patternsAside,
   patternsEmptyHint,
+  settleBox,
 } from "./helpers";
 
 test.describe("layout and pattern panel", () => {
@@ -135,6 +136,7 @@ test.describe("layout and pattern panel", () => {
 
     // Two keyframes, then the eye disables and re-enables the curve.
     await lane.click();
+    await settleBox(page, "[class*=editorLineArea]");
     const area = (await page.locator("[class*=editorLineArea]").boundingBox())!;
     await page.mouse.dblclick(
       area.x + area.width * 0.3,

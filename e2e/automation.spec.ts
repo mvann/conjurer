@@ -7,6 +7,7 @@ import {
   loadSeededSong,
   openPatternPanel,
   scaleTicks,
+  settleBox,
 } from "./helpers";
 
 const openTimeFactorLane = async (page: any) => {
@@ -16,6 +17,9 @@ const openTimeFactorLane = async (page: any) => {
   await closePanel(page);
   await page.locator("[class*=laneRow]").first().click();
   await expect(page.locator("[class*=automationEditor__]")).toBeVisible();
+  // The dock is still sliding closed when the editor appears; measure
+  // nothing until the line area's box stops moving.
+  await settleBox(page, "[class*=editorLineArea]");
 };
 
 // Disc's Radius declares no min or max: the lane that exercises the
@@ -27,6 +31,7 @@ const openRadiusLane = async (page: any) => {
   await closePanel(page);
   await page.locator("[class*=laneRow]").first().click();
   await expect(page.locator("[class*=automationEditor__]")).toBeVisible();
+  await settleBox(page, "[class*=editorLineArea]");
 };
 
 test.describe("automation editor", () => {

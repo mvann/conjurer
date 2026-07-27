@@ -6,6 +6,7 @@ import {
   insertPattern,
   loadSeededSong,
   openPatternPanel,
+  settleBox,
 } from "./helpers";
 
 // Snap-to for time edits in the automation editor: Off, BPM Grid, and
@@ -22,6 +23,8 @@ const openLaneWithSong = async (page: Page) => {
   await closePanel(page);
   await page.locator("[class*=laneRow]").first().click();
   await expect(page.locator("[class*=automationEditor__]")).toBeVisible();
+  // The dock is still sliding closed; wait for resting geometry.
+  await settleBox(page, "[class*=editorLineArea]");
   // Beat and transient analysis both finish before snapping is offered.
   await expect
     .poll(

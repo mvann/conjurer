@@ -43,6 +43,27 @@ export const closePanel = async (page: Page) => {
   await expect(patternsAside(page)).not.toHaveClass(/patternsDockOpen/);
 };
 
+// Waits for an element's box to hold still. The dock closes with a
+// width transition that slides the whole main column; geometry measured
+// mid-flight lands later clicks on stale coordinates.
+export const settleBox = async (page: Page, selector: string) => {
+  const locator = page.locator(selector).first();
+  let prev = await locator.boundingBox();
+  for (let i = 0; i < 30; i++) {
+    await page.waitForTimeout(100);
+    const next = await locator.boundingBox();
+    if (
+      prev &&
+      next &&
+      Math.abs(next.x - prev.x) < 0.5 &&
+      Math.abs(next.y - prev.y) < 0.5 &&
+      Math.abs(next.width - prev.width) < 0.5
+    )
+      return;
+    prev = next;
+  }
+};
+
 // Right-clicks a param row and adds an automation lane for it.
 export const addLaneOnParam = async (page: Page, paramName: string) => {
   await page

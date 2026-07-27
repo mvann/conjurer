@@ -4,6 +4,7 @@ import {
   insertPattern,
   loadSeededSong,
   openPatternPanel,
+  settleBox,
 } from "./helpers";
 
 // Pixel-level smoke tests for the params -> shader pipeline. The rest of
@@ -97,6 +98,7 @@ test.describe("canopy pixel smoke", () => {
     await page.getByRole("button", { name: "Add Automation Lane" }).click();
     await page.keyboard.press("Escape");
     await page.locator("[class*=laneRow]").first().click();
+    await settleBox(page, "[class*=editorLineArea]");
     const area = (await page.locator("[class*=editorLineArea]").boundingBox())!;
     await page.mouse.dblclick(
       area.x + area.width * 0.2,
