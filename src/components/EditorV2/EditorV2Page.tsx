@@ -70,9 +70,12 @@ export function EditorV2Page() {
   const nextId = useRef(1);
   const allocateId = () => nextId.current++;
 
+  // Display order of the automation lanes (see SerializedEditorState).
+  const [laneOrder, setLaneOrder] = useState<string[]>([]);
+
   // Latest state for the debounced writer and the dirty-event listener.
-  const latest = useRef({ entries, song });
-  latest.current = { entries, song };
+  const latest = useRef({ entries, song, laneOrder });
+  latest.current = { entries, song, laneOrder };
 
   // Automation drives the parameters: every frame, each automated param
   // takes its curve's value at the transport's current time, so the
@@ -180,6 +183,7 @@ export function EditorV2Page() {
     const snapshot = serializeEditorState(
       latest.current.entries,
       latest.current.song,
+      latest.current.laneOrder,
     );
     const state = history.current;
     const current = state.index >= 0 ? state.stack[state.index] : null;
@@ -208,6 +212,7 @@ export function EditorV2Page() {
     const snapshot = state.stack[nextIndex];
     setEntries(restoreSnapshot(snapshot));
     setSong(snapshot.song ?? null);
+    setLaneOrder(snapshot.laneOrder ?? []);
     // Persist the restored state directly rather than through
     // scheduleAutosave, which would capture it as a fresh history entry.
     // Edits made right after an undo therefore capture normally: there
@@ -240,7 +245,11 @@ export function EditorV2Page() {
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
       writeAutosave(
-        serializeEditorState(latest.current.entries, latest.current.song),
+        serializeEditorState(
+          latest.current.entries,
+          latest.current.song,
+          latest.current.laneOrder,
+        ),
       );
     }, AUTOSAVE_DEBOUNCE_MS);
   };
@@ -380,6 +389,11 @@ export function EditorV2Page() {
     });
   };
 
+  const reorderLanes = (nextOrder: string[]) => {
+    setLaneOrder(nextOrder);
+    scheduleAutosave();
+  };
+
   // ---- Assign mode plumbing. ----
 
   const assignLane = (entryId: number, laneKey: string) => {
@@ -469,6 +483,7 @@ export function EditorV2Page() {
     if (saved) {
       setEntries(restoreSnapshot(saved));
       setSong(saved.song);
+      setLaneOrder(saved.laneOrder ?? []);
     }
     const autosave = loadAutosave();
     if (autosave && autosave.savedAt > (saved?.savedAt ?? 0)) {
@@ -500,7 +515,11 @@ export function EditorV2Page() {
 
   const save = () => {
     writeSave(
-      serializeEditorState(latest.current.entries, latest.current.song),
+      serializeEditorState(
+        latest.current.entries,
+        latest.current.song,
+        latest.current.laneOrder,
+      ),
     );
     setIsDirty(false);
   };
@@ -509,6 +528,7 @@ export function EditorV2Page() {
     if (!autosavePrompt) return;
     setEntries(restoreSnapshot(autosavePrompt));
     setSong(autosavePrompt.song);
+    setLaneOrder(autosavePrompt.laneOrder ?? []);
     setAutosavePrompt(null);
     // The restored autosave is the new baseline for undo.
     history.current = { stack: [autosavePrompt], index: 0 };
@@ -648,6 +668,8 @@ export function EditorV2Page() {
             onStartAssign={() => setAssigningLane(true)}
             onToggleLaneActive={toggleLaneActive}
             onDeleteLane={deleteLane}
+            laneOrder={laneOrder}
+            onReorderLanes={reorderLanes}
           />
         </div>
       </div>

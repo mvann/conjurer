@@ -878,6 +878,18 @@
   gap: 2px;
   flex: 1;
   min-width: 0;
+  /* Drag the label to reorder the lane. */
+  cursor: grab;
+  touch-action: none;
+}
+
+.laneLabelText:active {
+  cursor: grabbing;
+}
+
+/* The lane being dragged to a new position. */
+.laneRowDragging {
+  background: rgba(232, 236, 244, 0.07);
 }
 
 /* Per-lane controls: the curve's eye (drive on or off) and the trash. */

@@ -50,6 +50,10 @@ type Props = {
   onStartAssign: () => void;
   onToggleLaneActive: (entryId: number, laneKey: string) => void;
   onDeleteLane: (entryId: number, laneKey: string) => void;
+  // Display order as `${entryId}/${laneKey}` keys; lanes not listed
+  // follow in natural order. Dragging a label reorders and persists.
+  laneOrder: string[];
+  onReorderLanes: (nextOrder: string[]) => void;
 };
 
 // Resolves a lane's display name and param. Lane keys are a uniform name,
@@ -368,6 +372,8 @@ export function AutomationPane({
   onStartAssign,
   onToggleLaneActive,
   onDeleteLane,
+  laneOrder,
+  onReorderLanes,
 }: Props) {
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
   // Lanes share the timeline's visible time window.
@@ -385,7 +391,7 @@ export function AutomationPane({
     null,
   );
 
-  const lanes = entries.flatMap((entry) =>
+  const unorderedLanes = entries.flatMap((entry) =>
     entry.automatedParams.flatMap((uniform) => {
       const resolved = resolveLane(entry, uniform);
       if (!resolved) return [];
@@ -405,6 +411,73 @@ export function AutomationPane({
       ];
     }),
   );
+
+  // Sort by the persisted order; lanes not yet listed keep their natural
+  // position after the listed ones (sort is stable).
+  const orderKey = (lane: { entryId: number; uniform: string }) =>
+    `${lane.entryId}/${lane.uniform}`;
+  const orderIndex = new Map(laneOrder.map((key, index) => [key, index]));
+  const lanes = [...unorderedLanes].sort((a, b) => {
+    const ai = orderIndex.get(orderKey(a));
+    const bi = orderIndex.get(orderKey(b));
+    if (ai !== undefined && bi !== undefined) return ai - bi;
+    if (ai !== undefined) return -1;
+    if (bi !== undefined) return 1;
+    return 0;
+  });
+
+  // Drag a label to reorder: live while dragging (each crossing commits
+  // the new order), with the row click suppressed after a real drag so
+  // releasing does not also expand the editor.
+  const lanesRef = useRef<HTMLDivElement>(null);
+  const [draggingKey, setDraggingKey] = useState<string | null>(null);
+  const dragJustEnded = useRef(false);
+  const onLabelPointerDown =
+    (laneKey: string) => (event: React.PointerEvent) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      const startY = event.clientY;
+      let dragging = false;
+      const onMove = (moveEvent: PointerEvent) => {
+        if (!dragging && Math.abs(moveEvent.clientY - startY) < 5) return;
+        if (!dragging) {
+          dragging = true;
+          setDraggingKey(laneKey);
+        }
+        const container = lanesRef.current;
+        if (!container) return;
+        const rows = Array.from(container.querySelectorAll("[data-lane-key]"));
+        const keys = rows.map(
+          (row) => row.getAttribute("data-lane-key") as string,
+        );
+        const from = keys.indexOf(laneKey);
+        if (from === -1) return;
+        // Target slot: how many OTHER rows sit above the pointer.
+        let to = 0;
+        for (const row of rows) {
+          if (row.getAttribute("data-lane-key") === laneKey) continue;
+          const rect = row.getBoundingClientRect();
+          if (moveEvent.clientY >= rect.top + rect.height / 2) to++;
+        }
+        if (to !== from) {
+          const next = keys.filter((key) => key !== laneKey);
+          next.splice(to, 0, laneKey);
+          onReorderLanes(next);
+        }
+      };
+      const onUp = () => {
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+        if (dragging) {
+          dragJustEnded.current = true;
+          setDraggingKey(null);
+        }
+      };
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
+    };
 
   return (
     <section
@@ -435,7 +508,7 @@ export function AutomationPane({
         onPointerCancel={() => (dragState.current = null)}
       />
       <div className={styles.paneLabel}>Automation</div>
-      <div className={styles.lanes}>
+      <div className={styles.lanes} ref={lanesRef}>
         {lanes.map((lane) => (
           <div
             key={lane.key}
@@ -444,14 +517,23 @@ export function AutomationPane({
               selectedLane?.uniform === lane.uniform
                 ? styles.laneRowSelected
                 : ""
-            }`}
+            } ${draggingKey === orderKey(lane) ? styles.laneRowDragging : ""}`}
             data-doc="automation-lane"
-            onClick={() =>
-              onSelectLane({ entryId: lane.entryId, uniform: lane.uniform })
-            }
+            data-lane-key={orderKey(lane)}
+            onClick={() => {
+              // A completed label drag must not also expand the editor.
+              if (dragJustEnded.current) {
+                dragJustEnded.current = false;
+                return;
+              }
+              onSelectLane({ entryId: lane.entryId, uniform: lane.uniform });
+            }}
           >
             <div className={styles.laneLabel}>
-              <div className={styles.laneLabelText}>
+              <div
+                className={styles.laneLabelText}
+                onPointerDown={onLabelPointerDown(orderKey(lane))}
+              >
                 <span className={styles.laneLabelPattern}>
                   {lane.patternName}
                 </span>

@@ -295,7 +295,7 @@ Press Escape, or click anywhere outside the pattern editor, to cancel. The patte
     short: "Click to expand this lane into the editor view.",
     long: `Click the lane to expand it into the automation editor and shape its curve; click it again or press Escape to close.
 
-The label names the pattern (and effect, for effect parameters) above the parameter. The miniature shows the curve, its keyframes, and the gold dot marking the value at the playhead.
+The label names the pattern (and effect, for effect parameters) above the parameter. Drag the label up or down to reorder the lanes; the order is saved with the experience. The eye beside it disables and re-enables the curve; the trash deletes the lane. The miniature shows the curve, its keyframes, and the gold dot marking the value at the playhead.
 
 While a song is loaded, an active curve drives the parameter. To take manual control, just edit the parameter in the pattern editor: the edit becomes the manual value, the curve deactivates (drawn dimmed, with a bright dashed line at the manual value now driving the parameter), and the row's edge turns red. Edit the curve in any way to hand control back to it. To disable or re-enable without editing, use the parameter's right click menu.
 

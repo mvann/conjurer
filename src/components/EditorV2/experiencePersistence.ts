@@ -29,6 +29,10 @@ export const EDITOR_DIRTY_EVENT = "editorv2-dirty";
 export type SerializedEditorState = {
   savedAt: number;
   song: Song | null;
+  // Display order of the automation lanes, as `${entryId}/${laneKey}`
+  // keys. Lanes missing from the list follow in their natural order.
+  // Absent in older saves.
+  laneOrder?: string[];
   entries: {
     pattern: string;
     // Runtime entry id, kept so undo/redo restores preserve identity
@@ -64,9 +68,11 @@ const serializeParams = (pattern: Pattern) => {
 export const serializeEditorState = (
   entries: StackEntry[],
   song: Song | null,
+  laneOrder: string[] = [],
 ): SerializedEditorState => ({
   savedAt: Date.now(),
   song,
+  laneOrder,
   entries: entries.map((entry) => ({
     pattern: entry.pattern.name,
     id: entry.id,

@@ -154,6 +154,54 @@ test.describe("layout and pattern panel", () => {
     await expect(page.locator("[class*=automationEditor__]")).toHaveCount(0);
   });
 
+  test("dragging a lane label reorders lanes; the order persists", async ({
+    page,
+  }) => {
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+    await addLaneOnParam(page, "Warp");
+    await addLaneOnParam(page, "Time Factor");
+    await closePanel(page);
+    // Let the dock's width animation settle: the lane rows slide left
+    // while it closes, and a drag must start from their resting boxes.
+    await page.waitForTimeout(400);
+
+    const laneTexts = () => page.locator("[class*=laneRow]").allTextContents();
+    expect((await laneTexts()).map((text) => text.includes("Warp"))).toEqual([
+      true,
+      false,
+    ]);
+
+    // Drag the Warp label below the Time Factor lane.
+    const warpLabel = page
+      .locator("[class*=laneRow]", { hasText: "Warp" })
+      .locator("[class*=laneLabelText]");
+    const from = (await warpLabel.boundingBox())!;
+    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(
+      from.x + from.width / 2,
+      from.y + from.height / 2 + 80,
+      { steps: 8 },
+    );
+    await page.mouse.up();
+    expect((await laneTexts()).map((text) => text.includes("Warp"))).toEqual([
+      false,
+      true,
+    ]);
+    // The drag did not also expand the editor.
+    await expect(page.locator("[class*=automationEditor__]")).toHaveCount(0);
+
+    // The order survives a reload through the autosave.
+    await page.waitForTimeout(1_200);
+    await page.reload();
+    await page.getByRole("button", { name: "Open Auto Save" }).click();
+    expect((await laneTexts()).map((text) => text.includes("Warp"))).toEqual([
+      false,
+      true,
+    ]);
+  });
+
   test("visibility toggle and trash work", async ({ page }) => {
     await openPatternPanel(page);
     await insertPattern(page);
