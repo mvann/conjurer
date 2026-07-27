@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { MdOpacity } from "react-icons/md";
 import styles from "@/styles/EditorV2.module.css";
 import { PatternParam } from "@/src/params/shared/patternParam";
@@ -1763,7 +1764,15 @@ export function AutomationEditorView({
                   }))
                 }
               >
-                {layer === "canopy" ? "Canopy" : "Waveform"}
+                <span>{layer === "canopy" ? "Canopy" : "Waveform"}</span>
+                {/* Fixed-width trailing column so the eyes align. */}
+                <span className={styles.backdropMenuEye}>
+                  {backdrop[layer] ? (
+                    <FaEye size={12} />
+                  ) : (
+                    <FaEyeSlash size={12} />
+                  )}
+                </span>
               </button>
             ))}
           </div>
