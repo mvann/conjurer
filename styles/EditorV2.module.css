@@ -1397,6 +1397,89 @@
   flex-direction: column;
 }
 
+/* An effect in a pattern's chain: a small header (name, reorder, remove)
+   over its own param list, indented under the pattern. */
+.effectBlock {
+  margin-left: 18px;
+  padding-left: 6px;
+  border-left: 1px solid rgba(232, 236, 244, 0.14);
+}
+
+.effectHeader {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 8px 0 12px;
+}
+
+.effectHeader .rowButton:disabled {
+  opacity: 0.25;
+  cursor: default;
+}
+
+.effectName {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  letter-spacing: 1.2px;
+  text-transform: uppercase;
+  color: #aab1c4;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Add Effect: the pattern list's add action at effect scale. */
+.addEffect {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  padding: 2px 0 6px 36px;
+  color: #aab1c4;
+  font-family: inherit;
+  font-size: 13px;
+  letter-spacing: 0.4px;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.addEffect:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 6px rgba(232, 236, 244, 0.7));
+}
+
+/* Inline effect catalog under the Add Effect action. */
+.effectPicker {
+  list-style: none;
+  margin: 0 0 8px;
+  padding: 2px 8px 2px 36px;
+}
+
+.effectPickerItem {
+  display: block;
+  width: 100%;
+  padding: 4px 0;
+  background: none;
+  border: none;
+  color: #cdd3e0;
+  font-family: inherit;
+  font-size: 14px;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.effectPickerItem:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 6px rgba(232, 236, 244, 0.7));
+}
+
 .paramRow {
   display: flex;
   align-items: baseline;

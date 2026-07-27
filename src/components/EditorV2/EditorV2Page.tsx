@@ -157,6 +157,9 @@ export function EditorV2Page() {
     nextId.current = Math.max(
       nextId.current,
       ...restored.map((entry) => entry.id + 1),
+      ...restored.flatMap((entry) =>
+        entry.effects.map((effect) => effect.id + 1),
+      ),
     );
     return restored;
   };
@@ -243,6 +246,7 @@ export function EditorV2Page() {
       {
         id: allocateId(),
         pattern: factory(),
+        effects: [],
         visible: true,
         expanded: true,
         automatedParams: [],
@@ -263,6 +267,72 @@ export function EditorV2Page() {
 
   const removeEntry = (id: number) => {
     setEntries((current) => current.filter((entry) => entry.id !== id));
+    scheduleAutosave();
+  };
+
+  // ---- Effects: a chain of texture-transforming patterns per entry. ----
+
+  const addEffect = (entryId: number, factory: () => Pattern) => {
+    setEntries((current) =>
+      current.map((entry) =>
+        entry.id === entryId
+          ? {
+              ...entry,
+              effects: [
+                ...entry.effects,
+                { id: allocateId(), pattern: factory() },
+              ],
+            }
+          : entry,
+      ),
+    );
+    scheduleAutosave();
+  };
+
+  const removeEffect = (entryId: number, effectId: number) => {
+    const prefix = `effect:${effectId}:`;
+    setEntries((current) =>
+      current.map((entry) => {
+        if (entry.id !== entryId) return entry;
+        // The effect's lanes and curves go with it.
+        const automation = Object.fromEntries(
+          Object.entries(entry.automation).filter(
+            ([laneKey]) => !laneKey.startsWith(prefix),
+          ),
+        );
+        return {
+          ...entry,
+          effects: entry.effects.filter((effect) => effect.id !== effectId),
+          automatedParams: entry.automatedParams.filter(
+            (laneKey) => !laneKey.startsWith(prefix),
+          ),
+          automation,
+        };
+      }),
+    );
+    setSelectedLane((current) =>
+      current?.entryId === entryId && current.uniform.startsWith(prefix)
+        ? null
+        : current,
+    );
+    scheduleAutosave();
+  };
+
+  const moveEffect = (entryId: number, effectId: number, delta: -1 | 1) => {
+    setEntries((current) =>
+      current.map((entry) => {
+        if (entry.id !== entryId) return entry;
+        const index = entry.effects.findIndex(
+          (effect) => effect.id === effectId,
+        );
+        const target = index + delta;
+        if (index < 0 || target < 0 || target >= entry.effects.length)
+          return entry;
+        const effects = [...entry.effects];
+        [effects[index], effects[target]] = [effects[target], effects[index]];
+        return { ...entry, effects };
+      }),
+    );
     scheduleAutosave();
   };
 
@@ -362,17 +432,21 @@ export function EditorV2Page() {
     history.current = { stack: [autosavePrompt], index: 0 };
   };
 
-  // Keyed by membership so expand/collapse clicks don't recreate the array
-  // and churn the canopy pipeline's render targets.
+  // Keyed by membership AND effect-chain structure so expand/collapse
+  // clicks don't recreate the array (and churn the canopy pipeline's
+  // render targets), while adding/removing/reordering an effect does.
   const visibleKey = entries
     .filter((entry) => entry.visible)
-    .map((entry) => entry.id)
+    .map(
+      (entry) =>
+        `${entry.id}[${entry.effects.map((effect) => effect.id).join(",")}]`,
+    )
     .join(",");
   const visiblePatterns = useMemo(
     () =>
       entries
         .filter((entry) => entry.visible)
-        .map(({ id, pattern }) => ({ id, pattern })),
+        .map(({ id, pattern, effects }) => ({ id, pattern, effects })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [visibleKey],
   );
@@ -404,7 +478,11 @@ export function EditorV2Page() {
       <section className={styles.canopyPane} data-doc="canopy">
         <div className={styles.paneLabel}>
           {selectedResolved && selectedEntry
-            ? `Automation · ${formatDisplayName(selectedEntry.pattern.name)} · ${selectedResolved.paramName}`
+            ? `Automation · ${formatDisplayName(selectedEntry.pattern.name)}${
+                "effectName" in selectedResolved && selectedResolved.effectName
+                  ? ` · ${selectedResolved.effectName}`
+                  : ""
+              } · ${selectedResolved.paramName}`
             : "Canopy"}
         </div>
         <CanopyPane patterns={visiblePatterns} dust={dust} />
@@ -474,6 +552,9 @@ export function EditorV2Page() {
         onAdd={addPattern}
         onUpdate={updateEntry}
         onRemove={removeEntry}
+        onAddEffect={addEffect}
+        onRemoveEffect={removeEffect}
+        onMoveEffect={moveEffect}
       />
 
       <DocsStrip />

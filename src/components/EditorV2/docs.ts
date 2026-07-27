@@ -435,6 +435,19 @@ The current type is marked in the menu. Choosing a type resets the segment's par
     short: "Types an exact value for the right-clicked keyframe.",
     long: `Right click a keyframe to type its value directly: a glowing field opens beside the dot, pre-filled and selected. Enter or clicking away commits (clamped to the parameter's declared range); Escape cancels. Dragging remains the way to move a keyframe in time; typing pins its value exactly. Color and palette keyframes are edited through the inspector instead.`,
   },
+  "effect-row": {
+    title: "Effect",
+    short:
+      "Transforms the pattern's output; parameters automate like any other.",
+    long: `Effects are shaders that transform the pattern's rendered output: tints, kaleidoscopes, masks, distortions. They apply in order, top to bottom; the arrows reorder and the trash removes one (its automation lanes go with it).
+
+Every effect parameter behaves exactly like a pattern parameter: scrub or type values, open the shared color and palette editors, and right click for an automation lane. Effect lanes carry the effect's name in the automation list.`,
+  },
+  "add-effect": {
+    title: "Add Effect",
+    short: "Appends an effect from the catalog to this pattern's chain.",
+    long: `Opens the effect catalog inline: tints, masks, kaleidoscopes, projections and more, drawn from the main app's effect library. The chosen effect lands at the end of this pattern's chain, ready to reorder or automate.`,
+  },
   "see-through": {
     title: "See Through",
     short: "Thins the editor's backdrop so the canopy shows behind it.",

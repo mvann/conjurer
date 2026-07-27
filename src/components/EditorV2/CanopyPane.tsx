@@ -33,7 +33,11 @@ const RENDER_TARGET_SIZE = 512;
 const PATTERN_PRIORITY = 2;
 const MERGE_PRIORITY = 100;
 
-export type VisiblePattern = { id: number; pattern: Pattern };
+export type VisiblePattern = {
+  id: number;
+  pattern: Pattern;
+  effects: { id: number; pattern: Pattern }[];
+};
 
 // Fills the render target with the checkerboard placeholder. The canopy
 // samples the target's texture every frame, so a single fill is enough.
@@ -79,55 +83,110 @@ function StackPipeline({
 }) {
   const count = entries.length;
 
-  // n pattern targets, and n-2 intermediates for the merge chain (the final
-  // merge writes straight into outputTarget). A single pattern renders into
-  // outputTarget directly with no merging.
-  const targets = useMemo(
-    () =>
-      Array.from(
-        { length: count >= 2 ? 2 * count - 2 : 0 },
-        () => new WebGLRenderTarget(RENDER_TARGET_SIZE, RENDER_TARGET_SIZE),
-      ),
-    [count],
-  );
+  // Targets: one per entry (its composited pattern-plus-effects output),
+  // one scratch per entry that has effects (the chain ping-pongs between
+  // scratch and final), and n-2 intermediates for the merge chain (the
+  // final merge writes straight into outputTarget). A single pattern
+  // composites into outputTarget directly with no merging. Keyed by the
+  // chain STRUCTURE so parameter edits never churn targets; adding or
+  // removing an effect rebuilds them (rare, and the checkerboard never
+  // flashes because the same frame re-renders every stage).
+  const structureKey = `${count}|${entries
+    .map((entry) => entry.effects.length)
+    .join(",")}`;
+  const { patternTargets, scratchTargets, intermediateTargets } =
+    useMemo(() => {
+      const make = () =>
+        new WebGLRenderTarget(RENDER_TARGET_SIZE, RENDER_TARGET_SIZE);
+      return {
+        patternTargets:
+          count >= 2 ? entries.map(make) : ([] as WebGLRenderTarget[]),
+        scratchTargets: entries.map((entry) =>
+          entry.effects.length > 0 ? make() : null,
+        ),
+        intermediateTargets: Array.from(
+          { length: Math.max(0, count - 2) },
+          make,
+        ),
+      };
+      // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [structureKey]);
   useEffect(
-    () => () => targets.forEach((target) => target.dispose()),
-    [targets],
+    () => () => {
+      [...patternTargets, ...scratchTargets, ...intermediateTargets].forEach(
+        (target) => target?.dispose(),
+      );
+    },
+    [patternTargets, scratchTargets, intermediateTargets],
   );
 
   useFrame(({ clock }) => {
-    for (const { pattern } of entries)
+    for (const { pattern, effects } of entries) {
       pattern.params.u_time.value = clock.elapsedTime;
+      for (const effect of effects)
+        effect.pattern.params.u_time.value = clock.elapsedTime;
+    }
   }, 1);
 
-  if (count === 1)
-    return (
-      <BlockNode
-        shaderMaterialKey={String(entries[0].id)}
-        uniforms={entries[0].pattern.params}
-        vertexShader={entries[0].pattern.vertexShader}
-        fragmentShader={entries[0].pattern.fragmentShader}
-        priority={PATTERN_PRIORITY}
-        renderTargetOut={outputTarget}
-      />
-    );
+  // Sequential priorities: each entry occupies a band wide enough for its
+  // pattern plus its effect chain, all before the merges at 100.
+  const priorityBases: number[] = [];
+  {
+    let priority = PATTERN_PRIORITY;
+    for (const entry of entries) {
+      priorityBases.push(priority);
+      priority += 1 + entry.effects.length;
+    }
+  }
 
-  const patternTargets = targets.slice(0, count);
-  const intermediateTargets = targets.slice(count);
+  // One entry's pattern, then its effects ping-ponging between the
+  // scratch and final targets, arranged (as the main app's BlockStackNode
+  // does) so the LAST effect always lands in finalTarget.
+  const renderChain = (
+    entry: VisiblePattern,
+    index: number,
+    finalTarget: WebGLRenderTarget,
+  ) => {
+    const effectCount = entry.effects.length;
+    const evenEffects = effectCount % 2 === 0;
+    const scratch = scratchTargets[index];
+    return (
+      <group key={entry.id}>
+        <BlockNode
+          shaderMaterialKey={String(entry.id)}
+          uniforms={entry.pattern.params}
+          vertexShader={entry.pattern.vertexShader}
+          fragmentShader={entry.pattern.fragmentShader}
+          priority={priorityBases[index]}
+          renderTargetOut={evenEffects || !scratch ? finalTarget : scratch}
+        />
+        {scratch &&
+          entry.effects.map((effect, effectIndex) => {
+            const swap = evenEffects === (effectIndex % 2 === 0);
+            return (
+              <BlockNode
+                key={effect.id}
+                shaderMaterialKey={String(effect.id)}
+                uniforms={effect.pattern.params}
+                vertexShader={effect.pattern.vertexShader}
+                fragmentShader={effect.pattern.fragmentShader}
+                priority={priorityBases[index] + 1 + effectIndex}
+                renderTargetIn={swap ? finalTarget : scratch}
+                renderTargetOut={swap ? scratch : finalTarget}
+              />
+            );
+          })}
+      </group>
+    );
+  };
+
+  if (count === 1) return renderChain(entries[0], 0, outputTarget);
 
   return (
     <>
-      {entries.map(({ id, pattern }, index) => (
-        <BlockNode
-          key={id}
-          shaderMaterialKey={String(id)}
-          uniforms={pattern.params}
-          vertexShader={pattern.vertexShader}
-          fragmentShader={pattern.fragmentShader}
-          priority={PATTERN_PRIORITY + index}
-          renderTargetOut={patternTargets[index]}
-        />
-      ))}
+      {entries.map((entry, index) =>
+        renderChain(entry, index, patternTargets[index]),
+      )}
       {entries.slice(1).map(({ id }, mergeIndex) => (
         <MergeNode
           key={id}

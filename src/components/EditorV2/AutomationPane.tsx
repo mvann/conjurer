@@ -67,6 +67,22 @@ export const resolveLane = (entry: StackEntry, laneKey: string) => {
       } as PatternParam,
     };
 
+  // Effect params: effect:<id>:<uniform> (see effectLaneKey). The id
+  // keeps lanes attached through reordering and duplicate effect types.
+  if (laneKey.startsWith("effect:")) {
+    const [, idPart, effectUniform] = laneKey.split(":");
+    const effect = entry.effects.find(
+      (candidate) => String(candidate.id) === idPart,
+    );
+    const param = effect?.pattern.params[effectUniform];
+    if (!effect || !param) return null;
+    return {
+      paramName: formatDisplayName(param.name),
+      effectName: formatDisplayName(effect.pattern.name),
+      param,
+    };
+  }
+
   const [uniform, ...pathParts] = laneKey.split(".");
   const param = entry.pattern.params[uniform];
   if (!param) return null;
@@ -365,7 +381,10 @@ export function AutomationPane({ entries, selectedLane, onSelectLane }: Props) {
           key: `${entry.id}-${uniform}`,
           entryId: entry.id,
           uniform,
-          patternName: formatDisplayName(entry.pattern.name),
+          patternName:
+            "effectName" in resolved && resolved.effectName
+              ? `${formatDisplayName(entry.pattern.name)} · ${resolved.effectName}`
+              : formatDisplayName(entry.pattern.name),
           paramName: resolved.paramName,
           param: resolved.param,
           curve: entry.automation[uniform] ?? null,

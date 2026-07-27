@@ -5,7 +5,10 @@ import { isVector4 } from "@/src/utils/object";
 import { isPalette, Palette } from "@/src/params/palette/Palette";
 import { StackEntry } from "@/src/components/EditorV2/PatternsPanel";
 import { AutomationCurve } from "@/src/components/EditorV2/automation";
-import { patternFactoryByName } from "@/src/components/EditorV2/patternLibrary";
+import {
+  effectFactoryByName,
+  patternFactoryByName,
+} from "@/src/components/EditorV2/patternLibrary";
 
 // Client-side persistence for the spell crafter's editing state. Two
 // localStorage slots per experience: `save` (written by the Save action)
@@ -32,6 +35,12 @@ export type SerializedEditorState = {
     // (selections keyed by id survive). Absent in older saves.
     id?: number;
     params: Record<string, unknown>;
+    // The entry's effect chain, in render order. Absent in older saves.
+    effects?: {
+      id?: number;
+      pattern: string;
+      params: Record<string, unknown>;
+    }[];
     visible: boolean;
     expanded: boolean;
     automatedParams: string[];
@@ -62,6 +71,11 @@ export const serializeEditorState = (
     pattern: entry.pattern.name,
     id: entry.id,
     params: serializeParams(entry.pattern),
+    effects: entry.effects.map((effect) => ({
+      id: effect.id,
+      pattern: effect.pattern.name,
+      params: serializeParams(effect.pattern),
+    })),
     visible: entry.visible,
     expanded: entry.expanded,
     automatedParams: [...entry.automatedParams],
@@ -79,6 +93,24 @@ export const serializeEditorState = (
 // loop all share `pattern.params` by reference, so replacing the
 // instance on undo/redo would leave them editing an object nothing
 // renders anymore.
+// Write saved param values into a pattern instance, in place wherever
+// possible (see the identity note on restoreEntries).
+const applyParams = (pattern: Pattern, params: Record<string, unknown>) => {
+  for (const [uniform, value] of Object.entries(params)) {
+    const param = pattern.params[uniform];
+    if (!param) continue;
+    if (typeof value === "number") param.value = value;
+    else if (Array.isArray(value) && value.length === 4) {
+      if (isVector4(param.value))
+        param.value.set(value[0], value[1], value[2], value[3]);
+      else param.value = new Vector4(value[0], value[1], value[2], value[3]);
+    } else if (value && typeof value === "object" && "a" in value) {
+      if (isPalette(param.value)) param.value.setFromSerialized(value as any);
+      else param.value = Palette.deserialize(value as any);
+    }
+  }
+};
+
 export const restoreEntries = (
   state: SerializedEditorState,
   allocateId: () => number,
@@ -96,20 +128,30 @@ export const restoreEntries = (
       if (!factory) return [];
       pattern = factory();
     }
-    for (const [uniform, value] of Object.entries(saved.params ?? {})) {
-      const param = pattern.params[uniform];
-      if (!param) continue;
-      if (typeof value === "number") param.value = value;
-      else if (Array.isArray(value) && value.length === 4) {
-        // In place when possible, for the same identity reasons as above.
-        if (isVector4(param.value))
-          param.value.set(value[0], value[1], value[2], value[3]);
-        else param.value = new Vector4(value[0], value[1], value[2], value[3]);
-      } else if (value && typeof value === "object" && "a" in value) {
-        if (isPalette(param.value)) param.value.setFromSerialized(value as any);
-        else param.value = Palette.deserialize(value as any);
+    applyParams(pattern, saved.params ?? {});
+
+    // Effects reuse live instances by id too: their params are shared by
+    // reference with the canopy's materials exactly like pattern params.
+    const currentEffects = new Map(
+      (current?.effects ?? []).map((effect) => [effect.id, effect]),
+    );
+    const effects = (saved.effects ?? []).flatMap((savedEffect) => {
+      const currentEffect =
+        savedEffect.id !== undefined
+          ? currentEffects.get(savedEffect.id)
+          : undefined;
+      let effectPattern: Pattern;
+      if (currentEffect && currentEffect.pattern.name === savedEffect.pattern) {
+        effectPattern = currentEffect.pattern;
+      } else {
+        const factory = effectFactoryByName(savedEffect.pattern);
+        if (!factory) return [];
+        effectPattern = factory();
       }
-    }
+      applyParams(effectPattern, savedEffect.params ?? {});
+      return [{ id: savedEffect.id ?? allocateId(), pattern: effectPattern }];
+    });
+
     return [
       {
         // Reuse the serialized id when present so restores (undo/redo in
@@ -117,6 +159,7 @@ export const restoreEntries = (
         // fresh ids for older saves without them.
         id: saved.id ?? allocateId(),
         pattern,
+        effects,
         visible: saved.visible ?? true,
         expanded: saved.expanded ?? true,
         automatedParams: saved.automatedParams ?? [],

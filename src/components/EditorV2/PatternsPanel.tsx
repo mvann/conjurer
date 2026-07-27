@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import {
+  FaArrowDown,
+  FaArrowUp,
   FaCaretDown,
   FaCaretRight,
   FaEye,
@@ -27,6 +29,7 @@ import {
   Rgba,
 } from "@/src/components/EditorV2/ValueEditors";
 import { EDITOR_DIRTY_EVENT } from "@/src/components/EditorV2/experiencePersistence";
+import { effectLibrary } from "@/src/components/EditorV2/patternLibrary";
 import { Vector4 } from "three";
 
 const formatParamValue = (value: ParamType) => {
@@ -44,13 +47,28 @@ const formatParamValue = (value: ParamType) => {
 // practice are u_-prefixed, so this cannot collide.
 export const VISIBILITY_PARAM = "__visibility";
 
+// An effect applied to a pattern: a Pattern whose shader transforms the
+// previous render stage (u_texture). Chained in order after the pattern.
+export type EffectEntry = {
+  id: number;
+  pattern: Pattern;
+};
+
+// Lane key for an effect's parameter. Pattern params use the bare
+// uniform name; effect params carry the effect's id so lanes survive
+// reordering and duplicate effect types.
+export const effectLaneKey = (effectId: number, uniform: string) =>
+  `effect:${effectId}:${uniform}`;
+
 export type StackEntry = {
   id: number;
   pattern: Pattern;
+  effects: EffectEntry[];
   visible: boolean;
   expanded: boolean;
-  // Uniform names of params that have an automation lane. May also contain
-  // VISIBILITY_PARAM for the visibility toggle's lane.
+  // Lane keys of params that have an automation lane: bare uniform names
+  // for pattern params, effect:<id>:<uniform> for effect params. May
+  // also contain VISIBILITY_PARAM for the visibility toggle's lane.
   automatedParams: string[];
   // Keyframe curves keyed by lane key (see automation.ts).
   automation: Record<string, AutomationCurve>;
@@ -61,6 +79,9 @@ type Props = {
   onAdd: (factory: () => Pattern) => void;
   onUpdate: (id: number, update: Partial<StackEntry>) => void;
   onRemove: (id: number) => void;
+  onAddEffect: (entryId: number, factory: () => Pattern) => void;
+  onRemoveEffect: (entryId: number, effectId: number) => void;
+  onMoveEffect: (entryId: number, effectId: number, delta: -1 | 1) => void;
 };
 
 // Slide-out pattern stack, after Beckon's sidebar: a bare chevron at the
@@ -75,10 +96,20 @@ type ParamContextMenu = {
   y: number;
 };
 
-export function PatternsPanel({ entries, onAdd, onUpdate, onRemove }: Props) {
+export function PatternsPanel({
+  entries,
+  onAdd,
+  onUpdate,
+  onRemove,
+  onAddEffect,
+  onRemoveEffect,
+  onMoveEffect,
+}: Props) {
   const [isOpen, setIsOpen] = useState(false);
   const [isPicking, setIsPicking] = useState(false);
   const [contextMenu, setContextMenu] = useState<ParamContextMenu | null>(null);
+  // The entry whose inline effect picker is open, if any.
+  const [effectPickerFor, setEffectPickerFor] = useState<number | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   // Composite params (palette, color) render expanded by default; this set
   // tracks the ones collapsed, keyed by `entryId:uniform`. UI-only state.
@@ -153,6 +184,120 @@ export function PatternsPanel({ entries, onAdd, onUpdate, onRemove }: Props) {
       !!curve && curve.keyframes.length > 0 && !isCurveActive(curve);
     return suspended ? styles.eyeBarInactive : styles.eyeBarActive;
   };
+
+  // One parameter list, used for the pattern's own params and for each
+  // effect's params: keyFor maps a uniform name to its lane key (bare for
+  // the pattern, effect-scoped for effects), and everything downstream
+  // (lane edges, context menus, takeover) works purely on lane keys.
+  const renderParamRows = (
+    entry: StackEntry,
+    pattern: Pattern,
+    keyFor: (uniform: string) => string,
+  ) =>
+    Object.entries(pattern.params)
+      .filter(([uniform]) => !BASE_UNIFORMS.includes(uniform))
+      .map(([uniform, param]) => {
+        const laneKey = keyFor(uniform);
+        const openMenu = (event: React.MouseEvent) => {
+          event.preventDefault();
+          setContextMenu({
+            entryId: entry.id,
+            uniform: laneKey,
+            x: event.clientX,
+            y: event.clientY,
+          });
+        };
+        const components = getParamComponents(param);
+        if (!components)
+          return (
+            <li
+              key={laneKey}
+              data-doc="param-row"
+              className={`${styles.paramRow} ${laneEdgeClass(entry, laneKey)}`}
+              onContextMenu={openMenu}
+            >
+              <span className={styles.paramName}>
+                {formatDisplayName(param.name)}
+              </span>
+              {typeof param.value === "number" ? (
+                <ScrubbableNumber
+                  param={param as PatternParam<number>}
+                  onUserEdit={deactivateLane(entry, laneKey)}
+                />
+              ) : (
+                <span className={styles.paramValue}>
+                  {formatParamValue(param.value)}
+                </span>
+              )}
+            </li>
+          );
+
+        // Composite param (color or palette): a caret row, then the
+        // shared value editor. The composite automates as a whole:
+        // keyframes divide time into periods holding values.
+        const collapseKey = `${entry.id}:${laneKey}`;
+        const isCollapsed = collapsedParams.has(collapseKey);
+        const onValueEdited = () => {
+          deactivateLane(entry, laneKey)();
+          window.dispatchEvent(new Event(EDITOR_DIRTY_EVENT));
+          bumpEditors();
+        };
+        return (
+          <li key={laneKey}>
+            <div
+              data-doc="param-row"
+              className={`${styles.paramRow} ${laneEdgeClass(entry, laneKey)}`}
+              onContextMenu={openMenu}
+            >
+              <button
+                className={styles.paramCaret}
+                onClick={() => toggleParamCollapse(collapseKey)}
+                aria-label={
+                  isCollapsed ? "Expand components" : "Collapse components"
+                }
+              >
+                {isCollapsed ? <FaCaretRight /> : <FaCaretDown />}
+              </button>
+              <span className={styles.paramName}>
+                {formatDisplayName(param.name)}
+              </span>
+            </div>
+            {!isCollapsed && (
+              <div className={styles.compositeEditorWrap}>
+                {isPalette(param.value) ? (
+                  <PaletteValueEditor
+                    palette={param.value.serialize()}
+                    onChange={(next) => {
+                      (param.value as Palette).setFromSerialized(next);
+                      onValueEdited();
+                    }}
+                  />
+                ) : isVector4(param.value) ? (
+                  <ColorValueEditor
+                    rgba={
+                      [
+                        param.value.x,
+                        param.value.y,
+                        param.value.z,
+                        param.value.w,
+                      ] as Rgba
+                    }
+                    onChange={(rgba) => {
+                      (param.value as Vector4).set(
+                        rgba[0],
+                        rgba[1],
+                        rgba[2],
+                        rgba[3],
+                      );
+                      onValueEdited();
+                    }}
+                  />
+                ) : null}
+              </div>
+            )}
+          </li>
+        );
+      });
 
   const menuEntry = contextMenu
     ? entries.find((entry) => entry.id === contextMenu.entryId)
@@ -319,135 +464,88 @@ export function PatternsPanel({ entries, onAdd, onUpdate, onRemove }: Props) {
                     </button>
                   </div>
                   {entry.expanded && (
-                    <ul className={styles.paramList}>
-                      {Object.entries(entry.pattern.params)
-                        .filter(([uniform]) => !BASE_UNIFORMS.includes(uniform))
-                        .map(([uniform, param]) => {
-                          const components = getParamComponents(param);
-                          if (!components)
-                            return (
-                              <li
-                                key={uniform}
-                                data-doc="param-row"
-                                className={`${styles.paramRow} ${laneEdgeClass(
-                                  entry,
-                                  uniform,
-                                )}`}
-                                onContextMenu={(event) => {
-                                  event.preventDefault();
-                                  setContextMenu({
-                                    entryId: entry.id,
-                                    uniform,
-                                    x: event.clientX,
-                                    y: event.clientY,
-                                  });
+                    <>
+                      <ul className={styles.paramList}>
+                        {renderParamRows(entry, entry.pattern, (u) => u)}
+                      </ul>
+                      {entry.effects.map((effect, effectIndex) => (
+                        <div
+                          key={effect.id}
+                          className={styles.effectBlock}
+                          data-doc="effect-row"
+                        >
+                          <div className={styles.effectHeader}>
+                            <span className={styles.effectName}>
+                              {formatDisplayName(effect.pattern.name)}
+                            </span>
+                            <button
+                              className={styles.rowButton}
+                              disabled={effectIndex === 0}
+                              onClick={() =>
+                                onMoveEffect(entry.id, effect.id, -1)
+                              }
+                              aria-label="Move effect up"
+                            >
+                              <FaArrowUp size={10} />
+                            </button>
+                            <button
+                              className={styles.rowButton}
+                              disabled={
+                                effectIndex === entry.effects.length - 1
+                              }
+                              onClick={() =>
+                                onMoveEffect(entry.id, effect.id, 1)
+                              }
+                              aria-label="Move effect down"
+                            >
+                              <FaArrowDown size={10} />
+                            </button>
+                            <button
+                              className={`${styles.rowButton} ${styles.trashButton}`}
+                              onClick={() =>
+                                onRemoveEffect(entry.id, effect.id)
+                              }
+                              aria-label="Remove effect"
+                            >
+                              <FaTrashAlt size={11} />
+                            </button>
+                          </div>
+                          <ul className={styles.paramList}>
+                            {renderParamRows(entry, effect.pattern, (u) =>
+                              effectLaneKey(effect.id, u),
+                            )}
+                          </ul>
+                        </div>
+                      ))}
+                      <button
+                        data-doc="add-effect"
+                        className={styles.addEffect}
+                        onClick={() =>
+                          setEffectPickerFor(
+                            effectPickerFor === entry.id ? null : entry.id,
+                          )
+                        }
+                      >
+                        <FaPlus size={9} /> Add Effect
+                      </button>
+                      {effectPickerFor === entry.id && (
+                        <ul className={styles.effectPicker}>
+                          {effectLibrary.map(({ name, factory }) => (
+                            <li key={name}>
+                              <button
+                                className={styles.effectPickerItem}
+                                onClick={() => {
+                                  onAddEffect(entry.id, factory);
+                                  setEffectPickerFor(null);
                                 }}
                               >
-                                <span className={styles.paramName}>
-                                  {formatDisplayName(param.name)}
-                                </span>
-                                {typeof param.value === "number" ? (
-                                  <ScrubbableNumber
-                                    param={param as PatternParam<number>}
-                                    onUserEdit={deactivateLane(entry, uniform)}
-                                  />
-                                ) : (
-                                  <span className={styles.paramValue}>
-                                    {formatParamValue(param.value)}
-                                  </span>
-                                )}
-                              </li>
-                            );
-
-                          // Composite param (color or palette): a caret
-                          // row, then the shared value editor. The
-                          // composite automates as a whole: keyframes
-                          // divide time into periods holding values.
-                          const collapseKey = `${entry.id}:${uniform}`;
-                          const isCollapsed = collapsedParams.has(collapseKey);
-                          const onValueEdited = () => {
-                            deactivateLane(entry, uniform)();
-                            window.dispatchEvent(new Event(EDITOR_DIRTY_EVENT));
-                            bumpEditors();
-                          };
-                          return (
-                            <li key={uniform}>
-                              <div
-                                data-doc="param-row"
-                                className={`${styles.paramRow} ${laneEdgeClass(
-                                  entry,
-                                  uniform,
-                                )}`}
-                                onContextMenu={(event) => {
-                                  event.preventDefault();
-                                  setContextMenu({
-                                    entryId: entry.id,
-                                    uniform,
-                                    x: event.clientX,
-                                    y: event.clientY,
-                                  });
-                                }}
-                              >
-                                <button
-                                  className={styles.paramCaret}
-                                  onClick={() =>
-                                    toggleParamCollapse(collapseKey)
-                                  }
-                                  aria-label={
-                                    isCollapsed
-                                      ? "Expand components"
-                                      : "Collapse components"
-                                  }
-                                >
-                                  {isCollapsed ? (
-                                    <FaCaretRight />
-                                  ) : (
-                                    <FaCaretDown />
-                                  )}
-                                </button>
-                                <span className={styles.paramName}>
-                                  {formatDisplayName(param.name)}
-                                </span>
-                              </div>
-                              {!isCollapsed && (
-                                <div className={styles.compositeEditorWrap}>
-                                  {isPalette(param.value) ? (
-                                    <PaletteValueEditor
-                                      palette={param.value.serialize()}
-                                      onChange={(next) => {
-                                        (
-                                          param.value as Palette
-                                        ).setFromSerialized(next);
-                                        onValueEdited();
-                                      }}
-                                    />
-                                  ) : isVector4(param.value) ? (
-                                    <ColorValueEditor
-                                      rgba={
-                                        [
-                                          param.value.x,
-                                          param.value.y,
-                                          param.value.z,
-                                          param.value.w,
-                                        ] as Rgba
-                                      }
-                                      onChange={(rgba) => {
-                                        (param.value as Vector4).set(
-                                          rgba[0],
-                                          rgba[1],
-                                          rgba[2],
-                                          rgba[3],
-                                        );
-                                        onValueEdited();
-                                      }}
-                                    />
-                                  ) : null}
-                                </div>
-                              )}
+                                {formatDisplayName(name)}
+                              </button>
                             </li>
-                          );
-                        })}
-                    </ul>
+                          ))}
+                        </ul>
+                      )}
+                    </>
                   )}
                 </li>
               ))}
