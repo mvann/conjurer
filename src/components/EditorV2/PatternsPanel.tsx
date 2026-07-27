@@ -441,6 +441,12 @@ export function PatternsPanel({
                       data-doc="pattern-visibility"
                       className={`${styles.rowButton} ${eyeBarClass(entry)}`}
                       onClick={() => {
+                        // In assign mode the eye is a lane target, not a
+                        // toggle: visibility automates like any param.
+                        if (assigning) {
+                          onAssignParam(entry.id, VISIBILITY_PARAM);
+                          return;
+                        }
                         // Toggling by hand takes over from an active
                         // visibility curve, like editing any automated
                         // parameter.

@@ -71,11 +71,15 @@ test.describe("layout and pattern panel", () => {
     await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
 
     // Over an automatable row the badge turns green; elsewhere it is
-    // silver.
+    // silver. The visibility eye counts: it is a lane target too.
     const warpRow = page
       .locator("[data-doc=param-row]")
       .filter({ hasText: "Warp" });
     await warpRow.hover();
+    await expect(page.locator("[class*=assignCursor]")).toHaveClass(
+      /assignCursorHot/,
+    );
+    await page.getByLabel("Hide pattern").hover();
     await expect(page.locator("[class*=assignCursor]")).toHaveClass(
       /assignCursorHot/,
     );
