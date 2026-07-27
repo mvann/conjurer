@@ -264,6 +264,20 @@ Canopy renders it onto the LED geometry in three dimensions, orbitable by draggi
 
 To create a lane, click Add New Automation at the bottom of the lanes and pick a parameter, or right click a parameter in the pattern editor and choose Add Automation Lane; delete it from that same menu. Drag the pane's top edge to resize it.`,
   },
+  "lane-visibility": {
+    title: "Lane Eye",
+    short: "Toggles whether this curve drives its parameter.",
+    long: `Click the eye to disable the lane's automation: the curve dims, the manual value takes over (the bright dashed line), and the eye slashes and reads red. Click again to re-enable it. This is the same switch as Disable Automation in the parameter's right click menu, and editing the curve re-enables it too.
+
+The eye is dimmed while the lane has no keyframes; an empty lane drives nothing either way.`,
+  },
+  "lane-delete": {
+    title: "Delete Lane",
+    short: "Removes this lane and its curve.",
+    long: `Click to delete the lane, discarding its keyframes and curve. The parameter keeps its manual value. If the lane was expanded in the automation editor, the editor closes.
+
+Control z restores the lane, curve and all.`,
+  },
   "add-lane": {
     title: "Add New Automation",
     short: "Click, then pick a parameter in the pattern editor.",

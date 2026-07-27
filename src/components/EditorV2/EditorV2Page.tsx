@@ -346,6 +346,40 @@ export function EditorV2Page() {
     scheduleAutosave();
   };
 
+  // ---- Lane controls shared by the pane and the pattern editor. ----
+
+  const deleteLane = (entryId: number, laneKey: string) => {
+    const entry = entries.find((candidate) => candidate.id === entryId);
+    if (!entry) return;
+    const automation = { ...entry.automation };
+    delete automation[laneKey];
+    updateEntry(entryId, {
+      automatedParams: entry.automatedParams.filter(
+        (candidate) => candidate !== laneKey,
+      ),
+      automation,
+    });
+    setSelectedLane((current) =>
+      current?.entryId === entryId && current.uniform === laneKey
+        ? null
+        : current,
+    );
+  };
+
+  // The lane's eye: whether the curve drives the parameter. Only a
+  // curve with keyframes can toggle; an empty lane drives nothing.
+  const toggleLaneActive = (entryId: number, laneKey: string) => {
+    const entry = entries.find((candidate) => candidate.id === entryId);
+    const curve = entry?.automation[laneKey];
+    if (!entry || !curve || curve.keyframes.length === 0) return;
+    updateEntry(entryId, {
+      automation: {
+        ...entry.automation,
+        [laneKey]: { ...curve, active: !isCurveActive(curve) },
+      },
+    });
+  };
+
   // ---- Assign mode plumbing. ----
 
   const assignLane = (entryId: number, laneKey: string) => {
@@ -612,6 +646,8 @@ export function EditorV2Page() {
             selectedLane={selectedLane}
             onSelectLane={toggleLane}
             onStartAssign={() => setAssigningLane(true)}
+            onToggleLaneActive={toggleLaneActive}
+            onDeleteLane={deleteLane}
           />
         </div>
       </div>

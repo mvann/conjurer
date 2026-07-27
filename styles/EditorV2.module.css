@@ -861,15 +861,64 @@
    separator in a box this narrow. */
 .laneLabel {
   display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 2px;
+  align-items: center;
+  gap: 4px;
   width: 120px;
   flex-shrink: 0;
-  padding: 0 10px;
+  padding: 0 4px 0 10px;
   border-right: 1px solid rgba(232, 236, 244, 0.1);
   font-family: var(--font-mystical), Georgia, serif;
   user-select: none;
+}
+
+.laneLabelText {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+}
+
+/* Per-lane controls: the curve's eye (drive on or off) and the trash. */
+.laneControls {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+
+.laneControlButton {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 15px;
+  background: none;
+  border: none;
+  padding: 0;
+  color: #8f96a8;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.laneControlButton:hover {
+  color: #ffffff;
+  filter: drop-shadow(0 0 5px rgba(232, 236, 244, 0.8));
+}
+
+.laneControlButton:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+
+/* A deactivated curve's eye picks up the suspended red, matching the
+   parameter row's edge. */
+.laneControlSuspended {
+  color: rgba(224, 108, 108, 0.85);
   -webkit-user-select: none;
 }
 

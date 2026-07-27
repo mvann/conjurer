@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { FaEye, FaEyeSlash, FaTrashAlt } from "react-icons/fa";
 import styles from "@/styles/EditorV2.module.css";
 import {
   StackEntry,
@@ -47,6 +48,8 @@ type Props = {
   // Starts assign mode: the pattern editor opens and the next parameter
   // clicked gets an automation lane.
   onStartAssign: () => void;
+  onToggleLaneActive: (entryId: number, laneKey: string) => void;
+  onDeleteLane: (entryId: number, laneKey: string) => void;
 };
 
 // Resolves a lane's display name and param. Lane keys are a uniform name,
@@ -363,6 +366,8 @@ export function AutomationPane({
   selectedLane,
   onSelectLane,
   onStartAssign,
+  onToggleLaneActive,
+  onDeleteLane,
 }: Props) {
   const [height, setHeight] = useState(DEFAULT_HEIGHT);
   // Lanes share the timeline's visible time window.
@@ -446,10 +451,56 @@ export function AutomationPane({
             }
           >
             <div className={styles.laneLabel}>
-              <span className={styles.laneLabelPattern}>
-                {lane.patternName}
-              </span>
-              <span className={styles.laneLabelParam}>{lane.paramName}</span>
+              <div className={styles.laneLabelText}>
+                <span className={styles.laneLabelPattern}>
+                  {lane.patternName}
+                </span>
+                <span className={styles.laneLabelParam}>{lane.paramName}</span>
+              </div>
+              <div className={styles.laneControls}>
+                {(() => {
+                  // An empty lane is inert, not suspended: it shows an
+                  // open eye, disabled. Only a curve with keyframes
+                  // toggles.
+                  const suspended =
+                    !!lane.curve &&
+                    lane.curve.keyframes.length > 0 &&
+                    !isCurveActive(lane.curve);
+                  return (
+                    <button
+                      className={`${styles.laneControlButton} ${
+                        suspended ? styles.laneControlSuspended : ""
+                      }`}
+                      data-doc="lane-visibility"
+                      disabled={
+                        !lane.curve || lane.curve.keyframes.length === 0
+                      }
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onToggleLaneActive(lane.entryId, lane.uniform);
+                      }}
+                      aria-label={suspended ? "Enable lane" : "Disable lane"}
+                    >
+                      {suspended ? (
+                        <FaEyeSlash size={11} />
+                      ) : (
+                        <FaEye size={11} />
+                      )}
+                    </button>
+                  );
+                })()}
+                <button
+                  className={styles.laneControlButton}
+                  data-doc="lane-delete"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    onDeleteLane(lane.entryId, lane.uniform);
+                  }}
+                  aria-label="Delete lane"
+                >
+                  <FaTrashAlt size={10} />
+                </button>
+              </div>
             </div>
             <div className={styles.laneArea}>
               {isVector4(lane.param.value) || isPalette(lane.param.value) ? (

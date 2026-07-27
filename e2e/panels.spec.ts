@@ -1,5 +1,6 @@
 import { expect, test } from "@playwright/test";
 import {
+  addLaneOnParam,
   closePanel,
   gotoEditorClean,
   insertPattern,
@@ -102,6 +103,55 @@ test.describe("layout and pattern panel", () => {
     await expect(page.locator("[class*=assignCursor]")).toHaveCount(0);
     await expect(page.locator("[class*=laneRow]")).toHaveCount(0);
     await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
+  });
+
+  test("lane controls: the eye toggles the curve; the trash deletes the lane", async ({
+    page,
+  }) => {
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+    await addLaneOnParam(page, "Warp");
+    await closePanel(page);
+
+    // No keyframes yet: the eye is disabled (an empty lane drives
+    // nothing).
+    const lane = page.locator("[class*=laneRow]").first();
+    await expect(lane.getByLabel("Disable lane")).toBeDisabled();
+
+    // Two keyframes, then the eye disables and re-enables the curve.
+    await lane.click();
+    const area = (await page.locator("[class*=editorLineArea]").boundingBox())!;
+    await page.mouse.dblclick(
+      area.x + area.width * 0.3,
+      area.y + area.height * 0.3,
+    );
+    await page.mouse.dblclick(
+      area.x + area.width * 0.7,
+      area.y + area.height * 0.7,
+    );
+    await page.getByLabel("Close automation editor").click();
+
+    const laneActive = () =>
+      page.evaluate(() => {
+        const entries = (
+          window as unknown as Record<
+            string,
+            { automation: Record<string, { active?: boolean }> }[]
+          >
+        ).__editorEntries;
+        return Object.values(entries[0].automation)[0].active !== false;
+      });
+    await lane.getByLabel("Disable lane").click();
+    expect(await laneActive()).toBe(false);
+    await lane.getByLabel("Enable lane").click();
+    expect(await laneActive()).toBe(true);
+
+    // The trash removes the lane; the expanded editor closes with it.
+    await lane.click();
+    await expect(page.locator("[class*=automationEditor__]")).toBeVisible();
+    await page.getByLabel("Delete lane").click();
+    await expect(page.locator("[class*=laneRow]")).toHaveCount(0);
+    await expect(page.locator("[class*=automationEditor__]")).toHaveCount(0);
   });
 
   test("visibility toggle and trash work", async ({ page }) => {
