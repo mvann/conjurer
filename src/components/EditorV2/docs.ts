@@ -345,7 +345,9 @@ The strip narrows to the space between open side panels rather than disappearing
   "time-selection": {
     title: "Time Selection",
     short: "Copy or Delete the highlighted window of time.",
-    long: `Drag horizontally across empty space in the automation editor to highlight a window of time. Press Copy to lift the curve inside it to the clipboard, or Delete to remove it, leaving a straight bridge. The curve outside the window is never touched.
+    long: `Drag horizontally across empty space in the automation editor to highlight a window of time. Press Copy to lift the curve inside it to the clipboard, Insert Segment to carve the window into its own segment, or Delete to remove it, leaving a straight bridge. The curve outside the window is never touched.
+
+Insert Segment pins keyframes exactly on the curve at both edges without changing its shape, then selects the new segment so the inspector can retype or reshape it; on an empty lane the window becomes a segment at the manual value.
 
 Cut edges shorten segments faithfully: a wave keeps its amplitude and phase and carries a proportional number of cycles; flats stay flat, linears stay linear, bends and easings refit to the cut.
 
