@@ -84,7 +84,7 @@ export function DocsStrip() {
       >
         <span className={styles.docsTitle}>{doc.title}</span>
         <span className={styles.docsText}>{doc.short}</span>
-        <span className={styles.readMore}>Press ? to learn more</span>
+        <span className={styles.readMore}>Press ? for instructions</span>
       </footer>
 
       {overlayState !== null && (
