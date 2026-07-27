@@ -5,6 +5,7 @@ import { TransportBar } from "@/src/components/EditorV2/TransportBar";
 import { SongsPanel } from "@/src/components/EditorV2/SongsPanel";
 import { analyzeBpm, BpmAnalysis } from "@/src/components/EditorV2/bpm";
 import { analyzeTransients } from "@/src/components/EditorV2/transients";
+import { setAudioEnvelope } from "@/src/components/EditorV2/automation";
 import { getSongUrl } from "@/src/utils/songUrl";
 import { SongPlayer } from "@/src/components/EditorV2/songPlayer";
 import {
@@ -282,8 +283,10 @@ export function TimelineStrip({
     peaksRef.current = decoded
       ? computePeaks(decoded.getChannelData(0), PEAK_COLUMNS)
       : null;
-    // Shared with the automation editor's waveform backdrop.
+    // Shared with the automation editor's waveform backdrop, and with
+    // audio-reactive segments as their loudness envelope.
     publishWaveformPeaks(peaksRef.current);
+    setAudioEnvelope(peaksRef.current, player.current?.getDuration() ?? 0);
   };
 
   // Size the visible canvases to their containers in device pixels.
@@ -383,6 +386,7 @@ export function TimelineStrip({
       (window as unknown as Record<string, unknown>).__editorSongPlayer = null;
       peaksRef.current = null;
       publishWaveformPeaks(null);
+      setAudioEnvelope(null, 0);
       beatGrid.current = null;
       setBpmInfo(null);
       onBeatGridChange(null);

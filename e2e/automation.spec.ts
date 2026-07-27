@@ -413,6 +413,39 @@ const pathCommands = async (page: any) => {
 test.describe("segment types", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
 
+  test("audio segment follows the song's loudness envelope", async ({
+    page,
+  }) => {
+    await loadSeededSong(page);
+    await openTimeFactorLane(page);
+    const box = await makeOneSegment(page);
+    const before = await pathCommands(page);
+
+    // Select the segment while it still sits at the click point, then
+    // convert through the inspector's type pills (selection survives the
+    // conversion; the displaced curve would be fiddly to re-click).
+    await page.mouse.click(box.x + box.width * 0.5, box.y + box.height * 0.5);
+    const inspector = page.locator("[data-doc=segment-inspector]");
+    await expect(inspector).toBeVisible();
+    await inspector.getByRole("button", { name: "Audio" }).click();
+
+    // The path now traces the envelope: far denser than any shape.
+    await expect
+      .poll(async () => (await pathCommands(page)).length)
+      .toBeGreaterThan(before.length + 100);
+
+    // The inspector edits the audio segment's Amount and Smoothing.
+    await expect(inspector).toContainText("Amount");
+    await expect(inspector).toContainText("Smoothing");
+
+    // The right-click menu offers Audio too, marked once chosen.
+    await expect(
+      page.locator("[data-doc=segment-inspector]").getByRole("button", {
+        name: "Audio",
+      }),
+    ).toHaveClass(/pillActive/);
+  });
+
   test("right-click menu lists the types; Wave gets a kind selector", async ({
     page,
   }) => {

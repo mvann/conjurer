@@ -16,8 +16,9 @@ export type EasingName = keyof typeof easings;
 // strong bends render rounded instead of vertical.
 //
 // The other segment types mirror the variations available in the main
-// experience editor: flat, linear, wave (periodic sine/square/triangle)
-// and easing. Spline and audio variations are not segment types yet.
+// experience editor: flat, linear, wave (periodic sine/square/triangle),
+// easing, and audio (the song's loudness envelope riding the keyframe
+// line). Spline variations are not a segment type yet.
 //
 // Color and palette lanes automate the whole value, not a number: each
 // keyframe carries a payload (an RGBA color or a serialized palette) that
@@ -84,7 +85,49 @@ export type SegmentSpec =
       cycles: number;
       phase: number;
     }
-  | { type: "easing"; easing: EasingName };
+  | { type: "easing"; easing: EasingName }
+  // Audio-reactive: the song's loudness at the ABSOLUTE song time, scaled
+  // by factor and riding on the straight line between the keyframes (the
+  // main app's AudioVariation semantics, fitted to the segment model).
+  // Smoothing is a causal lookback window in seconds.
+  | { type: "audio"; factor: number; smoothing: number };
+
+// The audio envelope audio segments follow: the loaded song's peak
+// array, injected by the editor when peaks are ready. Injection keeps
+// this module pure for the ts-node test suites, which supply synthetic
+// envelopes. `version` stamps extremes memos so ranges refit when a
+// song arrives after curves already exist.
+const envelope: {
+  peaks: Float32Array | null;
+  durationSeconds: number;
+  version: number;
+} = { peaks: null, durationSeconds: 0, version: 0 };
+
+export const setAudioEnvelope = (
+  peaks: Float32Array | null,
+  durationSeconds: number,
+) => {
+  envelope.peaks = peaks;
+  envelope.durationSeconds = durationSeconds;
+  envelope.version++;
+};
+
+// Loudness 0..1 at a fraction of the song, averaged over the trailing
+// `smoothing` seconds. Zero with no song loaded.
+export const sampleAudioEnvelope = (frac: number, smoothing: number) => {
+  const { peaks, durationSeconds } = envelope;
+  if (!peaks || peaks.length === 0) return 0;
+  const to = Math.min(peaks.length - 1, Math.max(0, frac * peaks.length));
+  const windowCols = durationSeconds
+    ? (smoothing / durationSeconds) * peaks.length
+    : 0;
+  const from = Math.max(0, to - Math.max(0, windowCols));
+  const first = Math.floor(from);
+  const last = Math.floor(to);
+  let sum = 0;
+  for (let i = first; i <= last; i++) sum += peaks[i];
+  return sum / (last - first + 1);
+};
 
 export type SegmentType = SegmentSpec["type"];
 
@@ -152,6 +195,12 @@ export const defaultSegment = (
       };
     case "easing":
       return { type: "easing", easing: "easeInOutSine" };
+    case "audio":
+      return {
+        type: "audio",
+        factor: Math.max(Math.abs(b.value - a.value), 0.5),
+        smoothing: 0.05,
+      };
   }
 };
 
@@ -191,6 +240,13 @@ export const evaluateSegment = (
       const easing = easings[spec.easing] ?? easings.easeInOutSine;
       return a.value + (b.value - a.value) * easing(t);
     }
+    case "audio":
+      return (
+        a.value +
+        (b.value - a.value) * t +
+        spec.factor *
+          sampleAudioEnvelope(a.time + (b.time - a.time) * t, spec.smoothing)
+      );
   }
 };
 
@@ -219,6 +275,9 @@ export const sampleSegment = (
     // against runaway point counts, not normal use.
     samples = Math.min(4000, Math.round(Math.abs(spec.cycles) * 48 * detail));
   if (spec.type === "easing") samples = Math.round(60 * detail);
+  // Audio follows the envelope, which is far denser than any shape:
+  // sample generously (bounded), scaled by the caller's detail.
+  if (spec.type === "audio") samples = Math.round(400 * detail);
   samples = Math.max(8, samples);
 
   const points: { t: number; value: number }[] = [];
@@ -237,15 +296,18 @@ export const sampleSegment = (
 // always produce a new object), since callers run every animation frame.
 const extremesMemo = new WeakMap<
   AutomationCurve,
-  { low: number; high: number } | null
+  { version: number; extremes: { low: number; high: number } | null }
 >();
 
 export const curveExtremes = (
   curve: AutomationCurve,
 ): { low: number; high: number } | null => {
-  if (extremesMemo.has(curve)) return extremesMemo.get(curve)!;
+  // Stamped with the envelope version: audio segments' reach changes
+  // when a song's envelope arrives after the curve already existed.
+  const memo = extremesMemo.get(curve);
+  if (memo && memo.version === envelope.version) return memo.extremes;
   const extremes = computeCurveExtremes(curve);
-  extremesMemo.set(curve, extremes);
+  extremesMemo.set(curve, { version: envelope.version, extremes });
   return extremes;
 };
 
@@ -264,7 +326,8 @@ const computeCurveExtremes = (
   const segments = getSegments(curve);
   for (let i = 0; i < keyframes.length - 1; i++) {
     const spec = segments[i];
-    if (spec.type !== "wave" && spec.type !== "easing") continue;
+    if (spec.type !== "wave" && spec.type !== "easing" && spec.type !== "audio")
+      continue;
     for (const point of sampleSegment(keyframes[i], keyframes[i + 1], spec))
       push(point.value);
   }
@@ -310,6 +373,10 @@ export const sliceSpec = (
       return { type: "flat" };
     case "linear":
       return { type: "linear" };
+    // Audio reacts to the ABSOLUTE song time, so a slice needs no
+    // adjustment: wherever it lands, it follows the audio there.
+    case "audio":
+      return { ...spec };
     case "wave":
       return {
         type: "wave",
@@ -354,10 +421,12 @@ export const insertBoundary = (
     // top. The boundary keyframe therefore sits on the baseline, which
     // makes wave splitting exact: each half's baseline matches the
     // original and the offsets line up through the cycle/phase math.
-    // Other types place the keyframe on the curve itself.
+    // Audio rides its baseline the same way (the envelope re-adds on
+    // top, so a curve-value keyframe would double it). Other types
+    // place the keyframe on the curve itself.
     const spec = segments[i];
     const value =
-      spec.type === "wave"
+      spec.type === "wave" || spec.type === "audio"
         ? a.value + (b.value - a.value) * localT
         : evaluateSegment(a, b, spec, localT);
     const nextKeyframes = [...keyframes];

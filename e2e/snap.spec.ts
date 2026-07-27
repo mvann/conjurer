@@ -118,6 +118,28 @@ test.describe("snap to", () => {
     expect(nearest).toBeLessThan(1e-9);
   });
 
+  test("snap mode survives closing and reopening the editor", async ({
+    page,
+  }) => {
+    await openLaneWithSong(page);
+    await openSnapMenu(page);
+    await page
+      .locator("[data-doc=snap-menu]")
+      .getByRole("button", { name: "BPM Grid" })
+      .click();
+
+    await page.getByLabel("Close automation editor").click();
+    await page.locator("[class*=laneRow]").first().click();
+    await expect(page.locator("[class*=automationEditor__]")).toBeVisible();
+
+    await openSnapMenu(page);
+    await expect(
+      page
+        .locator("[data-doc=snap-menu]")
+        .getByRole("button", { name: "BPM Grid" }),
+    ).toHaveClass(/contextMenuItemActive/);
+  });
+
   test("without a song, grid and transient options are dimmed", async ({
     page,
   }) => {

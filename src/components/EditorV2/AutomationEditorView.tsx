@@ -39,6 +39,7 @@ import {
   transportTime,
 } from "@/src/components/EditorV2/timeViewport";
 import { drawBars } from "@/src/components/EditorV2/waveformPeaks";
+import { editorPrefs } from "@/src/components/EditorV2/editorPrefs";
 import {
   computeTargetView,
   easeView,
@@ -62,14 +63,15 @@ const formatTick = (value: number, step: number) => {
 };
 
 // The segment types offered in the right-click menu, mirroring the
-// variation types of the main experience editor (spline and audio are not
-// available as segment types yet).
+// variation types of the main experience editor (spline is not available
+// as a segment type yet).
 const SEGMENT_TYPES: { type: SegmentType; label: string }[] = [
   { type: "curve", label: "Curve" },
   { type: "flat", label: "Flat" },
   { type: "linear", label: "Linear" },
   { type: "wave", label: "Wave" },
   { type: "easing", label: "Easing" },
+  { type: "audio", label: "Audio" },
 ];
 
 const WAVE_KINDS: { kind: WaveKind; label: string }[] = [
@@ -298,9 +300,13 @@ export function AutomationEditorView({
 
   // Snap mode for time edits: keyframe drags and creation, the edit
   // cursor, and time-selection edges all land on the chosen targets.
-  const [snapMode, setSnapMode] = useState<"off" | "grid" | "transients">(
-    "off",
-  );
+  // Seeded from (and written back to) editorPrefs so the choice
+  // survives closing and reopening the editor.
+  const [snapMode, setSnapModeState] = useState(editorPrefs.snapMode);
+  const setSnapMode = (mode: typeof editorPrefs.snapMode) => {
+    editorPrefs.snapMode = mode;
+    setSnapModeState(mode);
+  };
   // The editor's backdrop layers, each an independent toggle in the
   // corner dropdown: Canopy thins the editor so the live canopy shows
   // through (on by default), Waveform draws the song's waveform behind
@@ -1104,7 +1110,7 @@ export function AutomationEditorView({
   // scrubbable number fields, writing straight into the segment.
   const segmentNumberParam = (
     name: string,
-    key: "bend" | "amplitude" | "cycles" | "phase",
+    key: "bend" | "amplitude" | "cycles" | "phase" | "factor" | "smoothing",
     min?: number,
     max?: number,
   ) => {
@@ -1656,6 +1662,25 @@ export function AutomationEditorView({
                 <ScrubbableNumber
                   key={`phase-${selectedSegment}`}
                   param={segmentNumberParam("Phase", "phase", 0, 1)}
+                />
+              </div>
+            </>
+          )}
+
+          {selectedSpec.type === "audio" && (
+            <>
+              <div className={styles.inspectorRow}>
+                <span className={styles.inspectorLabel}>Amount</span>
+                <ScrubbableNumber
+                  key={`factor-${selectedSegment}`}
+                  param={segmentNumberParam("Amount", "factor")}
+                />
+              </div>
+              <div className={styles.inspectorRow}>
+                <span className={styles.inspectorLabel}>Smoothing</span>
+                <ScrubbableNumber
+                  key={`smoothing-${selectedSegment}`}
+                  param={segmentNumberParam("Smoothing", "smoothing", 0, 0.5)}
                 />
               </div>
             </>

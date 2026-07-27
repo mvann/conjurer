@@ -361,7 +361,7 @@ The dashed guides cross at every multiple of an eighth of the range's radius and
   "segment-menu": {
     title: "Segment Type",
     short: "Choose how the curve travels between two keyframes.",
-    long: `Right click a segment and choose its type. Curve is the default: drag the segment up or down to bend it. Flat holds the first keyframe's value, then steps. Linear is a fixed straight line. Wave oscillates around the straight line with a sine, square, or triangle shape. Easing follows a named easing function.
+    long: `Right click a segment and choose its type. Curve is the default: drag the segment up or down to bend it. Flat holds the first keyframe's value, then steps. Linear is a fixed straight line. Wave oscillates around the straight line with a sine, square, or triangle shape. Easing follows a named easing function. Audio rides the song's loudness: the straight line between the keyframes plus the audio envelope at each moment, scaled by the inspector's Amount.
 
 The current type is marked. Choosing a type resets the segment's parameters; select the segment to edit them in the inspector. Splitting a segment with a new keyframe gives both halves the original's type and parameters.
 
@@ -405,7 +405,7 @@ Snapping applies to dragging keyframes, double click creation, the edit cursor, 
     short: "Edits the selected segment's type and parameters.",
     long: `Click a segment to select it and open this card. Use the top row to switch its type; the rows below hold that type's parameters.
 
-For a curve, set the bend: one is linear, below one bows early, above one bows late. For a wave, set the shape (sine, square, triangle), amplitude, cycles across the segment, and phase in fractions of a cycle. For an easing, choose the mode (in, out, in and out) and family. Flat and linear have nothing to set.
+For a curve, set the bend: one is linear, below one bows early, above one bows late. For a wave, set the shape (sine, square, triangle), amplitude, cycles across the segment, and phase in fractions of a cycle. For an easing, choose the mode (in, out, in and out) and family. For audio, set the amount the loudness is scaled by (negative inverts it) and a smoothing window in seconds. Flat and linear have nothing to set.
 
 Numbers here edit like everywhere else: drag, Shift for fine, click to type. Escape or a click on empty space drops the selection.`,
   },

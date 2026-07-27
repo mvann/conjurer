@@ -18,10 +18,13 @@
 import {
   AutomationCurve,
   copyCurveWindow,
+  curveExtremes,
   deleteCurveWindow,
   evaluateCurve,
+  evaluateSegment,
   insertBoundary,
   pasteClipAt,
+  setAudioEnvelope,
   sliceSpec,
   SegmentSpec,
 } from "../components/EditorV2/automation";
@@ -366,6 +369,57 @@ const curveOf = (
   for (const keyframe of cut.keyframes)
     if (!Number.isFinite(keyframe.value))
       fail("stacked: delete across the jump left non-finite values");
+}
+
+// ---- audio segments: absolute-time envelope, exact under slicing ----
+{
+  // A synthetic envelope: a ramp from 0 at the song's start to 1 at its
+  // end, 1000 columns, "duration" 100 seconds.
+  const ramp = new Float32Array(1000);
+  for (let i = 0; i < ramp.length; i++) ramp[i] = i / (ramp.length - 1);
+  setAudioEnvelope(ramp, 100);
+
+  const spec: SegmentSpec = { type: "audio", factor: 2, smoothing: 0 };
+  const a = kf(0.2, 1);
+  const b = kf(0.6, 1);
+  // Flat baseline of 1, so value = 1 + 2 * envelope(absolute time).
+  near(
+    evaluateSegment(a, b, spec, 0.5),
+    1 + 2 * 0.4,
+    0.01,
+    "audio: envelope at the absolute song time",
+  );
+
+  // Smoothing averages the trailing window: at t=0.4 with 20s lookback,
+  // the ramp's mean over [0.2, 0.4] is 0.3.
+  const smoothed: SegmentSpec = { type: "audio", factor: 1, smoothing: 20 };
+  near(
+    evaluateSegment(a, b, smoothed, 0.5),
+    1 + 0.3,
+    0.01,
+    "audio: smoothing averages the trailing window",
+  );
+
+  // Slicing keeps the spec verbatim: pasted elsewhere it reacts to the
+  // audio THERE, so a copy of [0.3, 0.5] pasted at 0.7 follows the
+  // envelope at 0.7 onward.
+  const curve = curveOf([a, b], [spec]);
+  const clip = copyCurveWindow(curve, 0.3, 0.5)!;
+  const pasted = pasteClipAt(curve, clip, 0.7)!;
+  near(
+    evaluateCurve(pasted, 0.75)!,
+    1 + 2 * 0.75,
+    0.02,
+    "audio: pasted slice reacts to the audio at its new position",
+  );
+
+  // Extremes include the envelope's reach, and refit when the envelope
+  // version changes.
+  const reach = curveExtremes(curve)!;
+  near(reach.high, 1 + 2 * 0.6, 0.02, "audio: extremes reach the envelope");
+  setAudioEnvelope(null, 0);
+  const flat = curveExtremes(curve)!;
+  near(flat.high, 1, 1e-9, "audio: extremes refit when the envelope clears");
 }
 
 if (failures > 0) {
