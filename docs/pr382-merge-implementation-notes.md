@@ -77,8 +77,51 @@ build, per the owner's instruction: keep going, track, review after.
      (29), backdrop toggle buttons (30), performance overlay (31),
      orientation (32), opacity pseudo-param row (25), Info Strip
      rewrite, keyboard bindings (27b), OS-clipboard interop.
-- THEN: demo seam (tRPC custom link, Gandalf user), UI restructure
-  (task 7), gear pane, orientation, docs/Info Strip, e2e rework.
+- DONE (d50743a): RegionEditorView + laneModel — the expanded editor
+  on regions: dimmed-inert outside the block, curve nodes + generator
+  boundary dots (offset drag), dblclick add-node/split (phase-correct
+  waves), right-click retype (bake/wave/audio) vs snap menu by
+  distance-from-curve, node value entry, wave/audio inspector
+  (frequency+phase per decision 15), Escape peel. All mutations ride
+  upstream APIs (addNodeAtTime/setNode/removeNode/insertRegion/
+  moveBoundary).
+- DONE (bc98902): persistence — ChakraProvider (resetCSS off) hosts
+  their LoginButton/SaveExperienceModal/user picker (force-open for
+  anonymous = adopted behavior; helpers dismissLoginIfOpen);
+  Cmd+S/Cmd+Shift+S; the spellcrafter:draft channel (edit-gated
+  autorun; baseline guard so untouched reloads never clobber);
+  legacy saves migrate once into the channel (slots -> :backup).
+- DONE (2f300f7): chrome — GearPane in their verified menu order with
+  Open/Shortcuts slide-out sub-pane, RolesDropdown, gear dirty glow,
+  orientation (decision 32: horizontal = canopy LEFT, editor
+  permanently open right, no X; first-run defaults stacked), r3f-perf
+  overlay in our canvas.
+- DONE (220cab9): backdrop toggles (teardrop/waveform, decision 30),
+  effect-block lanes in the hierarchy, the promotion gesture
+  (right-click param -> Add Automation Lane), arrow-key scan.
+
+REMAINING (in priority order):
+  1. Demo seam: tRPC custom link backed by localStorage + Gandalf
+     user; demo redeploy (deployDemo.sh + workflow target this
+     branch's build).
+  2. Info Strip rewrite: docs.ts entries for every new data-doc
+     (layer-row, add-layer, lane-block, block-bar, editor-area,
+     keyframe, retype-menu, gear*, roles, backdrop-*, autosave...) and
+     copy moved to layer/block vocabulary.
+  3. Opacity pseudo-param row (decision 25): auto/manual/lane
+     tri-state row atop each block's params; right-click Reset to
+     Auto.
+  4. Region clipboard (plan decisions): copy/delete/paste windows
+     (split-at-edges, bridge on delete, overhang paste, overwrite,
+     cross-lane normalization) + their OS-clipboard format.
+  5. Chevron sliver (decision 29).
+  6. Undo: session snapshot undo over store.layers (their store has
+     none; snapshot serialize + identity-preserving restore).
+  7. Spec cleanup: DELETE obsolete parked specs (automation, snap,
+     effects, canopy target the dead keyframe editor); port pixel
+     smoke + snap-with-song coverage onto the region editor.
+  8. Ctrl +/- zoom: parked — v1 region editor has no zoom surface.
+
 
 ## Additional assumptions (review these)
 
