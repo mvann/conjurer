@@ -205,6 +205,200 @@
   user-select: none;
 }
 
+/* ---- Gear pane (settings) ---- */
+
+.gearButton {
+  background: none;
+  border: none;
+  color: #8f96a8;
+  cursor: pointer;
+  padding: 4px 6px;
+  display: flex;
+  align-items: center;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
+}
+
+.gearButton:hover {
+  color: #e8ecf4;
+}
+
+/* Unsaved work: the gear carries the old Save button's glow. */
+.gearButtonDirty {
+  color: #cdd6ea;
+  filter: drop-shadow(0 0 6px rgba(205, 214, 234, 0.55));
+}
+
+.gearPane {
+  position: fixed;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  width: 300px;
+  z-index: 30;
+  background: #0a0913;
+  border-left: 1px solid rgba(232, 236, 244, 0.12);
+  transform: translateX(100%);
+  transition: transform 0.26s ease;
+  overflow-y: auto;
+}
+
+.gearPaneOpen {
+  transform: translateX(0);
+}
+
+.gearSubPane {
+  position: fixed;
+  top: 0;
+  right: 300px;
+  bottom: 0;
+  width: 320px;
+  z-index: 29;
+  background: #0a0913;
+  border-left: 1px solid rgba(232, 236, 244, 0.12);
+  transform: translateX(calc(100% + 300px));
+  transition: transform 0.26s ease;
+  overflow-y: auto;
+}
+
+.gearSubPaneOpen {
+  transform: translateX(0);
+}
+
+.gearColumn {
+  display: flex;
+  flex-direction: column;
+  padding: 48px 22px 24px;
+  gap: 2px;
+}
+
+.gearItem {
+  background: none;
+  border: none;
+  text-align: left;
+  padding: 7px 0;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 15px;
+  letter-spacing: 0.5px;
+  color: #8f96a8;
+  cursor: pointer;
+  text-decoration: none;
+  transition: color 0.18s ease;
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 1),
+    0 0 7px rgba(0, 0, 0, 1);
+}
+
+.gearItem:hover {
+  color: #e8ecf4;
+  text-shadow:
+    0 0 6px rgba(232, 236, 244, 0.35),
+    0 0 14px rgba(232, 236, 244, 0.18);
+}
+
+.gearItemActive {
+  color: #e8ecf4;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+
+.gearSeparator {
+  height: 1px;
+  background: rgba(232, 236, 244, 0.12);
+  margin: 10px 0;
+}
+
+.gearSubTitle {
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.6px;
+  color: #a9b2c4;
+  margin-bottom: 10px;
+}
+
+.gearHint {
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  color: #6d7385;
+  padding: 6px 0;
+}
+
+.gearShortcutRow {
+  display: flex;
+  gap: 12px;
+  padding: 5px 0;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 14px;
+  color: #8f96a8;
+}
+
+.gearShortcutKeys {
+  flex: 0 0 150px;
+  color: #cdd6ea;
+}
+
+/* Roles dropdown: Spell Crafter (alpha), beside the user. */
+.rolesDropdown {
+  position: relative;
+}
+
+.rolesButton {
+  background: none;
+  border: none;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #8f96a8;
+  cursor: pointer;
+  padding: 4px 6px;
+  transition: color 0.18s ease;
+}
+
+.rolesButton:hover {
+  color: #e8ecf4;
+}
+
+.rolesMenu {
+  position: absolute;
+  top: 100%;
+  right: 0;
+  z-index: 31;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  padding: 8px 6px;
+  background: rgba(7, 6, 15, 0.92);
+  border: 1px solid rgba(232, 236, 244, 0.12);
+  min-width: 180px;
+}
+
+/* ---- Horizontal orientation: canopy docks left, everything else
+   right (decision 32). ---- */
+.mainColumn.mainColumnHorizontal {
+  flex-direction: row;
+}
+
+.mainColumnHorizontal > [data-doc="canopy"] {
+  flex: 0 0 44%;
+  min-width: 0;
+  height: 100%;
+}
+
+.mainColumnHorizontal .rightColumn {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.rightColumn {
+  display: contents;
+}
+
 /* ---- Region editor ---- */
 
 .editorDimZone {

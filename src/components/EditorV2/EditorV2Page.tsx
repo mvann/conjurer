@@ -28,6 +28,9 @@ import {
   SpellDraft,
   writeDraft,
 } from "@/src/components/EditorV2/spellPersistence";
+import { GearPane } from "@/src/components/EditorV2/GearPane";
+import { RolesDropdown } from "@/src/components/EditorV2/RolesDropdown";
+import { LatencyModal } from "@/src/components/LatencyModal/LatencyModal";
 
 export type BeatGrid = BpmAnalysis & { durationSeconds: number };
 
@@ -57,6 +60,13 @@ export const EditorV2Page = observer(function EditorV2Page() {
   // that is ahead of the loaded row.
   useEffect(() => {
     migrateLegacyIfPresent();
+    // First run with no stored UI settings: the spell crafter defaults
+    // to the stacked (vertical) layout; their flag defaults horizontal.
+    if (!localStorage.getItem("uiStore"))
+      runInAction(() => {
+        store.uiStore.horizontalLayout = false;
+      });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
   useEffect(() => {
     if (store.initializationState !== "initialized") return;
@@ -212,14 +222,21 @@ export const EditorV2Page = observer(function EditorV2Page() {
           </span>
         )}
         <div className={styles.headerRight}>
+          <GearPane />
+          <RolesDropdown />
           <LoginButton />
         </div>
       </header>
       <SaveExperienceModal />
+      <LatencyModal />
 
       <div className={styles.contentRow}>
         <LayersPanel onAddPattern={addPatternToLayer} />
-        <div className={styles.mainColumn}>
+        <div
+          className={`${styles.mainColumn} ${
+            store.uiStore.horizontalLayout ? styles.mainColumnHorizontal : ""
+          }`}
+        >
           <section className={styles.canopyPane} data-doc="canopy">
             <div className={styles.paneLabel}>
               {selectedLane && selectedBlock
@@ -231,17 +248,23 @@ export const EditorV2Page = observer(function EditorV2Page() {
                   )}`
                 : "Canopy"}
             </div>
-            <CanopyPane patterns={visiblePatterns} dust={dust} />
-            {selectedLane && selectedBlock && (
-              <RegionEditorView
-                key={`${selectedLane.blockId}:${selectedLane.uniform}`}
-                block={selectedBlock}
-                uniform={selectedLane.uniform}
-                beatGrid={beatGrid}
-                transients={transients}
-                onClose={() => setSelectedLane(null)}
-              />
-            )}
+            <CanopyPane
+              patterns={visiblePatterns}
+              dust={dust}
+              showPerformance={store.uiStore.showingPerformance}
+            />
+            {selectedLane &&
+              selectedBlock &&
+              !store.uiStore.horizontalLayout && (
+                <RegionEditorView
+                  key={`${selectedLane.blockId}:${selectedLane.uniform}`}
+                  block={selectedBlock}
+                  uniform={selectedLane.uniform}
+                  beatGrid={beatGrid}
+                  transients={transients}
+                  onClose={() => setSelectedLane(null)}
+                />
+              )}
             {!selectedLane && (
               <CanopyControls
                 volume={volume}
@@ -279,24 +302,49 @@ export const EditorV2Page = observer(function EditorV2Page() {
             )}
           </section>
 
-          <TimelineStrip
-            song={song}
-            onSongChange={changeSong}
-            volume={volume}
-            onBeatGridChange={setBeatGrid}
-            onTransientsChange={setTransients}
-          />
-
-          <RegionLanesPane
-            selectedLane={selectedLane}
-            onSelectLane={(blockId, uniform) =>
-              setSelectedLane((current) =>
-                current?.blockId === blockId && current.uniform === uniform
-                  ? null
-                  : { blockId, uniform },
-              )
+          <div
+            className={styles.rightColumn}
+            style={
+              store.uiStore.horizontalLayout
+                ? { position: "relative" }
+                : undefined
             }
-          />
+          >
+            <TimelineStrip
+              song={song}
+              onSongChange={changeSong}
+              volume={volume}
+              onBeatGridChange={setBeatGrid}
+              onTransientsChange={setTransients}
+            />
+
+            <RegionLanesPane
+              selectedLane={selectedLane}
+              onSelectLane={(blockId, uniform) =>
+                setSelectedLane((current) =>
+                  current?.blockId === blockId && current.uniform === uniform
+                    ? null
+                    : { blockId, uniform },
+                )
+              }
+            />
+            {/* Horizontal mode (decision 32): the editor lives on the
+                right, canopy stays visible beside it; no close X, the
+                lane click (or Escape) dismisses. */}
+            {selectedLane &&
+              selectedBlock &&
+              store.uiStore.horizontalLayout && (
+                <RegionEditorView
+                  key={`${selectedLane.blockId}:${selectedLane.uniform}`}
+                  block={selectedBlock}
+                  uniform={selectedLane.uniform}
+                  beatGrid={beatGrid}
+                  transients={transients}
+                  hideClose
+                  onClose={() => setSelectedLane(null)}
+                />
+              )}
+          </div>
         </div>
       </div>
 

@@ -39,6 +39,9 @@ type Props = {
   uniform: string;
   beatGrid: BeatGrid | null;
   transients: number[] | null;
+  // Horizontal orientation: the editor is a permanent fixture beside
+  // the canopy, so the close X disappears (decision 32).
+  hideClose?: boolean;
   onClose: () => void;
 };
 
@@ -49,6 +52,7 @@ export const RegionEditorView = observer(function RegionEditorView({
   uniform,
   beatGrid,
   transients,
+  hideClose,
   onClose,
 }: Props) {
   const store = useStore();
@@ -370,13 +374,15 @@ export const RegionEditorView = observer(function RegionEditorView({
 
   return (
     <div className={styles.automationEditor} data-doc="automation-editor">
-      <button
-        className={styles.automationEditorClose}
-        onClick={onClose}
-        aria-label="Close automation editor"
-      >
-        ✕
-      </button>
+      {!hideClose && (
+        <button
+          className={styles.automationEditorClose}
+          onClick={onClose}
+          aria-label="Close automation editor"
+        >
+          ✕
+        </button>
+      )}
 
       <div
         ref={areaRef}

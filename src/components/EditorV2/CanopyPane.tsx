@@ -1,5 +1,5 @@
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
-import { useEffect, useMemo, useRef, useState } from "react";
+import { lazy, Suspense, useEffect, useMemo, useRef, useState } from "react";
 import {
   AdditiveBlending,
   Mesh,
@@ -282,12 +282,18 @@ function DustOverlay({
   );
 }
 
+const Perf = lazy(() =>
+  import("r3f-perf").then((module) => ({ default: module.Perf })),
+);
+
 export function CanopyPane({
   patterns,
   dust,
+  showPerformance,
 }: {
   patterns: VisiblePattern[];
   dust: number;
+  showPerformance?: boolean;
 }) {
   const renderTarget = useMemo(
     () => new WebGLRenderTarget(RENDER_TARGET_SIZE, RENDER_TARGET_SIZE),
@@ -304,6 +310,11 @@ export function CanopyPane({
         <ContextLossRecovery
           onLost={() => setContextGeneration((generation) => generation + 1)}
         />
+        {showPerformance && (
+          <Suspense fallback={null}>
+            <Perf />
+          </Suspense>
+        )}
         <CameraControlsInner />
         {patterns.length === 0 ? (
           <CheckerPlaceholder renderTarget={renderTarget} />
