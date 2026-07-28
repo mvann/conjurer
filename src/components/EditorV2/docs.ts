@@ -374,6 +374,11 @@ The current type is marked. Choosing a type resets the segment's parameters; sel
 
 Below the types sit the Snap to options; right click empty space to reach those on their own.`,
   },
+  "opacity-row": {
+    title: "Opacity",
+    short: "auto crossfades on overlap. Click to take manual control.",
+    long: `The block's output opacity, applied after its whole effect chain. On auto, overlapping blocks in a layer crossfade into each other with equal power; nothing is stored. Click auto to take manual control: the value becomes a constant you can scrub, saved with the experience. Right click for Reset to Auto, or Add Automation Lane to shape opacity over time.`,
+  },
   "layer-row": {
     title: "Layer",
     short: "Double click the name to rename. Eye hides. Trash removes.",

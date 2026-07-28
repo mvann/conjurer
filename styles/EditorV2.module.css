@@ -205,6 +205,26 @@
   user-select: none;
 }
 
+/* The opacity row's "auto" state: a quiet word where the number
+   would be; clicking it takes manual control. */
+.opacityAutoButton {
+  background: none;
+  border: none;
+  border-bottom: 1px solid transparent;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 13px;
+  font-style: italic;
+  letter-spacing: 0.6px;
+  color: #6d7385;
+  cursor: pointer;
+  padding: 0 2px;
+  transition: color 0.18s ease;
+}
+
+.opacityAutoButton:hover {
+  color: #cdd6ea;
+}
+
 /* Bottom-right of the region editor: the two backdrop toggle buttons
    (teardrop = canopy, bars = waveform), side by side. */
 .backdropToggles {

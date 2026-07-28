@@ -50,8 +50,10 @@ export function ScrubbableNumber({
   };
 
   const commit = (value: number) => {
-    onUserEdit?.();
     param.value = value;
+    // After the write, so a handler can read the committed value
+    // (the opacity row writes it through into its region).
+    onUserEdit?.();
     setDisplayValue(value);
     // Param mutations happen outside React state; tell the autosave.
     window.dispatchEvent(new Event(EDITOR_DIRTY_EVENT));

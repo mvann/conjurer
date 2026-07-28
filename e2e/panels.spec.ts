@@ -188,6 +188,47 @@ test.describe("layout and layers panel", () => {
     ).toBeGreaterThan(4);
   });
 
+  test("opacity: auto by default; manual writes through; reset returns", async ({
+    page,
+  }) => {
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+    const opacityRegions = () =>
+      page.evaluate(
+        () =>
+          (window as any).__editorStore.layers[0].getAllBlocks()[0]
+            .parameterVariations.u_opacity?.length ?? 0,
+      );
+
+    // Auto: no stored regions, the row reads "auto".
+    const row = page.locator("[data-doc=opacity-row]");
+    await expect(row).toContainText("auto");
+    expect(await opacityRegions()).toBe(0);
+
+    // Click auto: a lone constant materializes; the scrub appears.
+    await row.getByRole("button", { name: "auto" }).click();
+    expect(await opacityRegions()).toBe(1);
+    await expect(row.locator("[class*=paramScrub]")).toHaveText("1");
+
+    // Scrub writes through to the constant region.
+    await row.locator("[class*=paramScrub]").click();
+    const input = row.locator("[class*=paramInput]");
+    await input.fill("0.4");
+    await input.press("Enter");
+    const constant = await page.evaluate(() => {
+      const regions = (window as any).__editorStore.layers[0].getAllBlocks()[0]
+        .parameterVariations.u_opacity;
+      return regions[0].nodes.map((n: any) => n.value);
+    });
+    expect(constant.every((v: number) => Math.abs(v - 0.4) < 1e-6)).toBe(true);
+
+    // Reset to Auto deletes the entry.
+    await row.click({ button: "right" });
+    await page.getByRole("button", { name: "Reset to Auto" }).click();
+    expect(await opacityRegions()).toBe(0);
+    await expect(row).toContainText("auto");
+  });
+
   test("effects add, reorder, and remove on a block", async ({ page }) => {
     await openPatternPanel(page);
     await insertPattern(page, "Nebula");

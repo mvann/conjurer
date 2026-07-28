@@ -29,6 +29,7 @@ import { effectLibrary } from "@/src/components/EditorV2/patternLibrary";
 import { useStore } from "@/src/types/StoreContext";
 import { Layer } from "@/src/types/Layer";
 import { Block } from "@/src/types/Block";
+import { CurveVariation } from "@/src/types/Variations/CurveVariation";
 import { Vector4 } from "three";
 
 const formatParamValue = (value: ParamType) => {
@@ -82,10 +83,12 @@ export const LayersPanel = observer(function LayersPanel({
     x: number;
     y: number;
   } | null>(null);
-  // Right-click menu on a param row: Add Automation Lane.
+  // Right-click menu on a param row: Add Automation Lane (and, on the
+  // opacity row, Reset to Auto).
   const [paramMenu, setParamMenu] = useState<{
     block: Block;
     uniform: string;
+    isOpacity?: boolean;
     x: number;
     y: number;
   } | null>(null);
@@ -149,6 +152,58 @@ export const LayersPanel = observer(function LayersPanel({
     copy.setTiming({ startTime: block.startTime, duration: block.duration });
     layer.addBlock(copy);
   });
+
+  // The opacity pseudo-param (decision 25): u_opacity is a base
+  // uniform their param lists hide, but every pattern block carries
+  // it. Absent regions mean AUTO (upstream derives crossfades from
+  // overlaps); clicking auto materializes a lone constant the scrub
+  // then writes through to; right-click offers Reset to Auto.
+  const renderOpacityRow = (block: Block) => {
+    const param = block.pattern.params.u_opacity as
+      | PatternParam<number>
+      | undefined;
+    if (!param) return null;
+    const hasManual = (block.parameterVariations.u_opacity?.length ?? 0) > 0;
+    const writeThrough = action(() => {
+      const value = typeof param.value === "number" ? param.value : 1;
+      block.parameterVariations.u_opacity = [
+        CurveVariation.flat(block.duration, value),
+      ];
+      block.triggerVariationReactions("u_opacity");
+    });
+    return (
+      <li
+        key="u_opacity"
+        data-doc="opacity-row"
+        className={styles.paramRow}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setParamMenu({
+            block,
+            uniform: "u_opacity",
+            isOpacity: true,
+            x: event.clientX,
+            y: event.clientY,
+          });
+        }}
+      >
+        <span className={styles.paramName}>Opacity</span>
+        {hasManual ? (
+          <ScrubbableNumber param={param} onUserEdit={writeThrough} />
+        ) : (
+          <button
+            className={styles.opacityAutoButton}
+            onClick={action(() => {
+              param.value = 1;
+              writeThrough();
+            })}
+          >
+            auto
+          </button>
+        )}
+      </li>
+    );
+  };
 
   const renderParamRows = (block: Block, pattern: Pattern) =>
     Object.entries(pattern.params)
@@ -282,6 +337,7 @@ export const LayersPanel = observer(function LayersPanel({
         {expanded && (
           <>
             <ul className={styles.paramList}>
+              {renderOpacityRow(block)}
               {renderParamRows(block, block.pattern)}
             </ul>
             {block.effectBlocks.map((effect, effectIndex) => (
@@ -500,6 +556,18 @@ export const LayersPanel = observer(function LayersPanel({
           >
             Add Automation Lane
           </button>
+          {paramMenu.isOpacity && (
+            <button
+              className={styles.contextMenuItem}
+              onClick={action(() => {
+                delete paramMenu.block.parameterVariations.u_opacity;
+                paramMenu.block.triggerVariationReactions("u_opacity");
+                setParamMenu(null);
+              })}
+            >
+              Reset to Auto
+            </button>
+          )}
         </div>
       )}
 
