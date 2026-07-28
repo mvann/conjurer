@@ -56,8 +56,8 @@ build, per the owner's instruction: keep going, track, review after.
   self-sizing pane. lanes.spec (5 tests) loads a fixture experience
   through store.experienceStore.loadExperience.
 - NEXT, in order:
-  1. Block timing drags on the bar (decision 10): left/right edge
-     trim (regions untouched, decision 16), whole-bar move; dimmed
+  1. DONE (de36c55): block timing drags (move, edge trims via their
+     Layer APIs; regions untouched; three-gesture e2e). Dimmed
      zones arrive with the editor re-base.
   2. Expanded editor re-base (the monster): AutomationEditorView
      rewritten against CurveVariation nodes + region segments,
