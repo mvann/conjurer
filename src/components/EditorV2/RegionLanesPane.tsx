@@ -227,7 +227,15 @@ const MIN_PANE_HEIGHT = 140;
 const maxPaneHeight = () =>
   typeof window === "undefined" ? 480 : window.innerHeight * 0.45;
 
-export const RegionLanesPane = observer(function RegionLanesPane() {
+type Props = {
+  selectedLane: { blockId: string; uniform: string } | null;
+  onSelectLane: (blockId: string, uniform: string) => void;
+};
+
+export const RegionLanesPane = observer(function RegionLanesPane({
+  selectedLane,
+  onSelectLane,
+}: Props) {
   const store = useStore();
 
   // The pane sizes to its rows (like the legacy pane): layer headers,
@@ -284,10 +292,16 @@ export const RegionLanesPane = observer(function RegionLanesPane() {
                   return (
                     <div
                       key={uniform}
-                      className={styles.laneRow}
+                      className={`${styles.laneRow} ${
+                        selectedLane?.blockId === block.id &&
+                        selectedLane.uniform === uniform
+                          ? styles.laneRowSelected
+                          : ""
+                      }`}
                       data-lane-key={`${block.id}/${uniform}`}
                       data-doc="lane-row"
                       style={{ height: expanded ? 48 : 18 }}
+                      onClick={() => onSelectLane(block.id, uniform)}
                     >
                       <span className={styles.laneLabel}>
                         <span className={styles.laneLabelText}>
@@ -295,7 +309,10 @@ export const RegionLanesPane = observer(function RegionLanesPane() {
                         </span>
                         <button
                           className={styles.laneControlButton}
-                          onClick={action(() => block.toggleParamLane(uniform))}
+                          onClick={action((event: React.MouseEvent) => {
+                            event.stopPropagation();
+                            block.toggleParamLane(uniform);
+                          })}
                           aria-label={expanded ? "Shrink lane" : "Expand lane"}
                         >
                           {expanded ? "–" : "+"}

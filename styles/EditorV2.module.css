@@ -196,6 +196,27 @@
   user-select: none;
 }
 
+/* ---- Region editor ---- */
+
+.editorDimZone {
+  fill: rgba(4, 3, 10, 0.55);
+  pointer-events: none;
+}
+
+.regionBoundaryLine {
+  stroke: rgba(232, 236, 244, 0.14);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+/* Invisible click/context target covering each span. */
+.spanHit {
+  fill: transparent;
+  pointer-events: all;
+  cursor: default;
+}
+
 /* ---- Region lanes (layer -> block -> parameter hierarchy) ---- */
 
 .laneLayerRow {
@@ -252,6 +273,10 @@
 
 .laneShrunk {
   opacity: 0.55;
+}
+
+.laneRowSelected {
+  background: rgba(169, 188, 228, 0.07);
 }
 
 .lanePreviewSvg {

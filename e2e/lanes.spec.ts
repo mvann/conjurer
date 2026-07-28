@@ -187,6 +187,121 @@ test.describe("region lanes", () => {
     );
   });
 
+  test("editor: open, add and delete nodes, split a wave, retype, inspector", async ({
+    page,
+  }) => {
+    await loadFixture(page);
+    const laneState = () =>
+      page.evaluate(() => {
+        const block = (window as any).__editorStore.layers[0].getAllBlocks()[0];
+        return block.parameterVariations.u_timeFactor.map((region: any) => ({
+          type: region.type,
+          nodes: region.nodes?.length ?? 0,
+        }));
+      });
+
+    // Open the ramp lane; the pane label names the path.
+    await page.locator("[data-doc=lane-row]").first().click();
+    await expect(page.locator("[data-doc=automation-editor]")).toBeVisible();
+    await expect(page.locator("[class*=paneLabel]").first()).toContainText(
+      "Automation · Nebula · Time Factor",
+    );
+
+    // The baked ramp is one curve region with two nodes -> two dots.
+    expect(await laneState()).toEqual([{ type: "curve", nodes: 2 }]);
+    await expect(page.locator("[data-doc=keyframe]")).toHaveCount(2);
+
+    // Double-click mid-span: a node lands there.
+    const area = (await page.locator("[data-doc=editor-area]").boundingBox())!;
+    await page.mouse.dblclick(
+      area.x + area.width * 0.5,
+      area.y + area.height * 0.5,
+    );
+    await expect(page.locator("[data-doc=keyframe]")).toHaveCount(3);
+    expect(await laneState()).toEqual([{ type: "curve", nodes: 3 }]);
+
+    // Right-click ON the curve inside the first span (nodes are now
+    // (0,0)(30,0.5)(60,1), so at x=25% the ramp sits at value 0.25 ->
+    // 75% down): retype the span to a Wave.
+    await page.mouse.click(
+      area.x + area.width * 0.25,
+      area.y + area.height * 0.75,
+      { button: "right" },
+    );
+    await expect(page.locator("[data-doc=retype-menu]")).toBeVisible();
+    await page.getByRole("button", { name: "Wave", exact: true }).click();
+    const types = (await laneState()).map((region: any) => region.type);
+    expect(types).toContain("periodic");
+
+    // Click the wave's span: the inspector opens with Frequency.
+    const waveSpanIndex = types.indexOf("periodic");
+    await page
+      .locator("[data-doc=span-hit]")
+      .nth(waveSpanIndex)
+      .click({ force: true });
+    await expect(page.locator("[data-doc=segment-inspector]")).toBeVisible();
+    await expect(page.locator("[data-doc=segment-inspector]")).toContainText(
+      "Frequency",
+    );
+
+    // Double-click inside the wave: it splits into two periodics.
+    const before = (await laneState()).filter(
+      (region: any) => region.type === "periodic",
+    ).length;
+    const waveSpan = page.locator("[data-doc=span-hit]").nth(waveSpanIndex);
+    const waveBox = (await waveSpan.boundingBox())!;
+    await page.mouse.dblclick(
+      waveBox.x + waveBox.width / 2,
+      area.y + area.height * 0.5,
+    );
+    const after = (await laneState()).filter(
+      (region: any) => region.type === "periodic",
+    ).length;
+    expect(after).toBe(before + 1);
+
+    // Escape peels: selection first, then the editor closes.
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-doc=segment-inspector]")).toHaveCount(0);
+    await page.keyboard.press("Escape");
+    await expect(page.locator("[data-doc=automation-editor]")).toHaveCount(0);
+  });
+
+  test("editor: node value entry via right-click; snap menu on empty area", async ({
+    page,
+  }) => {
+    await loadFixture(page);
+    await page.locator("[data-doc=lane-row]").first().click();
+    await expect(page.locator("[data-doc=automation-editor]")).toBeVisible();
+
+    // Right-click a node: type an exact value, Enter commits.
+    await page
+      .locator("[data-doc=keyframe]")
+      .first()
+      .click({ button: "right" });
+    const input = page.locator("[data-doc=keyframe-value]");
+    await expect(input).toBeVisible();
+    await input.fill("0.62");
+    await input.press("Enter");
+    const firstNodeValue = await page.evaluate(() => {
+      const block = (window as any).__editorStore.layers[0].getAllBlocks()[0];
+      return block.parameterVariations.u_timeFactor[0].nodes[0].value;
+    });
+    expect(firstNodeValue).toBeCloseTo(0.62, 6);
+
+    // Right-click empty area: the snap menu with Off active (grid and
+    // transients disabled without a song).
+    const area = (await page.locator("[data-doc=editor-area]").boundingBox())!;
+    await page.mouse.click(area.x + area.width * 0.5, area.y + 10, {
+      button: "right",
+    });
+    const menu = page.locator("[data-doc=snap-menu]");
+    await expect(menu).toBeVisible();
+    await expect(menu.getByRole("button", { name: "Off" })).toHaveClass(
+      /contextMenuItemActive/,
+    );
+    await expect(menu.getByRole("button", { name: "BPM Grid" })).toBeDisabled();
+  });
+
   test("the baked pipeline drives the canopy from fixture regions", async ({
     page,
   }) => {

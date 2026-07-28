@@ -5,6 +5,8 @@ import { useRouter } from "next/router";
 import styles from "@/styles/EditorV2.module.css";
 import { CanopyPane } from "@/src/components/EditorV2/CanopyPane";
 import { RegionLanesPane } from "@/src/components/EditorV2/RegionLanesPane";
+import { RegionEditorView } from "@/src/components/EditorV2/RegionEditorView";
+import { formatDisplayName } from "@/src/components/EditorV2/formatDisplayName";
 import { LayersPanel } from "@/src/components/EditorV2/LayersPanel";
 import { transportTime } from "@/src/components/EditorV2/timeViewport";
 import { TimelineStrip } from "@/src/components/EditorV2/TimelineStrip";
@@ -44,6 +46,17 @@ export const EditorV2Page = observer(function EditorV2Page() {
   // Detected onset times (fractions of the song), for snap-to-transient
   // editing.
   const [transients, setTransients] = useState<number[] | null>(null);
+  // The lane open in the expanded editor, if any.
+  const [selectedLane, setSelectedLane] = useState<{
+    blockId: string;
+    uniform: string;
+  } | null>(null);
+  const selectedBlock = selectedLane
+    ? store.layers
+        .flatMap((layer) => layer.getAllBlocks())
+        .flatMap((block) => [block, ...block.effectBlocks])
+        .find((block) => block.id === selectedLane.blockId)
+    : undefined;
 
   const addPatternToLayer = action((layer: Layer, factory: () => Pattern) => {
     const block = new Block(store, factory());
@@ -140,14 +153,35 @@ export const EditorV2Page = observer(function EditorV2Page() {
         <LayersPanel onAddPattern={addPatternToLayer} />
         <div className={styles.mainColumn}>
           <section className={styles.canopyPane} data-doc="canopy">
-            <div className={styles.paneLabel}>Canopy</div>
+            <div className={styles.paneLabel}>
+              {selectedLane && selectedBlock
+                ? `Automation · ${formatDisplayName(
+                    selectedBlock.pattern.name,
+                  )} · ${formatDisplayName(
+                    selectedBlock.pattern.params[selectedLane.uniform]?.name ??
+                      selectedLane.uniform,
+                  )}`
+                : "Canopy"}
+            </div>
             <CanopyPane patterns={visiblePatterns} dust={dust} />
-            <CanopyControls
-              volume={volume}
-              onVolumeChange={setVolume}
-              dust={dust}
-              onDustChange={setDust}
-            />
+            {selectedLane && selectedBlock && (
+              <RegionEditorView
+                key={`${selectedLane.blockId}:${selectedLane.uniform}`}
+                block={selectedBlock}
+                uniform={selectedLane.uniform}
+                beatGrid={beatGrid}
+                transients={transients}
+                onClose={() => setSelectedLane(null)}
+              />
+            )}
+            {!selectedLane && (
+              <CanopyControls
+                volume={volume}
+                onVolumeChange={setVolume}
+                dust={dust}
+                onDustChange={setDust}
+              />
+            )}
           </section>
 
           <TimelineStrip
@@ -158,7 +192,16 @@ export const EditorV2Page = observer(function EditorV2Page() {
             onTransientsChange={setTransients}
           />
 
-          <RegionLanesPane />
+          <RegionLanesPane
+            selectedLane={selectedLane}
+            onSelectLane={(blockId, uniform) =>
+              setSelectedLane((current) =>
+                current?.blockId === blockId && current.uniform === uniform
+                  ? null
+                  : { blockId, uniform },
+              )
+            }
+          />
         </div>
       </div>
 
