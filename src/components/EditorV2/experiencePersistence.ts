@@ -175,6 +175,58 @@ export const restoreEntries = (
   });
 };
 
+// Deep-copies a stack entry: fresh pattern and effect instances carrying
+// the same values, fresh ids, and the automation remapped onto the new
+// effect ids. The copy shares nothing live with the source, so editing
+// one never bleeds into the other.
+export const duplicateStackEntry = (
+  source: StackEntry,
+  allocateId: () => number,
+): StackEntry | null => {
+  const factory = patternFactoryByName(source.pattern.name);
+  if (!factory) return null;
+  const pattern = factory();
+  applyParams(pattern, serializeParams(source.pattern));
+
+  const effectIds = new Map<number, number>();
+  const effects = source.effects.flatMap((effect) => {
+    const effectFactory = effectFactoryByName(effect.pattern.name);
+    if (!effectFactory) return [];
+    const effectPattern = effectFactory();
+    applyParams(effectPattern, serializeParams(effect.pattern));
+    const id = allocateId();
+    effectIds.set(effect.id, id);
+    return [{ id, pattern: effectPattern }];
+  });
+
+  // Effect lanes are keyed by effect id; point them at the copies.
+  const remapLaneKey = (laneKey: string) => {
+    const match = laneKey.match(/^effect:(\d+):(.*)$/);
+    if (!match) return laneKey;
+    const mapped = effectIds.get(Number(match[1]));
+    return mapped === undefined ? null : `effect:${mapped}:${match[2]}`;
+  };
+  const automatedParams = source.automatedParams.flatMap((laneKey) => {
+    const mapped = remapLaneKey(laneKey);
+    return mapped ? [mapped] : [];
+  });
+  const automation: Record<string, AutomationCurve> = {};
+  for (const [laneKey, curve] of Object.entries(source.automation)) {
+    const mapped = remapLaneKey(laneKey);
+    if (mapped) automation[mapped] = JSON.parse(JSON.stringify(curve));
+  }
+
+  return {
+    id: allocateId(),
+    pattern,
+    effects,
+    visible: source.visible,
+    expanded: source.expanded,
+    automatedParams,
+    automation,
+  };
+};
+
 const readSlot = (key: string): SerializedEditorState | null => {
   try {
     const raw = localStorage.getItem(key);

@@ -219,6 +219,57 @@ test.describe("layout and pattern panel", () => {
     ]);
   });
 
+  test("right click duplicates a pattern with params and automation", async ({
+    page,
+  }) => {
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+
+    // Give the original a distinctive value and an automation lane, so
+    // the copy has something real to carry over.
+    const timeFactorRow = (index: number) =>
+      page
+        .locator("[data-doc=param-row]")
+        .filter({ hasText: "Time Factor" })
+        .nth(index);
+    await timeFactorRow(0).locator("[class*=paramScrub]").click();
+    const input = timeFactorRow(0).locator("[class*=paramInput]");
+    await input.fill("0.5");
+    await input.press("Enter");
+    await addLaneOnParam(page, "Warp");
+
+    await page
+      .locator("[data-doc=pattern-row]")
+      .first()
+      .click({ button: "right" });
+    await page.getByRole("button", { name: "Duplicate" }).click();
+
+    // The copy lands below the original: same name, same values, and
+    // the Warp lane came along.
+    await expect(page.locator("[class*=patternName]")).toHaveCount(2);
+    await expect(page.locator("[class*=patternName]").nth(1)).toHaveText(
+      "Nebula",
+    );
+    await expect(timeFactorRow(1).locator("[class*=paramScrub]")).toHaveText(
+      "0.5",
+    );
+    await closePanel(page);
+    await expect(page.locator("[class*=laneRow]")).toHaveCount(2);
+
+    // The copy is independent: editing it leaves the original alone.
+    await openPatternPanel(page);
+    await timeFactorRow(1).locator("[class*=paramScrub]").click();
+    const copyInput = timeFactorRow(1).locator("[class*=paramInput]");
+    await copyInput.fill("0.9");
+    await copyInput.press("Enter");
+    await expect(timeFactorRow(1).locator("[class*=paramScrub]")).toHaveText(
+      "0.9",
+    );
+    await expect(timeFactorRow(0).locator("[class*=paramScrub]")).toHaveText(
+      "0.5",
+    );
+  });
+
   test("visibility toggle and trash work", async ({ page }) => {
     await openPatternPanel(page);
     await insertPattern(page);

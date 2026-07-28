@@ -167,8 +167,9 @@ Inside: expand a pattern's row with the caret to reach its parameters, toggle it
   },
   "pattern-row": {
     title: "Pattern",
-    short: "Caret expands parameters. Eye toggles visibility. Trash removes.",
-    long: `Use the caret to expand this pattern's parameters and effects. Use the eye to show or hide it on the canopy; hiding keeps its settings and automation intact. Use the trash to remove it from the stack entirely, which also removes its automation lanes (undo restores everything).
+    short:
+      "Caret expands parameters. Eye toggles visibility. Trash removes. Right click to duplicate.",
+    long: `Use the caret to expand this pattern's parameters and effects. Use the eye to show or hide it on the canopy; hiding keeps its settings and automation intact. Use the trash to remove it from the stack entirely, which also removes its automation lanes (undo restores everything). Right click the row and choose Duplicate for a full copy of the pattern, parameters, effects, and automation included, inserted just below it.
 
 All visible patterns render at once, summed together; hide others to isolate the one being adjusted.`,
   },

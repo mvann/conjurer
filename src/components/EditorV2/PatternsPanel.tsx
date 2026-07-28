@@ -78,6 +78,7 @@ type Props = {
   onAdd: (factory: () => Pattern) => void;
   onUpdate: (id: number, update: Partial<StackEntry>) => void;
   onRemove: (id: number) => void;
+  onDuplicate: (id: number) => void;
   onAddEffect: (entryId: number, factory: () => Pattern) => void;
   onRemoveEffect: (entryId: number, effectId: number) => void;
   onMoveEffect: (entryId: number, effectId: number, delta: -1 | 1) => void;
@@ -93,9 +94,11 @@ type Props = {
 // Patterns stack top to bottom; each row expands to reveal its parameters.
 // Adding widens the panel to reveal the add column (AddPatternPane). The
 // stack itself lives in EditorV2Page so the canopy can render it.
-type ParamContextMenu = {
+type PanelContextMenu = {
   entryId: number;
-  uniform: string;
+  // A lane key for a parameter row's menu; null for the pattern row's
+  // own menu (Duplicate).
+  uniform: string | null;
   x: number;
   y: number;
 };
@@ -105,6 +108,7 @@ export function PatternsPanel({
   onAdd,
   onUpdate,
   onRemove,
+  onDuplicate,
   onAddEffect,
   onRemoveEffect,
   onMoveEffect,
@@ -119,7 +123,7 @@ export function PatternsPanel({
   useEffect(() => {
     if (assigning) setIsOpen(true);
   }, [assigning]);
-  const [contextMenu, setContextMenu] = useState<ParamContextMenu | null>(null);
+  const [contextMenu, setContextMenu] = useState<PanelContextMenu | null>(null);
   // The entry whose inline effect picker is open, if any.
   const [effectPickerFor, setEffectPickerFor] = useState<number | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
@@ -325,9 +329,10 @@ export function PatternsPanel({
     ? entries.find((entry) => entry.id === contextMenu.entryId)
     : undefined;
   const menuHasLane =
-    !!contextMenu && !!menuEntry?.automatedParams.includes(contextMenu.uniform);
+    contextMenu?.uniform != null &&
+    !!menuEntry?.automatedParams.includes(contextMenu.uniform);
   const menuCurve =
-    contextMenu && menuHasLane
+    contextMenu?.uniform != null && menuHasLane
       ? menuEntry?.automation[contextMenu.uniform]
       : undefined;
   // Only a curve with keyframes can be disabled; an empty lane drives
@@ -335,11 +340,12 @@ export function PatternsPanel({
   const menuCanToggleActive = !!menuCurve && menuCurve.keyframes.length > 0;
 
   const toggleAutomationActive = () => {
-    if (!contextMenu || !menuEntry || !menuCurve) return;
+    const laneKey = contextMenu?.uniform;
+    if (!contextMenu || laneKey == null || !menuEntry || !menuCurve) return;
     onUpdate(contextMenu.entryId, {
       automation: {
         ...menuEntry.automation,
-        [contextMenu.uniform]: {
+        [laneKey]: {
           ...menuCurve,
           active: !isCurveActive(menuCurve),
         },
@@ -349,20 +355,21 @@ export function PatternsPanel({
   };
 
   const toggleAutomationLane = () => {
-    if (!contextMenu || !menuEntry) return;
+    const laneKey = contextMenu?.uniform;
+    if (!contextMenu || laneKey == null || !menuEntry) return;
     if (menuHasLane) {
       // Deleting the lane also discards its curve.
       const automation = { ...menuEntry.automation };
-      delete automation[contextMenu.uniform];
+      delete automation[laneKey];
       onUpdate(contextMenu.entryId, {
         automatedParams: menuEntry.automatedParams.filter(
-          (uniform) => uniform !== contextMenu.uniform,
+          (uniform) => uniform !== laneKey,
         ),
         automation,
       });
     } else {
       onUpdate(contextMenu.entryId, {
-        automatedParams: [...menuEntry.automatedParams, contextMenu.uniform],
+        automatedParams: [...menuEntry.automatedParams, laneKey],
       });
     }
     setContextMenu(null);
@@ -419,7 +426,19 @@ export function PatternsPanel({
                   key={entry.id}
                   className={entry.visible ? "" : styles.patternHidden}
                 >
-                  <div className={styles.patternRow} data-doc="pattern-row">
+                  <div
+                    className={styles.patternRow}
+                    data-doc="pattern-row"
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      setContextMenu({
+                        entryId: entry.id,
+                        uniform: null,
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
+                    }}
+                  >
                     <button
                       data-doc="pattern-expand"
                       className={styles.rowButton}
@@ -455,6 +474,9 @@ export function PatternsPanel({
                       }}
                       onContextMenu={(event) => {
                         event.preventDefault();
+                        // Keep the row's own menu (Duplicate) from
+                        // replacing the eye's lane menu as this bubbles.
+                        event.stopPropagation();
                         setContextMenu({
                           entryId: entry.id,
                           uniform: VISIBILITY_PARAM,
@@ -605,21 +627,35 @@ export function PatternsPanel({
           className={styles.contextMenu}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
-          <button
-            className={styles.contextMenuItem}
-            onClick={toggleAutomationLane}
-          >
-            {menuHasLane ? "Delete Automation Lane" : "Add Automation Lane"}
-          </button>
-          {menuCanToggleActive && (
+          {contextMenu.uniform === null ? (
             <button
               className={styles.contextMenuItem}
-              onClick={toggleAutomationActive}
+              onClick={() => {
+                onDuplicate(contextMenu.entryId);
+                setContextMenu(null);
+              }}
             >
-              {isCurveActive(menuCurve)
-                ? "Disable Automation"
-                : "Re-enable Automation"}
+              Duplicate
             </button>
+          ) : (
+            <>
+              <button
+                className={styles.contextMenuItem}
+                onClick={toggleAutomationLane}
+              >
+                {menuHasLane ? "Delete Automation Lane" : "Add Automation Lane"}
+              </button>
+              {menuCanToggleActive && (
+                <button
+                  className={styles.contextMenuItem}
+                  onClick={toggleAutomationActive}
+                >
+                  {isCurveActive(menuCurve)
+                    ? "Disable Automation"
+                    : "Re-enable Automation"}
+                </button>
+              )}
+            </>
           )}
         </div>
       )}

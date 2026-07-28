@@ -23,6 +23,7 @@ import { TimelineStrip } from "@/src/components/EditorV2/TimelineStrip";
 import { DocsStrip } from "@/src/components/EditorV2/DocsStrip";
 import { CanopyControls } from "@/src/components/EditorV2/CanopyControls";
 import {
+  duplicateStackEntry,
   EDITOR_DIRTY_EVENT,
   loadAutosave,
   loadSave,
@@ -281,6 +282,23 @@ export function EditorV2Page() {
 
   const removeEntry = (id: number) => {
     setEntries((current) => current.filter((entry) => entry.id !== id));
+    scheduleAutosave();
+  };
+
+  // Deep copy of a pattern entry (params, effects, automation), inserted
+  // right below the original.
+  const duplicateEntry = (id: number) => {
+    setEntries((current) => {
+      const index = current.findIndex((entry) => entry.id === id);
+      if (index < 0) return current;
+      const copy = duplicateStackEntry(current[index], allocateId);
+      if (!copy) return current;
+      return [
+        ...current.slice(0, index + 1),
+        copy,
+        ...current.slice(index + 1),
+      ];
+    });
     scheduleAutosave();
   };
 
@@ -589,6 +607,7 @@ export function EditorV2Page() {
           onAdd={addPattern}
           onUpdate={updateEntry}
           onRemove={removeEntry}
+          onDuplicate={duplicateEntry}
           onAddEffect={addEffect}
           onRemoveEffect={removeEffect}
           onMoveEffect={moveEffect}
