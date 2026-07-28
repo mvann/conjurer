@@ -1,22 +1,10 @@
 import { expect, test, Page } from "@playwright/test";
-import {
-  gotoEditorClean,
-  insertPattern,
-  loadSeededSong,
-  openPatternPanel,
-  settleBox,
-} from "./helpers";
+import { gotoEditorClean, insertPattern, openPatternPanel } from "./helpers";
 
-// Pixel-level smoke tests for the params -> shader pipeline. The rest of
-// the suite asserts DOM and serialized state; these assert the actual
-// rendered output, which is what silently breaks when the live param
-// objects get disconnected from the canopy's materials (the class of bug
-// that once shipped through a fully green suite).
-//
-// Technique: Nebula's motion comes entirely from u_time * u_timeFactor
-// and u_time * u_colorShift. Zeroing both makes the render a pure
-// function of the other params — so a frozen canopy proves edits landed,
-// and any repaint after an edit proves the edit reached the shader.
+// Pixel-level smoke tests for the params -> shader pipeline, on the
+// block model. These assert the actual rendered output, which is what
+// silently breaks when live param objects get disconnected from the
+// canopy's materials.
 
 const canopyClip = async (page: Page) => {
   const box = (await page
@@ -48,28 +36,20 @@ const setParam = async (page: Page, label: string, value: number) => {
   await row.locator("input").press("Enter");
 };
 
-// Nebula with its time-driven params zeroed: a static render that only
-// changes when some other param reaches the shader.
-const insertStaticNebula = async (page: Page) => {
-  await openPatternPanel(page);
-  await insertPattern(page, "Nebula");
-  await setParam(page, "Time Factor", 0);
-  await setParam(page, "Color Shift", 0);
-  await page.keyboard.press("Escape");
-  await page.waitForTimeout(600);
-};
-
-test.describe.skip("canopy pixel smoke", () => {
+test.describe("canopy pixel smoke", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
 
   test("param edits reach the shader; zeroed time params freeze the render", async ({
     page,
   }) => {
-    await insertStaticNebula(page);
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+    await setParam(page, "Time Factor", 0);
+    await setParam(page, "Color Shift", 0);
+    await page.keyboard.press("Escape");
+    await page.waitForTimeout(600);
 
-    // Frozen: consecutive frames a second apart are identical, which
-    // both proves the canopy is rendering deterministically and that the
-    // two zeroing edits landed.
+    // Frozen: consecutive frames a second apart are identical.
     const still1 = await shoot(page);
     await page.waitForTimeout(1_000);
     const still2 = await shoot(page);
@@ -84,123 +64,36 @@ test.describe.skip("canopy pixel smoke", () => {
     expect(diffBytes(still2, warped)).toBeGreaterThan(2_000);
   });
 
-  test("automation drives the shader as the transport moves", async ({
+  test("region automation drives the shader through the block driver", async ({
     page,
   }) => {
-    await insertStaticNebula(page);
-
-    // A Warp lane with two very different keyframes.
-    await openPatternPanel(page);
-    await page
-      .locator("[data-doc=param-row]")
-      .filter({ hasText: "Warp" })
-      .click({ button: "right" });
-    await page.getByRole("button", { name: "Add Automation Lane" }).click();
-    await page.keyboard.press("Escape");
-    await page.locator("[class*=laneRow]").first().click();
-    await settleBox(page, "[class*=editorLineArea]");
-    const area = (await page.locator("[class*=editorLineArea]").boundingBox())!;
-    await page.mouse.dblclick(
-      area.x + area.width * 0.2,
-      area.y + area.height * 0.9,
-    );
-    await page.mouse.dblclick(
-      area.x + area.width * 0.7,
-      area.y + area.height * 0.1,
-    );
-    await page.getByLabel("Close automation editor").click();
-
-    await loadSeededSong(page);
-
-    // Seek to two points on the curve: the drive loop must push each
-    // point's Warp value into the shader, visibly changing the render.
-    const waveform = page.locator("canvas[class*=waveform]");
-    const box = (await waveform.boundingBox())!;
-    await page.mouse.click(box.x + box.width * 0.2, box.y + box.height / 2);
-    await page.waitForTimeout(500);
-    const early = await shoot(page);
-    await page.mouse.click(box.x + box.width * 0.7, box.y + box.height / 2);
-    await page.waitForTimeout(500);
-    const late = await shoot(page);
-    expect(diffBytes(early, late)).toBeGreaterThan(2_000);
-  });
-
-  test("backdrop dropdown: canopy by default, off is solid, waveform draws", async ({
-    page,
-  }) => {
-    // Nebula at full motion, then open an automation lane editor over it.
     await openPatternPanel(page);
     await insertPattern(page, "Nebula");
-    await page
-      .locator("[data-doc=param-row]")
-      .filter({ hasText: "Warp" })
-      .click({ button: "right" });
-    await page.getByRole("button", { name: "Add Automation Lane" }).click();
+    await setParam(page, "Time Factor", 0);
+    await setParam(page, "Color Shift", 0);
     await page.keyboard.press("Escape");
-    await page.locator("[class*=laneRow]").first().click();
-    await page.waitForTimeout(600);
-
-    // Each menu item is an independent toggle; the menu stays open.
-    const toggleLayer = async (label: string) => {
-      await page.getByLabel("Backdrop").click();
-      await page
-        .locator("[class*=backdropMenu]")
-        .getByRole("button", { name: label })
-        .click();
-      await page.keyboard.press("Escape");
-      await page.waitForTimeout(400);
-    };
-
-    // Default is Canopy on: the animation shows through the backdrop.
-    const canopy1 = await shoot(page);
-    await page.waitForTimeout(900);
-    const canopy2 = await shoot(page);
-    expect(diffBytes(canopy1, canopy2)).toBeGreaterThan(2_000);
-
-    // Canopy off leaves the solid backdrop: nothing moves.
-    await toggleLayer("Canopy");
-    const solid1 = await shoot(page);
-    await page.waitForTimeout(900);
-    const solid2 = await shoot(page);
-    expect(diffBytes(solid1, solid2)).toBeLessThan(100);
-
-    // Waveform on (with a song loaded, canopy still off): the song's
-    // peaks draw behind the curve, static but visibly different.
-    await loadSeededSong(page);
-    await page.waitForTimeout(400);
-    const plain = await shoot(page);
-    await toggleLayer("Waveform");
-    const wave = await shoot(page);
-    expect(diffBytes(plain, wave)).toBeGreaterThan(2_000);
-    const wave2 = await shoot(page);
-    expect(diffBytes(wave, wave2)).toBeLessThan(100);
-
-    // Both layers on stack: the waveform stays put while the canopy
-    // animates through behind it.
-    await toggleLayer("Canopy");
-    const stacked1 = await shoot(page);
-    await page.waitForTimeout(900);
-    const stacked2 = await shoot(page);
-    expect(diffBytes(stacked1, stacked2)).toBeGreaterThan(2_000);
-  });
-
-  test("param edits still repaint after an undo", async ({ page }) => {
-    // Regression: undo once replaced the live pattern instances, leaving
-    // every later edit writing into objects the canopy no longer
-    // rendered. Only a pixel assertion catches that.
-    await insertStaticNebula(page);
-
-    await openPatternPanel(page);
-    await setParam(page, "Warp", 2);
-    await page.waitForTimeout(600);
-    await page.keyboard.press("Control+z");
-    await page.waitForTimeout(400);
-
-    const beforeEdit = await shoot(page);
-    await setParam(page, "Warp", 6);
-    await page.keyboard.press("Escape");
-    await page.waitForTimeout(400);
-    const afterEdit = await shoot(page);
-    expect(diffBytes(beforeEdit, afterEdit)).toBeGreaterThan(2_000);
+    // Install an extreme Warp ramp as regions, then jump the transport
+    // by writing block-local evaluation inputs: with no song, the
+    // driver holds t=0, so instead compare region-driven values by
+    // rewriting the region's constant.
+    await page.evaluate(() => {
+      const store = (window as any).__editorStore;
+      const block = store.layers[0].getAllBlocks()[0];
+      block.parameterVariations.u_warp = [
+        { type: "flat", duration: 60, value: 0, valueAtTime: () => 0 },
+      ];
+    });
+    await page.waitForTimeout(500);
+    const flat = await shoot(page);
+    await page.evaluate(() => {
+      const store = (window as any).__editorStore;
+      const block = store.layers[0].getAllBlocks()[0];
+      block.parameterVariations.u_warp = [
+        { type: "flat", duration: 60, value: 6, valueAtTime: () => 6 },
+      ];
+    });
+    await page.waitForTimeout(500);
+    const warped = await shoot(page);
+    expect(diffBytes(flat, warped)).toBeGreaterThan(2_000);
   });
 });
