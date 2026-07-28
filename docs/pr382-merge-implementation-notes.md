@@ -100,28 +100,38 @@ build, per the owner's instruction: keep going, track, review after.
   effect-block lanes in the hierarchy, the promotion gesture
   (right-click param -> Add Automation Lane), arrow-key scan.
 
-REMAINING (in priority order):
-  1. Demo seam: tRPC custom link backed by localStorage + Gandalf
-     user; demo redeploy (deployDemo.sh + workflow target this
-     branch's build).
-  2. Info Strip rewrite: docs.ts entries for every new data-doc
-     (layer-row, add-layer, lane-block, block-bar, editor-area,
-     keyframe, retype-menu, gear*, roles, backdrop-*, autosave...) and
-     copy moved to layer/block vocabulary.
-  3. Opacity pseudo-param row (decision 25): auto/manual/lane
-     tri-state row atop each block's params; right-click Reset to
-     Auto.
-  4. Region clipboard (plan decisions): copy/delete/paste windows
-     (split-at-edges, bridge on delete, overhang paste, overwrite,
-     cross-lane normalization) + their OS-clipboard format.
-  5. Chevron sliver (decision 29).
-  6. Undo: session snapshot undo over store.layers (their store has
-     none; snapshot serialize + identity-preserving restore).
-  7. Spec cleanup: DELETE obsolete parked specs (automation, snap,
-     effects, canopy target the dead keyframe editor); port pixel
-     smoke + snap-with-song coverage onto the region editor.
-  8. Ctrl +/- zoom: parked — v1 region editor has no zoom surface.
+IMPLEMENTATION COMPLETE. Landed after the last checkpoint:
+  - Demo seam (28c78e5): tRPC demo link + Gandalf + seeded shiny-demo
+    row via migration; verified live in a demo-mode dev server.
+  - Undo (caa092c): session snapshots over serialized layers,
+    Cmd+Z / Cmd+Shift+Z, restored through LayerV2.deserialize.
+  - Region clipboard (9f39666): window select / copy (live-preserving
+    slices + OS text format) / bridge-delete / normalized paste at
+    the cursor.
+  - Plus: gear pane, roles, orientation, backdrop toggles, effect
+    lanes, promotion gesture, opacity row, chevron sliver, Info
+    Strip rewrite, transport keys, spec suite fully un-parked
+    (47 passing, 0 skipped).
 
+DEVIATIONS AND PARKED ITEMS (review):
+  - Paste clamps at the block's end (their insertRegion) instead of
+    overhanging; a custom overhang insert is future work.
+  - Ctrl +/- zoom: the v1 region editor has a fixed full-song view;
+    no zoom surface yet.
+  - Bezier handle dragging: nodes move with handles preserved; a
+    handle-editing gesture is future work.
+  - Wave unzip/zip (stacked-pair pull-apart / zero-width cull): not
+    in the v1 editor.
+  - Lane drag-reorder + the shadow order store (decision 21
+    refinement): not implemented; lanes order by declaration.
+  - Save As / user picker use their Chakra modals (functional
+    first); spell-styled slide-outs are a later restyle.
+  - OS-clipboard paste inbound (accepting their copied blocks) not
+    wired; outbound copy speaks their format.
+  - The demo static-export build deploys when this branch merges to
+    dev (workflow triggers on dev pushes).
+  - Upstream PR review comments to post (owner): the auto-fade
+    design pushback and the save-permission-check bug.
 
 ## Additional assumptions (review these)
 
