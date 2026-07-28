@@ -20,11 +20,11 @@ export const docs: Record<string, DocEntry> = {
   welcome: {
     title: "Conjurer Spell Crafter",
     short: "Hover any control for a one line how-to. Press ? for more.",
-    long: `To build an experience: open the pattern editor with the chevron at the left edge, add patterns, set their parameters, load a song with Add Song, and automate parameters over the song by right clicking them.
+    long: `To build an experience: open the layer list with the chevron at the left edge, add a pattern to a layer, set its parameters, load a song with Add Song, and automate parameters by right clicking them and choosing Add Automation Lane.
 
 Hover any control and this strip explains how to use it. Press ? (or /) for the full instructions for that control; press it again, or Escape, to close them.
 
-Undo any change with control z (or command z); add shift to redo. Press Save in the top right to keep your work; everything in between is autosaved.`,
+Save with command s, or from the gear in the top right, which glows while work is unsaved; everything in between lands in a local draft that is offered back on the next open.`,
   },
   experience: {
     title: "Current Experience",
@@ -220,13 +220,6 @@ To automate, right click the component; each component automates individually.`,
 
 Click (a brief press without movement) to type instead: enter a value and press Enter, or Escape to cancel. Typed and dragged values clamp to the parameter's allowed range.`,
   },
-  "add-pattern": {
-    title: "Add Pattern",
-    short: "Opens the pattern library. Pick a tile, then Insert.",
-    long: `Click to open the pattern library. Click a tile to preview it, then press Insert to add it to the bottom of the stack.
-
-To leave without adding, press Cancel, press Escape, or click the exposed edge of the pattern list.`,
-  },
   "pattern-tile": {
     title: "Pattern Library",
     short: "Click to preview. Insert adds it to the stack.",
@@ -307,19 +300,6 @@ While a song is loaded, an active curve drives the parameter. To take manual con
 
 To delete the lane, right click its parameter and choose Delete Automation Lane.`,
   },
-  "automation-editor": {
-    title: "Automation Editor",
-    short: "Double click to add keyframes; drag segments to shape the curve.",
-    long: `Shape the curve directly:
-
-Double click empty space to add a keyframe there; double click a keyframe to delete it. Drag keyframes to move them in time and value; they stop at their neighbors, and can stack on one for an instant step. Right click a keyframe to type its exact value. Drag the middle of a segment up or down to bend it, and right click a segment to change its type (curve, flat, linear, wave, easing). Click a segment to select it and edit its parameters in the inspector card.
-
-Click empty space to place the silver cursor; paste lands there. Drag across empty space to select a window of time, then Copy or Delete it; paste with the corner action or the usual shortcut. Cuts through segments shorten them faithfully: half of a three cycle wave pastes as one and a half cycles.
-
-Right click empty space to set snapping: Off, BPM Grid, or Transients. Use the bottom right toggle to see the canopy through the editor while adjusting. The value scale manages itself; there is no vertical zoom. Scroll and pan time with the minimap.
-
-The glowing vertical line at the left is the start of the song; the gold line is the transport's playhead, which clicks here never move. Escape peels back one layer at a time (menu, selection, highlight) and finally closes the editor.`,
-  },
   "value-swatch": {
     title: "Color Period",
     short: "Click the swatch to edit this span's color or palette.",
@@ -393,6 +373,121 @@ The dashed guides cross at every multiple of an eighth of the range's radius and
 The current type is marked. Choosing a type resets the segment's parameters; select the segment to edit them in the inspector. Splitting a segment with a new keyframe gives both halves the original's type and parameters.
 
 Below the types sit the Snap to options; right click empty space to reach those on their own.`,
+  },
+  "layer-row": {
+    title: "Layer",
+    short: "Double click the name to rename. Eye hides. Trash removes.",
+    long: `Layers are the parallel tracks of an experience: every visible layer renders to the canopy at once, summed together. Double click the layer's name to rename it. The eye hides the layer's blocks from the canopy without touching them (a runtime toggle; it is not saved). The trash removes the layer and its blocks; the last layer cannot be removed.`,
+  },
+  "layer-visibility": {
+    title: "Layer Visibility",
+    short: "Hides this layer's blocks from the canopy. Not saved.",
+    long: `Hides or shows everything on this layer. A hidden layer keeps all of its blocks and automation; only the canopy ignores it. Visibility is a live control and is not part of the saved experience, matching the main experience editor.`,
+  },
+  "layer-remove": {
+    title: "Remove Layer",
+    short: "Removes the layer and all of its blocks.",
+    long: `Removes this layer and every block on it. The last remaining layer cannot be removed.`,
+  },
+  "add-layer": {
+    title: "Add Layer",
+    short: "Adds an empty layer below the others.",
+    long: `Creates a new empty layer. Layers render simultaneously; use them to group blocks you want to manage or hide together.`,
+  },
+  "add-pattern": {
+    title: "Add Pattern",
+    short: "Adds a pattern to this layer as a full-song block.",
+    long: `Opens the pattern library and inserts the chosen pattern into this layer as a block spanning the whole song. Blocks can be trimmed and moved afterward from their bar in the automation lanes.`,
+  },
+  "lane-layer": {
+    title: "Layer Lane",
+    short: "This layer's section of the automation lanes.",
+    long: `Groups the lanes below it by layer, in the same order as the layer list on the left.`,
+  },
+  "lane-block": {
+    title: "Block Lane",
+    short: "The block's time extent. Drag edges to trim, middle to move.",
+    long: `The bar shows when this block plays. Drag its left edge to change the start (the right edge stays put), the right edge to change the duration, or the middle to move the whole block, automation and all. Timing edits never modify the block's automation: regions past a trimmed end simply stop playing, and an extended block holds its last value.`,
+  },
+  "block-bar": {
+    title: "Block Extent",
+    short: "Drag: left edge trims start, right edge duration, middle moves.",
+    long: `Drag the left edge to move the start while the right edge holds. Drag the right edge to grow or trim the duration. Drag the body to move the whole block along the song, keyframes and all.`,
+  },
+  "lane-row": {
+    title: "Automation Lane",
+    short: "Click to edit. The +/- expands or shrinks the preview.",
+    long: `A parameter with automation. Click the lane to open the full editor over the canopy. The small control on the label expands the lane's preview or shrinks it to a single line; which lanes are expanded is shared with the main experience editor's open lanes.`,
+  },
+  "automation-editor": {
+    title: "Automation Editor",
+    short: "Double click to add. Right click a segment to retype it.",
+    long: `The full editor for one lane. The view spans the whole song; the area outside the block is dimmed and inert. Double click empty space to add a keyframe; double click inside a wave to split it. Drag keyframes to move them; drag a wave's edge dots to move its center line. Right click ON the curve to change a segment's type; right click away from the curve for the snap menu; right click a keyframe to type its exact value. Escape steps back one layer at a time.`,
+  },
+  "editor-area": {
+    title: "Editor Area",
+    short: "Double click adds. Drag moves. Right click for menus.",
+    long: `Double click in a curve to add a keyframe there, or inside a wave to split it in two. Right click on the curve to change the segment's type; right click in open space for the snap menu.`,
+  },
+  keyframe: {
+    title: "Keyframe",
+    short: "Drag to move. Double click deletes. Right click types a value.",
+    long: `A point the curve passes through. Drag it in time and value; snapping applies when a snap mode is on. Double click deletes it. Right click opens a small field to type its exact value. The dots at a wave's edges are different: dragging either one moves the wave's whole center line up and down.`,
+  },
+  "retype-menu": {
+    title: "Segment Type",
+    short: "Curve, Wave, or Audio for the clicked segment.",
+    long: `Changes what drives this stretch of the lane. Curve is a freeform line you shape with keyframes. Wave is a live oscillator: it has a frequency, amplitude, phase, and center, set in the inspector, and it never bends with the keyframes around it. Audio follows the song's loudness, live. Converting to Curve bakes whatever was there into keyframes.`,
+  },
+  "backdrop-canopy": {
+    title: "Canopy Backdrop",
+    short: "See the canopy through the editor.",
+    long: `Thins the editor's backdrop so the live canopy shows through behind the curve. On by default.`,
+  },
+  "backdrop-waveform": {
+    title: "Waveform Backdrop",
+    short: "Draw the song's waveform behind the curve.",
+    long: `Draws the loaded song's waveform behind the curve for lining automation up against the music. Stacks with the canopy backdrop.`,
+  },
+  gear: {
+    title: "Settings",
+    short: "Everything else lives in here. Glows when unsaved.",
+    long: `Opens the settings pane: saving and opening experiences, view options, tools, and help. The gear glows while there is unsaved work.`,
+  },
+  "gear-pane": {
+    title: "Settings Pane",
+    short: "File, view, tools, and help, in the main app's order.",
+    long: `The groups mirror the main experience editor's menus: file actions first, then the clipboard, view options, tools, and help. Items that need input slide a second panel out to the left.`,
+  },
+  "gear-item": {
+    title: "Settings Item",
+    short: "Click to act. Underlined items are currently on.",
+    long: `Acts immediately, cycles a setting, or opens a slide-out. Underlined items show an active toggle.`,
+  },
+  "gear-open": {
+    title: "Open Experience",
+    short: "Browse the shared experience library.",
+    long: `Lists every experience in the shared library. Opening one loads it here; anything saved from the main experience editor appears too, because both editors read and write the same experiences.`,
+  },
+  "gear-orientation": {
+    title: "Orientation",
+    short: "Stacked, or canopy beside the automation for wide screens.",
+    long: `Vertical stacks the canopy above the timeline and lanes. Horizontal docks the canopy on the left with the timeline, lanes, and a permanently open automation editor on the right. The setting is shared with the main experience editor.`,
+  },
+  "gear-experience": {
+    title: "Experience",
+    short: "Click to open it here.",
+    long: `Opens this experience in the spell crafter. Unsaved work in the current experience stays in the local draft.`,
+  },
+  "gear-sub-pane": {
+    title: "Settings Detail",
+    short: "The open browser or the shortcut list.",
+    long: `The slide-out beside the settings pane. Escape closes it first, then the pane.`,
+  },
+  roles: {
+    title: "Spell Crafter (alpha)",
+    short: "You are in the spell crafter. Switch faces here.",
+    long: `The conjurer app has several faces; this is the spell crafter, the alternate experience editor. The links jump to the main experience editor, the pattern playground, or the viewer. Experiences travel between the editors because they share one library.`,
   },
   "keyframe-value": {
     title: "Keyframe Value",

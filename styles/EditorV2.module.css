@@ -623,7 +623,9 @@
    reflowing while the width animates. */
 .patternsDock {
   position: relative;
-  width: 0;
+  /* A sliver always sticks out (decision 29), so the chevron inside
+     it is always visible and clickable. */
+  width: 18px;
   height: 100%;
   flex-shrink: 0;
   background: rgba(255, 255, 255, 0.015);
@@ -1440,9 +1442,9 @@
   z-index: 60;
   background: none;
   border: none;
-  padding: 6px 12px;
+  padding: 6px 2px;
   color: #e8ecf4;
-  font-size: 44px;
+  font-size: 26px;
   line-height: 1;
   cursor: pointer;
   user-select: none;
