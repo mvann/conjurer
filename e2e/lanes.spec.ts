@@ -302,6 +302,51 @@ test.describe("region lanes", () => {
     await expect(menu.getByRole("button", { name: "BPM Grid" })).toBeDisabled();
   });
 
+  test("right-click a param arms its lane and opens the editor", async ({
+    page,
+  }) => {
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+    await page
+      .locator("[data-doc=param-row]")
+      .filter({ hasText: "Warp" })
+      .first()
+      .click({ button: "right" });
+    await page.getByRole("button", { name: "Add Automation Lane" }).click();
+    // The editor opens on the promoted lane: a lone constant curve at
+    // the manual value.
+    await expect(page.locator("[data-doc=automation-editor]")).toBeVisible();
+    await expect(page.locator("[class*=paneLabel]").first()).toContainText(
+      "Warp",
+    );
+    const lane = await page.evaluate(() => {
+      const block = (window as any).__editorStore.layers[0].getAllBlocks()[0];
+      return {
+        regions: block.parameterVariations.u_warp.map((r: any) => r.type),
+        armed: [...block.lanedParams],
+      };
+    });
+    expect(lane.regions).toEqual(["curve"]);
+    expect(lane.armed).toContain("u_warp");
+    // Promoted: the lane row shows even though it is constant.
+    await page.keyboard.press("Escape");
+    await expect(page.locator('[data-lane-key$="/u_warp"]')).toHaveCount(1);
+  });
+
+  test("backdrop toggles: teardrop and waveform buttons", async ({ page }) => {
+    await loadFixture(page);
+    await page.locator("[data-doc=lane-row]").first().click();
+    const editor = page.locator("[data-doc=automation-editor]");
+    await expect(editor).toBeVisible();
+    // Canopy defaults on (see-through class present); toggling removes.
+    await expect(editor).toHaveClass(/SeeThrough/);
+    await page.locator("[data-doc=backdrop-canopy]").click();
+    await expect(editor).not.toHaveClass(/SeeThrough/);
+    // The waveform toggle mounts its canvas.
+    await page.locator("[data-doc=backdrop-waveform]").click();
+    await expect(page.locator("[class*=editorWaveformCanvas]")).toHaveCount(1);
+  });
+
   test("the baked pipeline drives the canopy from fixture regions", async ({
     page,
   }) => {

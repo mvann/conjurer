@@ -245,8 +245,9 @@ export const RegionLanesPane = observer(function RegionLanesPane({
     let height = sum + 25; // layer header
     for (const block of layer.getAllBlocks()) {
       height += 30; // block header lane
-      for (const uniform of laneUniforms(block))
-        height += block.lanedParams.has(uniform) ? 48 : 18;
+      for (const laneBlock of [block, ...block.effectBlocks])
+        for (const uniform of laneUniforms(laneBlock))
+          height += laneBlock.lanedParams.has(uniform) ? 48 : 18;
     }
     return height;
   }, 0);
@@ -286,46 +287,54 @@ export const RegionLanesPane = observer(function RegionLanesPane({
                   </span>
                   <BlockHeaderLane block={block} />
                 </div>
-                {laneUniforms(block).map((uniform) => {
-                  const expanded = block.lanedParams.has(uniform);
-                  const param = block.pattern.params[uniform];
-                  return (
-                    <div
-                      key={uniform}
-                      className={`${styles.laneRow} ${
-                        selectedLane?.blockId === block.id &&
-                        selectedLane.uniform === uniform
-                          ? styles.laneRowSelected
-                          : ""
-                      }`}
-                      data-lane-key={`${block.id}/${uniform}`}
-                      data-doc="lane-row"
-                      style={{ height: expanded ? 48 : 18 }}
-                      onClick={() => onSelectLane(block.id, uniform)}
-                    >
-                      <span className={styles.laneLabel}>
-                        <span className={styles.laneLabelText}>
-                          {formatDisplayName(param?.name ?? uniform)}
+                {[block, ...block.effectBlocks].flatMap((laneBlock) =>
+                  laneUniforms(laneBlock).map((uniform) => {
+                    const expanded = laneBlock.lanedParams.has(uniform);
+                    const param = laneBlock.pattern.params[uniform];
+                    const label =
+                      laneBlock === block
+                        ? formatDisplayName(param?.name ?? uniform)
+                        : `${formatDisplayName(
+                            laneBlock.pattern.name,
+                          )} · ${formatDisplayName(param?.name ?? uniform)}`;
+                    return (
+                      <div
+                        key={`${laneBlock.id}/${uniform}`}
+                        className={`${styles.laneRow} ${
+                          selectedLane?.blockId === laneBlock.id &&
+                          selectedLane.uniform === uniform
+                            ? styles.laneRowSelected
+                            : ""
+                        }`}
+                        data-lane-key={`${laneBlock.id}/${uniform}`}
+                        data-doc="lane-row"
+                        style={{ height: expanded ? 48 : 18 }}
+                        onClick={() => onSelectLane(laneBlock.id, uniform)}
+                      >
+                        <span className={styles.laneLabel}>
+                          <span className={styles.laneLabelText}>{label}</span>
+                          <button
+                            className={styles.laneControlButton}
+                            onClick={action((event: React.MouseEvent) => {
+                              event.stopPropagation();
+                              laneBlock.toggleParamLane(uniform);
+                            })}
+                            aria-label={
+                              expanded ? "Shrink lane" : "Expand lane"
+                            }
+                          >
+                            {expanded ? "–" : "+"}
+                          </button>
                         </span>
-                        <button
-                          className={styles.laneControlButton}
-                          onClick={action((event: React.MouseEvent) => {
-                            event.stopPropagation();
-                            block.toggleParamLane(uniform);
-                          })}
-                          aria-label={expanded ? "Shrink lane" : "Expand lane"}
-                        >
-                          {expanded ? "–" : "+"}
-                        </button>
-                      </span>
-                      <LanePreview
-                        block={block}
-                        uniform={uniform}
-                        expanded={expanded}
-                      />
-                    </div>
-                  );
-                })}
+                        <LanePreview
+                          block={laneBlock}
+                          uniform={uniform}
+                          expanded={expanded}
+                        />
+                      </div>
+                    );
+                  }),
+                )}
               </div>
             ))}
           </div>

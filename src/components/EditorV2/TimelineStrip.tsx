@@ -406,16 +406,24 @@ export function TimelineStrip({
     player.current?.setVolume(volume);
   }, [volume, songUrl]);
 
-  // Spacebar toggles play/stop, unless typing in a field. preventDefault
-  // keeps a focused button from also activating on the same press.
+  // Spacebar toggles play/stop; the arrows scan (their shortcut set,
+  // decision 27b) — unless typing in a field. preventDefault keeps a
+  // focused button from also activating on the same press.
   useEffect(() => {
     if (!songUrl) return;
     const onKeyDown = (event: KeyboardEvent) => {
-      if (event.key !== " ") return;
       const target = event.target as HTMLElement;
       if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
-      event.preventDefault();
-      player.current?.playPause();
+      if (event.key === " ") {
+        event.preventDefault();
+        player.current?.playPause();
+      } else if (event.key === "ArrowLeft") {
+        event.preventDefault();
+        player.current?.skip(-10);
+      } else if (event.key === "ArrowRight") {
+        event.preventDefault();
+        player.current?.skip(10);
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

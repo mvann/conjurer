@@ -205,6 +205,37 @@
   user-select: none;
 }
 
+/* Bottom-right of the region editor: the two backdrop toggle buttons
+   (teardrop = canopy, bars = waveform), side by side. */
+.backdropToggles {
+  position: absolute;
+  right: 10px;
+  bottom: 8px;
+  z-index: 4;
+  display: flex;
+  gap: 10px;
+}
+
+.backdropToggle {
+  background: none;
+  border: none;
+  color: #6d7385;
+  cursor: pointer;
+  padding: 3px;
+  display: flex;
+  align-items: center;
+  transition: color 0.18s ease;
+}
+
+.backdropToggle:hover {
+  color: #cdd6ea;
+}
+
+.backdropToggleOn {
+  color: #e8ecf4;
+  filter: drop-shadow(0 0 5px rgba(232, 236, 244, 0.45));
+}
+
 /* ---- Gear pane (settings) ---- */
 
 .gearButton {

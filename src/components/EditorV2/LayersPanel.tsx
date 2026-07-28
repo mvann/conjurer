@@ -44,6 +44,9 @@ const formatParamValue = (value: ParamType) => {
 type Props = {
   // The page owns block timing (it knows the song's duration).
   onAddPattern: (layer: Layer, factory: () => Pattern) => void;
+  // Right-clicking a param row arms its automation lane and opens the
+  // editor on it (the promotion gesture, decision 8).
+  onAddAutomation: (block: Block, uniform: string) => void;
 };
 
 // The layer list: the left dock now mirrors the data model exactly.
@@ -52,6 +55,7 @@ type Props = {
 // eye), matching the main app: a runtime toggle, not serialized.
 export const LayersPanel = observer(function LayersPanel({
   onAddPattern,
+  onAddAutomation,
 }: Props) {
   const store = useStore();
   const [isOpen, setIsOpen] = useState(false);
@@ -78,7 +82,15 @@ export const LayersPanel = observer(function LayersPanel({
     x: number;
     y: number;
   } | null>(null);
+  // Right-click menu on a param row: Add Automation Lane.
+  const [paramMenu, setParamMenu] = useState<{
+    block: Block;
+    uniform: string;
+    x: number;
+    y: number;
+  } | null>(null);
   const blockMenuRef = useRef<HTMLDivElement>(null);
+  const paramMenuRef = useRef<HTMLDivElement>(null);
   // Color and palette values mutate in place; bump to re-render their
   // editors after an edit.
   const [, setEditorBump] = useState(0);
@@ -91,17 +103,20 @@ export const LayersPanel = observer(function LayersPanel({
     return next;
   };
 
-  // Click-away / Esc dismissal for the block menu.
+  // Click-away / Esc dismissal for the context menus.
   useEffect(() => {
-    if (!blockMenu) return;
+    if (!blockMenu && !paramMenu) return;
     const onPointerDown = (event: PointerEvent) => {
       if (blockMenuRef.current?.contains(event.target as Node)) return;
+      if (paramMenuRef.current?.contains(event.target as Node)) return;
       setBlockMenu(null);
+      setParamMenu(null);
     };
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key !== "Escape") return;
       event.stopImmediatePropagation();
       setBlockMenu(null);
+      setParamMenu(null);
     };
     document.addEventListener("pointerdown", onPointerDown);
     window.addEventListener("keydown", onKeyDown, { capture: true });
@@ -109,7 +124,7 @@ export const LayersPanel = observer(function LayersPanel({
       document.removeEventListener("pointerdown", onPointerDown);
       window.removeEventListener("keydown", onKeyDown, { capture: true });
     };
-  }, [blockMenu]);
+  }, [blockMenu, paramMenu]);
 
   // Escape: close the picker first, then the dock.
   useEffect(() => {
@@ -139,10 +154,19 @@ export const LayersPanel = observer(function LayersPanel({
     Object.entries(pattern.params)
       .filter(([uniform]) => !BASE_UNIFORMS.includes(uniform))
       .map(([uniform, param]) => {
+        const openParamMenu = (event: React.MouseEvent) => {
+          event.preventDefault();
+          setParamMenu({ block, uniform, x: event.clientX, y: event.clientY });
+        };
         const components = getParamComponents(param);
         if (!components)
           return (
-            <li key={uniform} data-doc="param-row" className={styles.paramRow}>
+            <li
+              key={uniform}
+              data-doc="param-row"
+              className={styles.paramRow}
+              onContextMenu={openParamMenu}
+            >
               <span className={styles.paramName}>
                 {formatDisplayName(param.name)}
               </span>
@@ -162,7 +186,11 @@ export const LayersPanel = observer(function LayersPanel({
         const isCollapsed = collapsedParams.has(collapseKey);
         return (
           <li key={uniform}>
-            <div data-doc="param-row" className={styles.paramRow}>
+            <div
+              data-doc="param-row"
+              className={styles.paramRow}
+              onContextMenu={openParamMenu}
+            >
               <button
                 className={styles.paramCaret}
                 onClick={() =>
@@ -456,6 +484,24 @@ export const LayersPanel = observer(function LayersPanel({
       >
         {isOpen ? "❮" : "❯"}
       </button>
+
+      {paramMenu && (
+        <div
+          ref={paramMenuRef}
+          className={styles.contextMenu}
+          style={{ left: paramMenu.x, top: paramMenu.y }}
+        >
+          <button
+            className={styles.contextMenuItem}
+            onClick={() => {
+              onAddAutomation(paramMenu.block, paramMenu.uniform);
+              setParamMenu(null);
+            }}
+          >
+            Add Automation Lane
+          </button>
+        </div>
+      )}
 
       {blockMenu && (
         <div

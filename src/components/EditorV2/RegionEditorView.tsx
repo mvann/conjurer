@@ -1,8 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
 import { action, runInAction } from "mobx";
+import { FaTint } from "react-icons/fa";
+import { MdGraphicEq } from "react-icons/md";
 import styles from "@/styles/EditorV2.module.css";
-import { transportTime } from "@/src/components/EditorV2/timeViewport";
+import {
+  sharedWaveform,
+  transportTime,
+} from "@/src/components/EditorV2/timeViewport";
+import { drawBars } from "@/src/components/EditorV2/waveformPeaks";
 import { editorPrefs } from "@/src/components/EditorV2/editorPrefs";
 import { BeatGrid } from "@/src/components/EditorV2/EditorV2Page";
 import {
@@ -81,6 +87,31 @@ export const RegionEditorView = observer(function RegionEditorView({
     x: number;
     y: number;
   } | null>(null);
+  // Backdrop toggles (decision 30): the teardrop lets the canopy show
+  // through; the waveform draws the song's peaks behind the curve.
+  const [backdrop, setBackdrop] = useState({ canopy: true, waveform: false });
+  const waveformCanvasRef = useRef<HTMLCanvasElement>(null);
+  useEffect(() => {
+    const canvas = waveformCanvasRef.current;
+    if (!canvas || !backdrop.waveform) return;
+    const rect = canvas.parentElement!.getBoundingClientRect();
+    canvas.width = rect.width;
+    canvas.height = rect.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx || !sharedWaveform.peaks) return;
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    drawBars(
+      ctx,
+      sharedWaveform.peaks,
+      0,
+      1,
+      canvas.width,
+      canvas.height,
+      0,
+      canvas.width,
+      "rgba(232, 236, 244, 0.10)",
+    );
+  }, [backdrop.waveform]);
 
   // ---- Time and value mapping ----
   const songSeconds =
@@ -373,7 +404,12 @@ export const RegionEditorView = observer(function RegionEditorView({
   );
 
   return (
-    <div className={styles.automationEditor} data-doc="automation-editor">
+    <div
+      className={`${styles.automationEditor} ${
+        backdrop.canopy ? styles.automationEditorSeeThrough : ""
+      }`}
+      data-doc="automation-editor"
+    >
       {!hideClose && (
         <button
           className={styles.automationEditorClose}
@@ -382,6 +418,13 @@ export const RegionEditorView = observer(function RegionEditorView({
         >
           ✕
         </button>
+      )}
+
+      {backdrop.waveform && (
+        <canvas
+          ref={waveformCanvasRef}
+          className={styles.editorWaveformCanvas}
+        />
       )}
 
       <div
@@ -536,6 +579,38 @@ export const RegionEditorView = observer(function RegionEditorView({
           className={styles.editorPlayhead}
           style={{ left: `${timeToPct(transportTime.seconds)}%` }}
         />
+      </div>
+
+      {/* Backdrop toggles: teardrop = canopy through; bars = waveform.
+          Rendered after the line area so they sit above its SVG. */}
+      <div className={styles.backdropToggles}>
+        <button
+          className={`${styles.backdropToggle} ${
+            backdrop.canopy ? styles.backdropToggleOn : ""
+          }`}
+          data-doc="backdrop-canopy"
+          aria-label="Toggle canopy backdrop"
+          onClick={() =>
+            setBackdrop((current) => ({ ...current, canopy: !current.canopy }))
+          }
+        >
+          <FaTint size={12} />
+        </button>
+        <button
+          className={`${styles.backdropToggle} ${
+            backdrop.waveform ? styles.backdropToggleOn : ""
+          }`}
+          data-doc="backdrop-waveform"
+          aria-label="Toggle waveform backdrop"
+          onClick={() =>
+            setBackdrop((current) => ({
+              ...current,
+              waveform: !current.waveform,
+            }))
+          }
+        >
+          <MdGraphicEq size={13} />
+        </button>
       </div>
 
       {/* Node value entry. */}

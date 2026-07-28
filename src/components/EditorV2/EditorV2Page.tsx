@@ -29,6 +29,7 @@ import {
   writeDraft,
 } from "@/src/components/EditorV2/spellPersistence";
 import { GearPane } from "@/src/components/EditorV2/GearPane";
+import { ensureLaneRegions } from "@/src/components/EditorV2/laneModel";
 import { RolesDropdown } from "@/src/components/EditorV2/RolesDropdown";
 import { LatencyModal } from "@/src/components/LatencyModal/LatencyModal";
 
@@ -132,6 +133,17 @@ export const EditorV2Page = observer(function EditorV2Page() {
         .find((block) => block.id === selectedLane.blockId)
     : undefined;
 
+  // The promotion gesture (decision 8): arm the lane (the manual value
+  // becomes its lone constant region), record it in lanedParams, and
+  // open the editor on it.
+  const addAutomationLane = action((block: Block, uniform: string) => {
+    const value = block.pattern.params[uniform]?.value;
+    ensureLaneRegions(block, uniform, typeof value === "number" ? value : 0);
+    if (!block.lanedParams.has(uniform)) block.toggleParamLane(uniform);
+    block.triggerVariationReactions(uniform);
+    setSelectedLane({ blockId: block.id, uniform });
+  });
+
   const addPatternToLayer = action((layer: Layer, factory: () => Pattern) => {
     const block = new Block(store, factory());
     block.setTiming({
@@ -231,7 +243,10 @@ export const EditorV2Page = observer(function EditorV2Page() {
       <LatencyModal />
 
       <div className={styles.contentRow}>
-        <LayersPanel onAddPattern={addPatternToLayer} />
+        <LayersPanel
+          onAddPattern={addPatternToLayer}
+          onAddAutomation={addAutomationLane}
+        />
         <div
           className={`${styles.mainColumn} ${
             store.uiStore.horizontalLayout ? styles.mainColumnHorizontal : ""
