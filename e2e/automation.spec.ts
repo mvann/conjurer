@@ -643,6 +643,8 @@ test.describe("segment types", () => {
     await closePanel(page);
     await page.locator("[class*=laneRow]").first().click();
     await expect(page.locator("[class*=automationEditor__]")).toBeVisible();
+    // The dock is still sliding closed; wait for resting geometry.
+    await settleBox(page, "[class*=editorLineArea]");
 
     // The scale reads On and Off instead of numbers.
     const ticks = await scaleTicks(page);
