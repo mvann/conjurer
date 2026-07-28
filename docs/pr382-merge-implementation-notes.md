@@ -35,11 +35,24 @@ build, per the owner's instruction: keep going, track, review after.
   (emits serialized literals; ts-node-safe; covers constants, fits,
   steps, waves incl. triangle-phase quirk, audio, deactivated curves,
   value lanes, effects, visibility→u_opacity, no-song basis).
-- NEXT (the big one): wire /editor onto their Store — StoreContext
-  provider on the editor page, ExperienceStore load pipeline,
-  EditorV2Page reading store.layers/blocks instead of entries[].
-  Then: lone-flat read model, lanedParams, block timing UI, u_time
-  block-local transport drive, per-input merge opacity + crossfade.
+- DONE: /editor provides Store("experienceEditor") + StoreContext;
+  initializeClientSide loads ?experience= (or untitled) through the
+  shared pipeline; EditorV2Page is an observer; header shows
+  "name by author" (decision 18). Battery still 73/73 (legacy state
+  still drives the UI).
+- NEXT, in order (each with its spec updates riding along):
+  1. Pattern list -> layer list writing store.layers/blocks
+     (decisions 1, 28): Add Layer / Add Pattern per layer, rename,
+     reorder, eye, trash, duplicate; block CRUD on the Store.
+  2. Canopy renders active blocks: u_time block-local, per-frame
+     updateParameters, per-input opacity multiply + auto crossfade.
+  3. Lanes read regions (lone-flat convention, lanedParams); the
+     expanded editor re-bases on CurveVariation nodes.
+  4. Save/autosave: their save path + draft channel; then the demo
+     seam (tRPC custom link, Gandalf).
+  NOTE: during steps 1-3 parts of the e2e suite necessarily break;
+  the discipline is each commit rewrites the specs it invalidates,
+  keeping the battery green per commit.
 - THEN: demo seam (tRPC custom link, Gandalf user), UI restructure
   (task 7), gear pane, orientation, docs/Info Strip, e2e rework.
 
