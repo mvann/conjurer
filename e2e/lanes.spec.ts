@@ -51,11 +51,17 @@ const FIXTURE = {
   },
 };
 
-const loadFixture = async (page: any) =>
-  page.evaluate((fixture: unknown) => {
+const loadFixture = async (page: any) => {
+  // The page's own init loads "untitled" asynchronously; loading the
+  // fixture before that lands would get overwritten by it.
+  await page.waitForFunction(
+    () => (window as any).__editorStore?.initializationState === "initialized",
+  );
+  await page.evaluate((fixture: unknown) => {
     const store = (window as any).__editorStore;
     store.experienceStore.loadExperience(fixture);
   }, FIXTURE);
+};
 
 test.describe("region lanes", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
@@ -117,6 +123,68 @@ test.describe("region lanes", () => {
     await expect(lane.locator("[class*=laneShrunk]")).toHaveCount(0);
     await lane.getByLabel("Shrink lane").click();
     await expect(lane.locator("[class*=laneShrunk]")).toHaveCount(1);
+  });
+
+  test("block bar drags: move, left trim, right grow", async ({ page }) => {
+    await loadFixture(page);
+    const timing = () =>
+      page.evaluate(() => {
+        const block = (window as any).__editorStore.layers[0].getAllBlocks()[0];
+        return {
+          start: block.startTime,
+          duration: block.duration,
+          regions: block.parameterVariations.u_timeFactor.reduce(
+            (sum: number, r: any) => sum + r.duration,
+            0,
+          ),
+        };
+      });
+    const before = await timing();
+    expect(before.start).toBe(0);
+
+    // No song loaded: the bar spans the full area at 60s. Right-trim by
+    // dragging the right edge left a quarter of the area (~15s).
+    const bar = page.locator("[data-doc=block-bar]");
+    let box = (await bar.boundingBox())!;
+    await page.mouse.move(box.x + box.width - 3, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.75, box.y + box.height / 2, {
+      steps: 6,
+    });
+    await page.mouse.up();
+    let now = await timing();
+    expect(now.duration).toBeLessThan(before.duration - 5);
+    expect(now.start).toBe(0);
+    // Regions are untouched by timing edits: they overhang, unplayed.
+    expect(now.regions).toBeCloseTo(before.regions, 3);
+
+    // Move: grab the middle, drag right; start advances, duration holds.
+    const trimmed = now;
+    box = (await bar.boundingBox())!;
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width / 2 + 80, box.y + box.height / 2, {
+      steps: 6,
+    });
+    await page.mouse.up();
+    now = await timing();
+    expect(now.start).toBeGreaterThan(2);
+    expect(now.duration).toBeCloseTo(trimmed.duration, 1);
+
+    // Left trim: drag the left edge left; start decreases AND duration
+    // grows (the right edge holds still).
+    const moved = now;
+    box = (await bar.boundingBox())!;
+    await page.mouse.move(box.x + 3, box.y + box.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(box.x - 60, box.y + box.height / 2, { steps: 6 });
+    await page.mouse.up();
+    now = await timing();
+    expect(now.start).toBeLessThan(moved.start);
+    expect(now.start + now.duration).toBeCloseTo(
+      moved.start + moved.duration,
+      1,
+    );
   });
 
   test("the baked pipeline drives the canopy from fixture regions", async ({

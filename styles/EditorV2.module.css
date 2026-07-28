@@ -229,6 +229,18 @@
   background: rgba(169, 188, 228, 0.16);
   border: 1px solid rgba(169, 188, 228, 0.35);
   cursor: grab;
+  touch-action: none;
+}
+
+/* Visual hairlines at the bar's edges (the grab zones live on the bar
+   itself; these just make the edges findable). */
+.blockBarEdge {
+  position: absolute;
+  top: 2px;
+  bottom: 2px;
+  width: 2px;
+  background: rgba(169, 188, 228, 0.5);
+  pointer-events: none;
 }
 
 .laneCurveArea {

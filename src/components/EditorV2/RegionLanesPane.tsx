@@ -141,6 +141,13 @@ const LanePreview = observer(function LanePreview({
 });
 
 // The block's own lane: its time extent as a bar across the song.
+// Dragging the left edge moves the start (right edge holds); the right
+// edge changes the duration; the bar's body moves the whole block,
+// keyframes and all. Regions are never touched by timing edits
+// (decision 16, matching upstream): extending holds the last value,
+// trimming leaves regions overhanging unplayed.
+const EDGE_GRAB_PX = 7;
+
 const BlockHeaderLane = observer(function BlockHeaderLane({
   block,
 }: {
@@ -152,12 +159,65 @@ const BlockHeaderLane = observer(function BlockHeaderLane({
     0,
     Math.min(100 - leftPct, (block.duration / songSeconds) * 100),
   );
+
+  const onPointerDown = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const bar = event.currentTarget;
+    const area = bar.parentElement!;
+    const areaRect = area.getBoundingClientRect();
+    const barRect = bar.getBoundingClientRect();
+    const secondsPerPx = songSeconds / areaRect.width;
+    const mode =
+      event.clientX - barRect.left <= EDGE_GRAB_PX
+        ? "left"
+        : barRect.right - event.clientX <= EDGE_GRAB_PX
+          ? "right"
+          : "move";
+    const startX = event.clientX;
+    const startTime = block.startTime;
+    let lastLeftDelta = 0;
+    let lastRightDelta = 0;
+
+    const onMove = action((moveEvent: PointerEvent) => {
+      const deltaSeconds = (moveEvent.clientX - startX) * secondsPerPx;
+      const layer = block.layer;
+      if (!layer) return;
+      if (mode === "move") {
+        layer.attemptMoveBlock(block, Math.max(0, startTime + deltaSeconds));
+      } else if (mode === "left") {
+        // Their resize APIs take incremental deltas; feed the change
+        // since the last move so the math matches upstream exactly.
+        layer.resizeBlockLeftBound(block, deltaSeconds - lastLeftDelta);
+        lastLeftDelta = deltaSeconds;
+      } else {
+        layer.resizeBlockRightBound(block, deltaSeconds - lastRightDelta);
+        lastRightDelta = deltaSeconds;
+      }
+    });
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  };
+
   return (
     <div className={styles.blockBarArea}>
       <div
         className={styles.blockBar}
         data-doc="block-bar"
         style={{ left: `${leftPct}%`, width: `${widthPct}%` }}
+        onPointerDown={onPointerDown}
+      />
+      <div
+        className={styles.blockBarEdge}
+        style={{ left: `calc(${leftPct}% - 1px)` }}
+      />
+      <div
+        className={styles.blockBarEdge}
+        style={{ left: `calc(${leftPct + widthPct}% - 1px)` }}
       />
     </div>
   );
