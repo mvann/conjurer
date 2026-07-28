@@ -40,19 +40,43 @@ build, per the owner's instruction: keep going, track, review after.
   shared pipeline; EditorV2Page is an observer; header shows
   "name by author" (decision 18). Battery still 73/73 (legacy state
   still drives the UI).
-- NEXT, in order (each with its spec updates riding along):
-  1. Pattern list -> layer list writing store.layers/blocks
-     (decisions 1, 28): Add Layer / Add Pattern per layer, rename,
-     reorder, eye, trash, duplicate; block CRUD on the Store.
-  2. Canopy renders active blocks: u_time block-local, per-frame
-     updateParameters, per-input opacity multiply + auto crossfade.
-  3. Lanes read regions (lone-flat convention, lanedParams); the
-     expanded editor re-bases on CurveVariation nodes.
-  4. Save/autosave: their save path + draft channel; then the demo
-     seam (tRPC custom link, Gandalf).
-  NOTE: during steps 1-3 parts of the e2e suite necessarily break;
-  the discipline is each commit rewrites the specs it invalidates,
-  keeping the battery green per commit.
+- DONE (slice A, 537c797): LayersPanel replaces PatternsPanel —
+  layers with rename/eye/trash, per-layer Add Pattern inserting
+  full-song blocks, effects via Block APIs, right-click Duplicate.
+  Canopy renders visible layers' blocks; per-frame driver evaluates
+  each active block's regions at block-local time. Legacy
+  entries/wrapper/undo/autosave/save/assign/visibility-lanes deleted
+  from the page. Lane-dependent suites parked (describe.skip):
+  automation, snap, effects, canopy, persistence. panels.spec
+  rewritten (layers). helpers: openPatternPanel waits "Layers";
+  insertPattern uses [data-doc=add-pattern].
+- DONE (slice B1, 5241fad): RegionLanesPane — layer/block/param lane
+  hierarchy, block extent bars, lone-flat convention + lanedParams
+  promotion/expand-shrink, sampled polyline previews, value tiles,
+  self-sizing pane. lanes.spec (5 tests) loads a fixture experience
+  through store.experienceStore.loadExperience.
+- NEXT, in order:
+  1. Block timing drags on the bar (decision 10): left/right edge
+     trim (regions untouched, decision 16), whole-bar move; dimmed
+     zones arrive with the editor re-base.
+  2. Expanded editor re-base (the monster): AutomationEditorView
+     rewritten against CurveVariation nodes + region segments,
+     keyframe=node-in-curves/boundary-elsewhere (decision 13),
+     generators with boundary stacks (14), unzip/zip, right-click
+     retype, snap integration, dimming outside the block (11/dimmed
+     zones do nothing), lane click opens it. Un-park automation/
+     snap/effects/canopy specs progressively, rewritten.
+  3. Save/autosave: useSaveExperience path (needs ChakraProvider on
+     the editor page), draft channel (nonce-keyed), updatedAt
+     comparison; legacy-save migration wired into load (uses
+     migrateLegacySave + song duration).
+  4. Demo seam: tRPC custom link backed by localStorage + Gandalf
+     user; demo redeploy.
+  5. UI restructure leftovers (task 7): gear/settings pane (27, with
+     verified menu order), header user/roles (18), chevron sliver
+     (29), backdrop toggle buttons (30), performance overlay (31),
+     orientation (32), opacity pseudo-param row (25), Info Strip
+     rewrite, keyboard bindings (27b), OS-clipboard interop.
 - THEN: demo seam (tRPC custom link, Gandalf user), UI restructure
   (task 7), gear pane, orientation, docs/Info Strip, e2e rework.
 
