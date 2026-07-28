@@ -26,6 +26,11 @@ Hover any control and this strip explains how to use it. Press ? (or /) for the 
 
 Undo any change with control z (or command z); add shift to redo. Press Save in the top right to keep your work; everything in between is autosaved.`,
   },
+  experience: {
+    title: "Current Experience",
+    short: "The loaded experience, shown as name by author.",
+    long: `The experience currently open in the editor, shown as its name and author. Experiences live in the shared conjurer library: anything saved here opens in the main experience editor, and anything made there opens here.`,
+  },
   canopy: {
     title: "Canopy Preview",
     short: "Drag to orbit. Scroll to zoom.",

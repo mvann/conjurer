@@ -1,4 +1,7 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { observer } from "mobx-react-lite";
+import { useRouter } from "next/router";
+import { useStore } from "@/src/types/StoreContext";
 import styles from "@/styles/EditorV2.module.css";
 import { CanopyPane } from "@/src/components/EditorV2/CanopyPane";
 import {
@@ -45,7 +48,22 @@ export type BeatGrid = BpmAnalysis & { durationSeconds: number };
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
-export function EditorV2Page() {
+export const EditorV2Page = observer(function EditorV2Page() {
+  // The shared main-app store: experiences load into it through the
+  // same pipeline the experience editor uses (tRPC row -> deserialize
+  // -> layers/blocks). The model swap re-points the editor at it
+  // piece by piece; until a piece moves, the legacy state below still
+  // drives that part of the UI.
+  const store = useStore();
+  const router = useRouter();
+  useEffect(() => {
+    if (store.initializationState !== "uninitialized" || !router.isReady)
+      return;
+    store.initializeClientSide(
+      (router.query.experience as string) ?? "untitled",
+    );
+  }, [store, router.isReady, router.query.experience]);
+
   const [entries, setEntries] = useState<StackEntry[]>([]);
   const [song, setSong] = useState<Song | null>(null);
   const [volume, setVolume] = useState(1);
@@ -590,6 +608,14 @@ export function EditorV2Page() {
       <header className={styles.header}>
         <h1 className={styles.title}>Conjurer</h1>
         <span className={styles.subtitle}>Spell Crafter</span>
+        {store.initializationState === "initialized" && (
+          <span className={styles.experienceBreadcrumb} data-doc="experience">
+            {store.experienceName}
+            {store.experienceUser?.username
+              ? ` by ${store.experienceUser.username}`
+              : ""}
+          </span>
+        )}
         <button
           className={`${styles.saveButton} ${
             isDirty ? styles.saveButtonDirty : ""
@@ -718,4 +744,4 @@ export function EditorV2Page() {
       <DocsStrip />
     </div>
   );
-}
+});

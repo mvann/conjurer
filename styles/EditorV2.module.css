@@ -69,6 +69,18 @@
   color: #8f96a8;
 }
 
+/* The loaded experience, "name by author", beside the app name. */
+.experienceBreadcrumb {
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 13px;
+  letter-spacing: 0.6px;
+  color: #6d7385;
+  margin-left: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* Save: boxless text at the header's right end. Quiet when everything is
    saved; breathes with the glow only when there is unsaved progress. */
 .saveButton {
