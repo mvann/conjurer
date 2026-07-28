@@ -196,6 +196,72 @@
   user-select: none;
 }
 
+/* ---- Region lanes (layer -> block -> parameter hierarchy) ---- */
+
+.laneLayerRow {
+  display: flex;
+  align-items: center;
+  padding: 6px 0 2px;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.14);
+}
+
+.laneLayerName {
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 1.6px;
+  color: #8f96a8;
+  padding-left: 8px;
+  user-select: none;
+}
+
+.blockBarArea {
+  position: relative;
+  flex: 1;
+  height: 18px;
+  align-self: center;
+}
+
+.blockBar {
+  position: absolute;
+  top: 3px;
+  bottom: 3px;
+  background: rgba(169, 188, 228, 0.16);
+  border: 1px solid rgba(169, 188, 228, 0.35);
+  cursor: grab;
+}
+
+.laneCurveArea {
+  position: relative;
+  flex: 1;
+  align-self: center;
+  overflow: hidden;
+}
+
+.laneShrunk {
+  opacity: 0.55;
+}
+
+.lanePreviewSvg {
+  display: block;
+}
+
+.lanePreviewLine {
+  stroke: rgba(232, 236, 244, 0.75);
+  stroke-width: 1.2;
+  vector-effect: non-scaling-stroke;
+}
+
+.laneValueTiles {
+  display: flex;
+  height: 100%;
+}
+
+.laneValueTile {
+  border-right: 1px solid rgba(232, 236, 244, 0.25);
+  background: rgba(232, 236, 244, 0.08);
+}
+
 /* ---- Layer list (the left dock mirrors the data model) ---- */
 
 .layerList {

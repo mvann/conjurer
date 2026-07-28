@@ -4,7 +4,7 @@ import { action } from "mobx";
 import { useRouter } from "next/router";
 import styles from "@/styles/EditorV2.module.css";
 import { CanopyPane } from "@/src/components/EditorV2/CanopyPane";
-import { AutomationPane } from "@/src/components/EditorV2/AutomationPane";
+import { RegionLanesPane } from "@/src/components/EditorV2/RegionLanesPane";
 import { LayersPanel } from "@/src/components/EditorV2/LayersPanel";
 import { transportTime } from "@/src/components/EditorV2/timeViewport";
 import { TimelineStrip } from "@/src/components/EditorV2/TimelineStrip";
@@ -158,16 +158,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
             onTransientsChange={setTransients}
           />
 
-          <AutomationPane
-            entries={[]}
-            selectedLane={null}
-            onSelectLane={() => {}}
-            onStartAssign={() => {}}
-            onToggleLaneActive={() => {}}
-            onDeleteLane={() => {}}
-            laneOrder={[]}
-            onReorderLanes={() => {}}
-          />
+          <RegionLanesPane />
         </div>
       </div>
 
