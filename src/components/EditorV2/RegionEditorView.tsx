@@ -24,6 +24,11 @@ import {
   splitGeneratorAt,
   ViewSpan,
 } from "@/src/components/EditorV2/laneModel";
+import {
+  copyWindow,
+  deleteWindow,
+  pasteClipAt,
+} from "@/src/components/EditorV2/regionClipboard";
 import { formatDisplayName } from "@/src/components/EditorV2/formatDisplayName";
 import { Block } from "@/src/types/Block";
 import { CurveVariation } from "@/src/types/Variations/CurveVariation";
@@ -87,6 +92,15 @@ export const RegionEditorView = observer(function RegionEditorView({
     x: number;
     y: number;
   } | null>(null);
+  // Time selection + edit cursor: drag across open space to select a
+  // window (Copy / Delete act on it; paste overwrites at the cursor).
+  const [timeSelection, setTimeSelection] = useState<{
+    t0: number;
+    t1: number;
+  } | null>(null);
+  const [editCursor, setEditCursor] = useState<number | null>(null);
+  const dragJustEnded = useRef(false);
+
   // Backdrop toggles (decision 30): the teardrop lets the canopy show
   // through; the waveform draws the song's peaks behind the curve.
   const [backdrop, setBackdrop] = useState({ canopy: true, waveform: false });
@@ -340,13 +354,105 @@ export const RegionEditorView = observer(function RegionEditorView({
       if (nodeValueEdit) setNodeValueEdit(null);
       else if (spanMenu) setSpanMenu(null);
       else if (snapMenu) setSnapMenu(null);
+      else if (timeSelection) setTimeSelection(null);
       else if (selectedSpan) setSelectedSpan(null);
       else onClose();
     };
     window.addEventListener("keydown", onKeyDown, { capture: true });
     return () =>
       window.removeEventListener("keydown", onKeyDown, { capture: true });
-  }, [nodeValueEdit, spanMenu, snapMenu, selectedSpan, onClose]);
+  }, [nodeValueEdit, spanMenu, snapMenu, timeSelection, selectedSpan, onClose]);
+
+  // ---- Clipboard (plan decisions): copy, bridge-delete, paste. ----
+  const doCopy = () => {
+    if (!timeSelection) return;
+    copyWindow(
+      block,
+      uniform,
+      timeSelection.t0,
+      timeSelection.t1,
+      viewMin,
+      viewMax,
+    );
+  };
+  const doDelete = action(() => {
+    if (!timeSelection) return;
+    deleteWindow(block, uniform, timeSelection.t0, timeSelection.t1);
+    setTimeSelection(null);
+  });
+  const doPaste = action(() => {
+    if (editCursor === null) return;
+    pasteClipAt(block, uniform, editCursor, viewMin, viewMax);
+  });
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "c") {
+        if (!timeSelection) return;
+        event.preventDefault();
+        doCopy();
+      } else if (
+        (event.metaKey || event.ctrlKey) &&
+        event.key.toLowerCase() === "v"
+      ) {
+        if (editCursor === null) return;
+        event.preventDefault();
+        doPaste();
+      } else if (
+        (event.key === "Delete" || event.key === "Backspace") &&
+        timeSelection
+      ) {
+        event.preventDefault();
+        doDelete();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [timeSelection, editCursor, viewMin, viewMax]);
+
+  // Drag across open space (far from the curve): a time selection.
+  // A motionless press there just places the edit cursor.
+  const beginSelectDrag = (event: React.PointerEvent) => {
+    const startLocal = Math.max(
+      0,
+      Math.min(
+        block.duration,
+        eventToLocal(event.clientX, event.clientY).local,
+      ),
+    );
+    const startX = event.clientX;
+    let moved = false;
+    const onMove = (moveEvent: PointerEvent) => {
+      if (!moved && Math.abs(moveEvent.clientX - startX) < 4) return;
+      moved = true;
+      const local = Math.max(
+        0,
+        Math.min(
+          block.duration,
+          eventToLocal(moveEvent.clientX, moveEvent.clientY).local,
+        ),
+      );
+      setTimeSelection({
+        t0: Math.min(startLocal, local),
+        t1: Math.max(startLocal, local),
+      });
+    };
+    const onUp = () => {
+      document.removeEventListener("pointermove", onMove);
+      document.removeEventListener("pointerup", onUp);
+      if (!moved) {
+        setTimeSelection(null);
+        setEditCursor(startLocal);
+      } else {
+        dragJustEnded.current = true;
+        setTimeout(() => (dragJustEnded.current = false), 0);
+      }
+    };
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+  };
 
   // ---- Derived render model ----
   const keyframes = laneKeyframes(regions);
@@ -496,7 +602,25 @@ export const RegionEditorView = observer(function RegionEditorView({
               data-doc="span-hit"
               onClick={(event) => {
                 event.stopPropagation();
-                setSelectedSpan(span);
+                if (dragJustEnded.current) return;
+                // On the curve: select the span. Off it: handled by
+                // the pointer-down (cursor or selection drag).
+                const rect = areaRef.current!.getBoundingClientRect();
+                const { local } = eventToLocal(event.clientX, event.clientY);
+                const curvePct = valueToPct(laneValueAt(regions, local));
+                const clickPct =
+                  ((event.clientY - rect.top) / rect.height) * 100;
+                if (Math.abs(curvePct - clickPct) <= 15) setSelectedSpan(span);
+              }}
+              onPointerDown={(event) => {
+                if (event.button !== 0) return;
+                const rect = areaRef.current!.getBoundingClientRect();
+                const { local } = eventToLocal(event.clientX, event.clientY);
+                if (!insideBlock(local)) return;
+                const curvePct = valueToPct(laneValueAt(regions, local));
+                const downPct =
+                  ((event.clientY - rect.top) / rect.height) * 100;
+                if (Math.abs(curvePct - downPct) > 15) beginSelectDrag(event);
               }}
               onContextMenu={(event) => {
                 event.preventDefault();
@@ -573,6 +697,42 @@ export const RegionEditorView = observer(function RegionEditorView({
             }}
           />
         ))}
+
+        {/* Time selection highlight + its actions. */}
+        {timeSelection && (
+          <>
+            <div
+              className={styles.timeSelection}
+              data-doc="time-selection"
+              style={{
+                left: `${localToPct(timeSelection.t0)}%`,
+                width: `${
+                  localToPct(timeSelection.t1) - localToPct(timeSelection.t0)
+                }%`,
+              }}
+            />
+            <div
+              className={styles.selectionActions}
+              style={{ left: `${localToPct(timeSelection.t1)}%` }}
+            >
+              <button className={styles.selectionAction} onClick={doCopy}>
+                Copy
+              </button>
+              <button className={styles.selectionAction} onClick={doDelete}>
+                Delete
+              </button>
+            </div>
+          </>
+        )}
+
+        {/* The edit cursor: paste lands here. */}
+        {editCursor !== null && !timeSelection && (
+          <div
+            className={styles.editCursor}
+            data-doc="edit-cursor"
+            style={{ left: `${localToPct(editCursor)}%` }}
+          />
+        )}
 
         {/* Playhead. */}
         <div

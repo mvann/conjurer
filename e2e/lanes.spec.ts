@@ -233,12 +233,25 @@ test.describe("region lanes", () => {
     const types = (await laneState()).map((region: any) => region.type);
     expect(types).toContain("periodic");
 
-    // Click the wave's span: the inspector opens with Frequency.
+    // Click the wave's span ON its curve: at the span's center a whole
+    // number of cycles has elapsed, so the value equals the wave's
+    // offset; aim the click there.
     const waveSpanIndex = types.indexOf("periodic");
-    await page
+    const waveOffset = await page.evaluate(
+      (index) =>
+        (window as any).__editorStore.layers[0].getAllBlocks()[0]
+          .parameterVariations.u_timeFactor[index].offset,
+      waveSpanIndex,
+    );
+    const waveBoxForClick = (await page
       .locator("[data-doc=span-hit]")
       .nth(waveSpanIndex)
-      .click({ force: true });
+      .boundingBox())!;
+    await page.mouse.click(
+      waveBoxForClick.x + waveBoxForClick.width / 2,
+      area.y +
+        Math.min(area.height - 5, Math.max(5, (1 - waveOffset) * area.height)),
+    );
     await expect(page.locator("[data-doc=segment-inspector]")).toBeVisible();
     await expect(page.locator("[data-doc=segment-inspector]")).toContainText(
       "Frequency",
@@ -345,6 +358,60 @@ test.describe("region lanes", () => {
     // The waveform toggle mounts its canvas.
     await page.locator("[data-doc=backdrop-waveform]").click();
     await expect(page.locator("[class*=editorWaveformCanvas]")).toHaveCount(1);
+  });
+
+  test("clipboard: select, copy, bridge-delete, paste at cursor", async ({
+    page,
+  }) => {
+    await loadFixture(page);
+    await page.locator("[data-doc=lane-row]").first().click();
+    await expect(page.locator("[data-doc=automation-editor]")).toBeVisible();
+    const area = (await page.locator("[data-doc=editor-area]").boundingBox())!;
+    const laneState = () =>
+      page.evaluate(() => {
+        const regions = (
+          window as any
+        ).__editorStore.layers[0].getAllBlocks()[0].parameterVariations
+          .u_timeFactor;
+        return {
+          total: regions.reduce((s: number, r: any) => s + r.duration, 0),
+          nodes: regions.reduce(
+            (s: number, r: any) => s + (r.nodes?.length ?? 0),
+            0,
+          ),
+        };
+      });
+
+    // Drag a selection across [25%, 50%] near the top (far from the
+    // rising ramp there).
+    await page.mouse.move(area.x + area.width * 0.25, area.y + 20);
+    await page.mouse.down();
+    await page.mouse.move(area.x + area.width * 0.5, area.y + 20, {
+      steps: 6,
+    });
+    await page.mouse.up();
+    await expect(page.locator("[data-doc=time-selection]")).toBeVisible();
+
+    // Copy, then bridge-delete: the lane total is conserved and the
+    // bridge merged into the surrounding curves.
+    await page.getByRole("button", { name: "Copy", exact: true }).click();
+    const before = await laneState();
+    await page.getByRole("button", { name: "Delete", exact: true }).click();
+    await expect(page.locator("[data-doc=time-selection]")).toHaveCount(0);
+    const bridged = await laneState();
+    expect(bridged.total).toBeCloseTo(before.total, 3);
+
+    // Place the cursor at 75% (open space below the curve there) and
+    // paste: the clip overwrites at the cursor, total still conserved.
+    await page.mouse.click(
+      area.x + area.width * 0.75,
+      area.y + area.height - 15,
+    );
+    await expect(page.locator("[data-doc=edit-cursor]")).toBeVisible();
+    await page.keyboard.press("Control+v");
+    const pasted = await laneState();
+    expect(pasted.total).toBeCloseTo(before.total, 3);
+    expect(pasted.nodes).toBeGreaterThan(bridged.nodes);
   });
 
   test("the baked pipeline drives the canopy from fixture regions", async ({
