@@ -507,7 +507,9 @@ export function AutomationPane({
         onPointerUp={() => (dragState.current = null)}
         onPointerCancel={() => (dragState.current = null)}
       />
-      <div className={styles.paneLabel}>Automation</div>
+      <div className={`${styles.paneLabel} ${styles.paneLabelGlow}`}>
+        Automation
+      </div>
       <div className={styles.lanes} ref={lanesRef}>
         {lanes.map((lane) => (
           <div

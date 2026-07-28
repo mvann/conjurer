@@ -184,6 +184,18 @@
   user-select: none;
 }
 
+/* The lanes' Automation label sits over the moving lane curves; the
+   static black glow keeps it readable on any background. */
+.paneLabelGlow {
+  text-shadow:
+    0 0 2px rgba(0, 0, 0, 1),
+    0 0 4px rgba(0, 0, 0, 1),
+    0 0 7px rgba(0, 0, 0, 1),
+    0 0 12px rgba(0, 0, 0, 1),
+    0 0 18px rgba(0, 0, 0, 1),
+    0 0 28px rgba(0, 0, 0, 0.95);
+}
+
 /* The canopy pane fills all space between header and timeline, edge to edge. */
 /* Below the header: the docked pattern editor on the left, then the
    main column (canopy, timeline, lanes). Opening the dock pushes the
