@@ -30,6 +30,7 @@ export class BlockMap {
     const blockMap = new BlockMap();
     Object.entries(data ?? {}).forEach(([id, blockData]: [string, any]) => {
       const block = Block.deserialize(store, blockData);
+      if (!block) return;
       block.layer = layer;
       blockMap.map.set(id, block);
     });

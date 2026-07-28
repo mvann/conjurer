@@ -740,9 +740,21 @@ export class Block {
     ),
   });
 
-  static deserialize = (store: Store, data: any, parentBlock?: Block) => {
+  static deserialize = (
+    store: Store,
+    data: any,
+    parentBlock?: Block,
+  ): Block | null => {
     const patternName =
       typeof data.pattern === "string" ? data.pattern : data.pattern.name;
+
+    // An experience may reference a pattern this build does not have
+    // (renamed, removed, or not yet merged). Skip the block rather than
+    // crashing the whole experience load.
+    if (!defaultPatternEffectMap[patternName]) {
+      console.warn(`Skipping block with unknown pattern "${patternName}"`);
+      return null;
+    }
 
     const block = new Block(
       store,
@@ -764,9 +776,13 @@ export class Block {
       );
     }
 
-    block.effectBlocks = data.effectBlocks.map((effectBlockData: any) =>
-      Block.deserialize(store, effectBlockData, block),
-    );
+    block.effectBlocks = data.effectBlocks
+      .map((effectBlockData: any) =>
+        Block.deserialize(store, effectBlockData, block),
+      )
+      .filter((effectBlock: Block | null): effectBlock is Block =>
+        Boolean(effectBlock),
+      );
 
     // restore locally-persisted open lanes for this experience (UI state, not
     // part of the serialized experience data)
