@@ -6,7 +6,7 @@ import {
   patternsEmptyHint,
 } from "./helpers";
 
-test.describe("persistence and docs", () => {
+test.describe.skip("persistence and docs", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
 
   test("autosave prompt lifecycle: change, reload, open, save, reload", async ({

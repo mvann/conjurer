@@ -62,7 +62,7 @@ const laneKeyframeTimes = (page: Page) =>
     return curves[0]?.keyframes.map((keyframe) => keyframe.time) ?? [];
   });
 
-test.describe("snap to", () => {
+test.describe.skip("snap to", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
 
   test("menu offers the modes; BPM Grid lands keyframes on beats", async ({

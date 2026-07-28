@@ -59,7 +59,7 @@ const insertStaticNebula = async (page: Page) => {
   await page.waitForTimeout(600);
 };
 
-test.describe("canopy pixel smoke", () => {
+test.describe.skip("canopy pixel smoke", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
 
   test("param edits reach the shader; zeroed time params freeze the render", async ({

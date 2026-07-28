@@ -16,13 +16,14 @@ export const patternsAside = (page: Page) =>
 export const openPatternPanel = async (page: Page) => {
   await page.getByLabel("Open pattern library").click();
   await expect(
-    page.locator("[class*=panelSectionLabel]", { hasText: "Patterns" }),
+    page.locator("[class*=panelSectionLabel]", { hasText: "Layers" }),
   ).toBeVisible();
 };
 
 // Adds a pattern from the library (defaults to the first/selected one).
 export const insertPattern = async (page: Page, name?: string) => {
-  await page.getByRole("button", { name: "Add Pattern" }).click();
+  // Layers each carry an Add Pattern button; default to the first layer.
+  await page.locator("[data-doc=add-pattern]").first().click();
   if (name)
     await page
       .locator("[class*=tileGrid] button")

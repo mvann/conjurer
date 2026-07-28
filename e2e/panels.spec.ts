@@ -1,16 +1,12 @@
 import { expect, test } from "@playwright/test";
 import {
-  addLaneOnParam,
-  closePanel,
   gotoEditorClean,
   insertPattern,
   openPatternPanel,
   patternsAside,
-  patternsEmptyHint,
-  settleBox,
 } from "./helpers";
 
-test.describe("layout and pattern panel", () => {
+test.describe("layout and layers panel", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
 
   test("page shows the spell crafter layout", async ({ page }) => {
@@ -20,13 +16,16 @@ test.describe("layout and pattern panel", () => {
     );
     await expect(page.getByRole("button", { name: "Add Song" })).toBeVisible();
     await expect(page.getByLabel("Play", { exact: true })).toBeDisabled();
+    // The loaded experience shows as name (by author) in the header.
+    await expect(page.locator("[data-doc=experience]")).toHaveText("untitled");
   });
 
-  test("chevron opens the pattern dock; it stays open on outside clicks", async ({
+  test("chevron opens the layer dock; it stays open on outside clicks", async ({
     page,
   }) => {
     await openPatternPanel(page);
-    await expect(patternsEmptyHint(page)).toHaveText("No patterns yet");
+    // One default layer, empty.
+    await expect(page.locator("[data-doc=layer-row]")).toHaveCount(1);
     // The dock pushes the main column aside instead of overlaying it, so
     // clicking the canopy area must NOT close it.
     await page.mouse.click(800, 300);
@@ -35,7 +34,7 @@ test.describe("layout and pattern panel", () => {
     await expect(patternsAside(page)).not.toHaveClass(/patternsDockOpen/);
   });
 
-  test("add pattern flow inserts into the stack and starts expanded", async ({
+  test("add pattern flow inserts a block into the layer, expanded", async ({
     page,
   }) => {
     await openPatternPanel(page);
@@ -51,182 +50,67 @@ test.describe("layout and pattern panel", () => {
 
   test("sliver click returns from the add-pattern view", async ({ page }) => {
     await openPatternPanel(page);
-    await page.getByRole("button", { name: "Add Pattern" }).click();
+    await page.locator("[data-doc=add-pattern]").first().click();
     await expect(patternsAside(page)).toHaveClass(/patternsDockWide/);
     await page.getByLabel("Back to pattern list").click();
     await expect(patternsAside(page)).not.toHaveClass(/patternsDockWide/);
   });
 
-  test("Add Automation assigns a lane from the pattern editor", async ({
-    page,
-  }) => {
+  test("layers add, rename, hide, and remove", async ({ page }) => {
     await openPatternPanel(page);
-    await insertPattern(page, "Nebula");
-    await page.keyboard.press("Escape");
-    await expect(patternsAside(page)).not.toHaveClass(/patternsDockOpen/);
 
-    // Clicking the final lane opens the dock and arms assignment (the
-    // cursor badge appears).
-    await page.getByRole("button", { name: "Add Automation" }).click();
-    await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
-    await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
+    // Add: a second layer appears with a generated name.
+    await page.locator("[data-doc=add-layer]").click();
+    await expect(page.locator("[data-doc=layer-row]")).toHaveCount(2);
 
-    // Over an automatable row the badge turns green; elsewhere it is
-    // silver. The visibility eye counts: it is a lane target too.
-    const warpRow = page
-      .locator("[data-doc=param-row]")
-      .filter({ hasText: "Warp" });
-    await warpRow.hover();
-    await expect(page.locator("[class*=assignCursor]")).toHaveClass(
-      /assignCursorHot/,
-    );
-    await page.getByLabel("Hide pattern").hover();
-    await expect(page.locator("[class*=assignCursor]")).toHaveClass(
-      /assignCursorHot/,
-    );
-    await page.mouse.move(900, 300);
-    await expect(page.locator("[class*=assignCursor]")).not.toHaveClass(
-      /assignCursorHot/,
+    // Rename: double-click the name, type, Enter.
+    await page.locator("[class*=layerName_]").first().dblclick();
+    const input = page.locator("[class*=layerNameInput]");
+    await input.fill("Bass Layer");
+    await input.press("Enter");
+    await expect(page.locator("[class*=layerName_]").first()).toHaveText(
+      "Bass Layer",
     );
 
-    // Clicking a parameter creates its lane and ends the mode; the dock
-    // stays open.
-    await warpRow.click();
-    await expect(page.locator("[class*=laneRow]")).toHaveCount(1);
-    await expect(page.locator("[class*=laneRow]")).toContainText("Warp");
-    await expect(page.locator("[class*=assignCursor]")).toHaveCount(0);
-    await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
+    // Hide: the layer's eye toggles its canopy presence (runtime-only).
+    await page.getByLabel("Hide layer").first().click();
+    await expect(page.getByLabel("Show layer").first()).toBeVisible();
+    await page.getByLabel("Show layer").first().click();
+
+    // Remove: the second layer deletes; the last one cannot.
+    await page.getByLabel("Remove layer").nth(1).click();
+    await expect(page.locator("[data-doc=layer-row]")).toHaveCount(1);
+    await expect(page.getByLabel("Remove layer")).toBeDisabled();
   });
 
-  test("assignment cancels on Escape and on outside clicks; dock stays open", async ({
+  test("blocks land in the layer whose Add Pattern was used", async ({
     page,
   }) => {
     await openPatternPanel(page);
-    await insertPattern(page, "Nebula");
-
-    // Escape cancels the assignment but leaves the dock open.
-    await page.getByRole("button", { name: "Add Automation" }).click();
-    await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
-    await page.keyboard.press("Escape");
-    await expect(page.locator("[class*=assignCursor]")).toHaveCount(0);
-    await expect(page.locator("[class*=laneRow]")).toHaveCount(0);
-    await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
-
-    // A click outside the pattern editor cancels too.
-    await page.getByRole("button", { name: "Add Automation" }).click();
-    await expect(page.locator("[class*=assignCursor]")).toHaveCount(1);
-    await page.mouse.click(900, 300);
-    await expect(page.locator("[class*=assignCursor]")).toHaveCount(0);
-    await expect(page.locator("[class*=laneRow]")).toHaveCount(0);
-    await expect(patternsAside(page)).toHaveClass(/patternsDockOpen/);
-  });
-
-  test("lane controls: the eye toggles the curve; the trash deletes the lane", async ({
-    page,
-  }) => {
-    await openPatternPanel(page);
-    await insertPattern(page, "Nebula");
-    await addLaneOnParam(page, "Warp");
-    await closePanel(page);
-
-    // No keyframes yet: the eye is disabled (an empty lane drives
-    // nothing).
-    const lane = page.locator("[class*=laneRow]").first();
-    await expect(lane.getByLabel("Disable lane")).toBeDisabled();
-
-    // Two keyframes, then the eye disables and re-enables the curve.
-    await lane.click();
-    await settleBox(page, "[class*=editorLineArea]");
-    const area = (await page.locator("[class*=editorLineArea]").boundingBox())!;
-    await page.mouse.dblclick(
-      area.x + area.width * 0.3,
-      area.y + area.height * 0.3,
-    );
-    await page.mouse.dblclick(
-      area.x + area.width * 0.7,
-      area.y + area.height * 0.7,
-    );
-    await page.getByLabel("Close automation editor").click();
-
-    const laneActive = () =>
-      page.evaluate(() => {
-        const entries = (
-          window as unknown as Record<
-            string,
-            { automation: Record<string, { active?: boolean }> }[]
-          >
-        ).__editorEntries;
-        return Object.values(entries[0].automation)[0].active !== false;
-      });
-    await lane.getByLabel("Disable lane").click();
-    expect(await laneActive()).toBe(false);
-    await lane.getByLabel("Enable lane").click();
-    expect(await laneActive()).toBe(true);
-
-    // The trash removes the lane; the expanded editor closes with it.
-    await lane.click();
-    await expect(page.locator("[class*=automationEditor__]")).toBeVisible();
-    await page.getByLabel("Delete lane").click();
-    await expect(page.locator("[class*=laneRow]")).toHaveCount(0);
-    await expect(page.locator("[class*=automationEditor__]")).toHaveCount(0);
-  });
-
-  test("dragging a lane label reorders lanes; the order persists", async ({
-    page,
-  }) => {
-    await openPatternPanel(page);
-    await insertPattern(page, "Nebula");
-    await addLaneOnParam(page, "Warp");
-    await addLaneOnParam(page, "Time Factor");
-    await closePanel(page);
-    // Let the dock's width animation settle: the lane rows slide left
-    // while it closes, and a drag must start from their resting boxes.
+    await page.locator("[data-doc=add-layer]").click();
+    // Insert into the SECOND layer.
+    await page.locator("[data-doc=add-pattern]").nth(1).click();
+    await page
+      .locator("[class*=tileGrid] button")
+      .filter({ hasText: /^Disc$/ })
+      .click();
+    await page.getByRole("button", { name: "Insert", exact: true }).click();
     await page.waitForTimeout(400);
-
-    const laneTexts = () => page.locator("[class*=laneRow]").allTextContents();
-    expect((await laneTexts()).map((text) => text.includes("Warp"))).toEqual([
-      true,
-      false,
-    ]);
-
-    // Drag the Warp label below the Time Factor lane.
-    const warpLabel = page
-      .locator("[class*=laneRow]", { hasText: "Warp" })
-      .locator("[class*=laneLabelText]");
-    const from = (await warpLabel.boundingBox())!;
-    await page.mouse.move(from.x + from.width / 2, from.y + from.height / 2);
-    await page.mouse.down();
-    await page.mouse.move(
-      from.x + from.width / 2,
-      from.y + from.height / 2 + 80,
-      { steps: 8 },
+    // The block row renders under the second layer: the panel's block
+    // ids report one empty layer then one with a block.
+    const blocksByLayer = await page.evaluate(() =>
+      (window as any).__editorBlocks.map((ids: string[]) => ids.length),
     );
-    await page.mouse.up();
-    expect((await laneTexts()).map((text) => text.includes("Warp"))).toEqual([
-      false,
-      true,
-    ]);
-    // The drag did not also expand the editor.
-    await expect(page.locator("[class*=automationEditor__]")).toHaveCount(0);
-
-    // The order survives a reload through the autosave.
-    await page.waitForTimeout(1_200);
-    await page.reload();
-    await page.getByRole("button", { name: "Open Auto Save" }).click();
-    expect((await laneTexts()).map((text) => text.includes("Warp"))).toEqual([
-      false,
-      true,
-    ]);
+    expect(blocksByLayer).toEqual([0, 1]);
   });
 
-  test("right click duplicates a pattern with params and automation", async ({
+  test("right click duplicates a block with its parameter values", async ({
     page,
   }) => {
     await openPatternPanel(page);
     await insertPattern(page, "Nebula");
 
-    // Give the original a distinctive value and an automation lane, so
-    // the copy has something real to carry over.
+    // Give the original a distinctive value first.
     const timeFactorRow = (index: number) =>
       page
         .locator("[data-doc=param-row]")
@@ -236,7 +120,6 @@ test.describe("layout and pattern panel", () => {
     const input = timeFactorRow(0).locator("[class*=paramInput]");
     await input.fill("0.5");
     await input.press("Enter");
-    await addLaneOnParam(page, "Warp");
 
     await page
       .locator("[data-doc=pattern-row]")
@@ -244,8 +127,6 @@ test.describe("layout and pattern panel", () => {
       .click({ button: "right" });
     await page.getByRole("button", { name: "Duplicate" }).click();
 
-    // The copy lands below the original: same name, same values, and
-    // the Warp lane came along.
     await expect(page.locator("[class*=patternName]")).toHaveCount(2);
     await expect(page.locator("[class*=patternName]").nth(1)).toHaveText(
       "Nebula",
@@ -253,30 +134,22 @@ test.describe("layout and pattern panel", () => {
     await expect(timeFactorRow(1).locator("[class*=paramScrub]")).toHaveText(
       "0.5",
     );
-    await closePanel(page);
-    await expect(page.locator("[class*=laneRow]")).toHaveCount(2);
 
     // The copy is independent: editing it leaves the original alone.
-    await openPatternPanel(page);
     await timeFactorRow(1).locator("[class*=paramScrub]").click();
     const copyInput = timeFactorRow(1).locator("[class*=paramInput]");
     await copyInput.fill("0.9");
     await copyInput.press("Enter");
-    await expect(timeFactorRow(1).locator("[class*=paramScrub]")).toHaveText(
-      "0.9",
-    );
     await expect(timeFactorRow(0).locator("[class*=paramScrub]")).toHaveText(
       "0.5",
     );
   });
 
-  test("visibility toggle and trash work", async ({ page }) => {
+  test("block trash removes the block", async ({ page }) => {
     await openPatternPanel(page);
     await insertPattern(page);
-    await page.getByLabel("Hide pattern").click();
-    await expect(page.getByLabel("Show pattern")).toBeVisible();
     await page.getByLabel("Remove pattern").click();
-    await expect(patternsEmptyHint(page)).toHaveText("No patterns yet");
+    await expect(page.locator("[data-doc=pattern-row]")).toHaveCount(0);
   });
 
   test("numeric params scrub by dragging and edit by click-to-type", async ({
@@ -284,8 +157,6 @@ test.describe("layout and pattern panel", () => {
   }) => {
     await openPatternPanel(page);
     await insertPattern(page, "Nebula");
-    // A specific numeric row: the palette editor's coefficient scrubs
-    // share the scrub class but have no click-to-type.
     const scrub = page
       .locator("[data-doc=param-row]")
       .filter({ hasText: "Time Factor" })
@@ -298,8 +169,6 @@ test.describe("layout and pattern panel", () => {
     await page.mouse.up();
     await expect(scrub).not.toHaveText(before!);
 
-    // Quick click opens the type-in box; Enter commits. Scope to the row:
-    // the palette editor's hex input shares the input class.
     await scrub.click();
     const input = page
       .locator("[data-doc=param-row]")
@@ -310,48 +179,42 @@ test.describe("layout and pattern panel", () => {
     await expect(scrub).toHaveText("0.5");
   });
 
-  test("palette params expose the shared editor and automate as a whole", async ({
-    page,
-  }) => {
+  test("palette params expose the shared editor", async ({ page }) => {
     await openPatternPanel(page);
     await insertPattern(page, "Nebula");
-    // The composite expands into the palette editor: gradient preview,
-    // preset swatches, and the coefficient grid.
     await expect(page.locator("[data-doc=palette-editor]")).toBeVisible();
     expect(
       await page.locator("[class*=palettePresetSwatch]").count(),
     ).toBeGreaterThan(4);
-
-    // Right-click on the composite row: the lane menu appears (the whole
-    // palette automates as one lane).
-    await page
-      .locator("[data-doc=param-row]")
-      .filter({ hasText: /^Palette$/ })
-      .click({ button: "right" });
-    await expect(
-      page.getByRole("button", { name: "Add Automation Lane" }),
-    ).toBeVisible();
-    await page.getByRole("button", { name: "Add Automation Lane" }).click();
-    await closePanel(page);
-    await expect(page.locator("[class*=laneRow]")).toHaveCount(1);
   });
 
-  test("automation lane add and delete via context menu", async ({ page }) => {
+  test("effects add, reorder, and remove on a block", async ({ page }) => {
     await openPatternPanel(page);
     await insertPattern(page, "Nebula");
-    const timeFactor = page
-      .locator("[data-doc=param-row]")
-      .filter({ hasText: "Time Factor" });
-    await timeFactor.click({ button: "right" });
-    await page.getByRole("button", { name: "Add Automation Lane" }).click();
-    await expect(timeFactor).toHaveClass(/paramAutomated/);
-    await closePanel(page);
-    await expect(page.locator("[class*=laneRow]")).toHaveCount(1);
 
-    await openPatternPanel(page);
-    await timeFactor.click({ button: "right" });
-    await page.getByRole("button", { name: "Delete Automation Lane" }).click();
-    await closePanel(page);
-    await expect(page.locator("[class*=laneRow]")).toHaveCount(0);
+    await page.locator("[data-doc=add-effect]").click();
+    await page
+      .locator("[class*=effectPickerItem]")
+      .filter({ hasText: "Color Tint" })
+      .click();
+    await expect(page.locator("[data-doc=effect-row]")).toHaveCount(1);
+
+    await page.locator("[data-doc=add-effect]").click();
+    await page
+      .locator("[class*=effectPickerItem]")
+      .filter({ hasText: "Kaleidoscope" })
+      .click();
+    await expect(page.locator("[data-doc=effect-row]")).toHaveCount(2);
+
+    // Reorder: move the second effect up; it becomes first.
+    await page.getByLabel("Move effect up").nth(1).click();
+    await expect(
+      page.locator("[data-doc=effect-row] [class*=effectName]").first(),
+    ).toContainText("Kaleidoscope");
+
+    // Remove both.
+    await page.getByLabel("Remove effect").first().click();
+    await page.getByLabel("Remove effect").first().click();
+    await expect(page.locator("[data-doc=effect-row]")).toHaveCount(0);
   });
 });

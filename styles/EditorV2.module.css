@@ -196,6 +196,59 @@
   user-select: none;
 }
 
+/* ---- Layer list (the left dock mirrors the data model) ---- */
+
+.layerList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.layerRow {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 0 2px;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.14);
+}
+
+.layerName {
+  flex: 1;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 13px;
+  text-transform: uppercase;
+  letter-spacing: 1.2px;
+  color: #a9b2c4;
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.layerNameInput {
+  flex: 1;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(232, 236, 244, 0.25);
+  color: #e8ecf4;
+  font-family: var(--font-mystical), Georgia, serif;
+  font-size: 13px;
+  letter-spacing: 1.2px;
+  padding: 2px 6px;
+  outline: none;
+  min-width: 0;
+}
+
+/* Add Pattern inside a layer sits tighter than the panel-level
+   buttons; the layer's hairline already separates sections. */
+.addPatternInLayer {
+  width: 100%;
+  padding: 8px 0;
+}
+
 /* The lanes' Automation label sits over the moving lane curves; the
    static black glow keeps it readable on any background. */
 .paneLabelGlow {

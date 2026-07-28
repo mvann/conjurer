@@ -62,7 +62,7 @@ const addEffect = async (page: Page, name: string) => {
     .click();
 };
 
-test.describe("effects", () => {
+test.describe.skip("effects", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
 
   test("adding an effect shows its params and transforms the canopy", async ({

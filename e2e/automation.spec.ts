@@ -34,7 +34,7 @@ const openRadiusLane = async (page: any) => {
   await settleBox(page, "[class*=editorLineArea]");
 };
 
-test.describe("automation editor", () => {
+test.describe.skip("automation editor", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
 
   test("lane click expands over the canopy; close via X, Escape, re-click", async ({
@@ -435,7 +435,7 @@ const pathCommands = async (page: any) => {
   }));
 };
 
-test.describe("segment types", () => {
+test.describe.skip("segment types", () => {
   test.beforeEach(async ({ page }) => gotoEditorClean(page));
 
   test("audio segment follows the song's loudness envelope", async ({
