@@ -2,6 +2,7 @@ import Head from "next/head";
 import dynamic from "next/dynamic";
 import { Cormorant_Garamond } from "next/font/google";
 import { useMemo } from "react";
+import { ChakraProvider, theme } from "@chakra-ui/react";
 import { Store } from "@/src/types/Store";
 import { StoreContext } from "@/src/types/StoreContext";
 
@@ -31,9 +32,14 @@ export default function Editor() {
         <title>Conjurer — Spell Crafter</title>
       </Head>
       <StoreContext.Provider value={store}>
-        <div className={cormorantGaramond.variable}>
-          <EditorV2Page />
-        </div>
+        {/* Chakra hosts the shared modals (save-as, open, user picker)
+            and toasts; resetCSS stays off so the spell crafter's own
+            styling is untouched. */}
+        <ChakraProvider theme={theme} resetCSS={false}>
+          <div className={cormorantGaramond.variable}>
+            <EditorV2Page />
+          </div>
+        </ChakraProvider>
       </StoreContext.Provider>
     </>
   );

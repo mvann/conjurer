@@ -18,6 +18,16 @@ import { Block } from "@/src/types/Block";
 import { Pattern } from "@/src/types/Pattern";
 import { Song } from "@/src/types/Song";
 import { BpmAnalysis } from "@/src/components/EditorV2/bpm";
+import { autorun, runInAction } from "mobx";
+import { useSaveExperience } from "@/src/hooks/experience";
+import { LoginButton } from "@/src/components/LoginButton";
+import { SaveExperienceModal } from "@/src/components/Menu/SaveExperienceModal";
+import {
+  draftIsAhead,
+  migrateLegacyIfPresent,
+  SpellDraft,
+  writeDraft,
+} from "@/src/components/EditorV2/spellPersistence";
 
 export type BeatGrid = BpmAnalysis & { durationSeconds: number };
 
@@ -38,6 +48,60 @@ export const EditorV2Page = observer(function EditorV2Page() {
       (router.query.experience as string) ?? "untitled",
     );
   }, [store, router.isReady, router.query.experience]);
+
+  const { saveExperience } = useSaveExperience();
+  const [draftPrompt, setDraftPrompt] = useState<SpellDraft | null>(null);
+
+  // The draft channel: migrate any legacy save once, then write a
+  // debounced draft on every model change; on load, offer a draft
+  // that is ahead of the loaded row.
+  useEffect(() => {
+    migrateLegacyIfPresent();
+  }, []);
+  useEffect(() => {
+    if (store.initializationState !== "initialized") return;
+    setDraftPrompt(draftIsAhead(store));
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    // The just-loaded shape: drafts only write once the user actually
+    // edits, so an untouched reload never clobbers a real draft with
+    // the freshly loaded (possibly empty) document.
+    let baseline: string | null = null;
+    const dispose = autorun(() => {
+      const serialized = JSON.stringify(
+        store.layers.map((layer) => layer.serialize()),
+      );
+      if (baseline === null) {
+        baseline = serialized;
+        return;
+      }
+      if (serialized === baseline) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => writeDraft(store), 800);
+    });
+    return () => {
+      dispose();
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, store.initializationState, store.experienceName]);
+
+  // Their keyboard set (decision 27b): save and save-as. Open joins
+  // with the gear pane's browser.
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!(event.metaKey || event.ctrlKey)) return;
+      if (event.key.toLowerCase() !== "s") return;
+      event.preventDefault();
+      if (event.shiftKey)
+        runInAction(() => {
+          store.uiStore.showingSaveExperienceModal = true;
+        });
+      else saveExperience();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, saveExperience]);
 
   const [song, setSong] = useState<Song | null>(null);
   const [volume, setVolume] = useState(1);
@@ -147,7 +211,11 @@ export const EditorV2Page = observer(function EditorV2Page() {
               : ""}
           </span>
         )}
+        <div className={styles.headerRight}>
+          <LoginButton />
+        </div>
       </header>
+      <SaveExperienceModal />
 
       <div className={styles.contentRow}>
         <LayersPanel onAddPattern={addPatternToLayer} />
@@ -181,6 +249,33 @@ export const EditorV2Page = observer(function EditorV2Page() {
                 dust={dust}
                 onDustChange={setDust}
               />
+            )}
+            {draftPrompt && (
+              <div className={styles.autosaveOverlay} data-doc="autosave">
+                <span className={styles.autosaveText}>
+                  An auto save was found that is ahead of your current save.
+                  Would you like to open it?
+                </span>
+                <div className={styles.autosaveActions}>
+                  <button
+                    className={styles.bannerAction}
+                    onClick={() => {
+                      store.experienceStore.loadExperience(
+                        draftPrompt.experience,
+                      );
+                      setDraftPrompt(null);
+                    }}
+                  >
+                    Open Auto Save
+                  </button>
+                  <button
+                    className={styles.bannerDismiss}
+                    onClick={() => setDraftPrompt(null)}
+                  >
+                    Dismiss
+                  </button>
+                </div>
+              </div>
             )}
           </section>
 

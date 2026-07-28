@@ -7,6 +7,27 @@ export const gotoEditorClean = async (page: Page) => {
   await page.reload();
   await expect(page.locator("h1", { hasText: "Conjurer" })).toBeVisible();
   await expect(page.locator("[class*=docsStrip]")).toBeVisible();
+  // With no remembered user, the store force-opens the log-in picker
+  // (upstream behavior). Tests run anonymous: dismiss it.
+  await page.waitForFunction(
+    () =>
+      (window as unknown as Record<string, { initializationState: string }>)
+        .__editorStore?.initializationState === "initialized",
+  );
+  await dismissLoginIfOpen(page);
+};
+
+// The upstream store force-opens the log-in picker whenever no user is
+// remembered — including after every reload. Chakra modals aria-hide
+// the rest of the app, so tests must dismiss it before role lookups.
+export const dismissLoginIfOpen = async (page: Page) => {
+  const closeButton = page.locator(".chakra-modal__close-btn");
+  if (await closeButton.count()) {
+    await closeButton.click();
+    await expect(page.locator(".chakra-modal__content-container")).toHaveCount(
+      0,
+    );
+  }
 };
 
 // The patterns panel's aside (the songs panel renders earlier in the DOM).
