@@ -2,6 +2,8 @@
   "compilerOptions": {
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "target": "ES2015" // can probably be changed to something much more modern
+    "target": "ES2015", // can probably be changed to something much more modern
+    "baseUrl": ".",
+    "paths": { "@/*": ["./*"] }
   }
 }
