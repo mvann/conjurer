@@ -23,11 +23,14 @@ import { useSaveExperience } from "@/src/hooks/experience";
 import { LoginButton } from "@/src/components/LoginButton";
 import { SaveExperienceModal } from "@/src/components/Menu/SaveExperienceModal";
 import {
+  DEMO_EXPERIENCE_NAME,
   draftIsAhead,
   migrateLegacyIfPresent,
+  seedDemoRow,
   SpellDraft,
   writeDraft,
 } from "@/src/components/EditorV2/spellPersistence";
+import { IS_DEMO } from "@/src/utils/demo";
 import { GearPane } from "@/src/components/EditorV2/GearPane";
 import { ensureLaneRegions } from "@/src/components/EditorV2/laneModel";
 import { RolesDropdown } from "@/src/components/EditorV2/RolesDropdown";
@@ -48,8 +51,16 @@ export const EditorV2Page = observer(function EditorV2Page() {
   useEffect(() => {
     if (store.initializationState !== "uninitialized" || !router.isReady)
       return;
+    // The demo runs serverless behind the tRPC demo link: Gandalf is
+    // already "logged in" and the bundled experience is seeded as a
+    // row on first visit.
+    if (IS_DEMO) {
+      localStorage.setItem("lastAuthenticatedUsername", "Gandalf");
+      seedDemoRow();
+    }
     store.initializeClientSide(
-      (router.query.experience as string) ?? "untitled",
+      (router.query.experience as string) ??
+        (IS_DEMO ? DEMO_EXPERIENCE_NAME : "untitled"),
     );
   }, [store, router.isReady, router.query.experience]);
 

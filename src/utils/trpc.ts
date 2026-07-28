@@ -1,6 +1,8 @@
 import { createTRPCClient, httpBatchLink } from "@trpc/client";
 import { createTRPCNext } from "@trpc/next";
 import type { AppRouter } from "../server/routers/_app";
+import { IS_DEMO } from "@/src/utils/demo";
+import { demoTrpcLink } from "@/src/utils/demoTrpcLink";
 
 function getBaseUrl() {
   if (typeof window !== "undefined")
@@ -23,7 +25,30 @@ function getBaseUrl() {
 export const trpc = createTRPCNext<AppRouter>({
   config(opts) {
     return {
-      links: [
+      links: IS_DEMO
+        ? [demoTrpcLink]
+        : [
+            httpBatchLink({
+              url: `${getBaseUrl()}/api/trpc`,
+
+              async headers() {
+                return {
+                  // authorization: getAuthCookie(),
+                };
+              },
+            }),
+          ],
+    };
+  },
+  // TODO: look into this https://trpc.io/docs/v11/ssr
+  ssr: false,
+});
+
+// tRPC client for use in non-React code
+export const trpcClient = createTRPCClient<AppRouter>({
+  links: IS_DEMO
+    ? [demoTrpcLink]
+    : [
         httpBatchLink({
           url: `${getBaseUrl()}/api/trpc`,
 
@@ -34,23 +59,4 @@ export const trpc = createTRPCNext<AppRouter>({
           },
         }),
       ],
-    };
-  },
-  // TODO: look into this https://trpc.io/docs/v11/ssr
-  ssr: false,
-});
-
-// tRPC client for use in non-React code
-export const trpcClient = createTRPCClient<AppRouter>({
-  links: [
-    httpBatchLink({
-      url: `${getBaseUrl()}/api/trpc`,
-
-      async headers() {
-        return {
-          // authorization: getAuthCookie(),
-        };
-      },
-    }),
-  ],
 });

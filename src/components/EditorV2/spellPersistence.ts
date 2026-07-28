@@ -76,6 +76,36 @@ export const draftIsAhead = (store: Store): SpellDraft | null => {
   }
 };
 
+// ---- Demo seeding ----
+// The bundled demo experience (legacy format) migrates into a demo
+// row on first visit, so the static build opens with real content.
+import demoExperience from "@/src/components/EditorV2/demoExperience.json";
+
+export const DEMO_EXPERIENCE_NAME = "shiny-demo";
+const DEMO_ROWS_KEY = "spellcrafter:demoExperiences";
+
+export const seedDemoRow = () => {
+  try {
+    const rows = JSON.parse(localStorage.getItem(DEMO_ROWS_KEY) ?? "{}");
+    if (rows[DEMO_EXPERIENCE_NAME]) return;
+    const experience = migrateLegacySave(
+      demoExperience as unknown as SerializedEditorState,
+      // The demo song's known duration; curves keep their alignment.
+      215,
+    );
+    rows[DEMO_EXPERIENCE_NAME] = {
+      ...experience,
+      id: 1,
+      name: DEMO_EXPERIENCE_NAME,
+      user: { id: 1, username: "Gandalf" },
+      updatedAt: new Date().toISOString(),
+    };
+    localStorage.setItem(DEMO_ROWS_KEY, JSON.stringify(rows));
+  } catch {
+    // A seeding failure must never block the demo from opening empty.
+  }
+};
+
 // One-time legacy migration: an old Spell Crafter save (fraction-time
 // wrapper) becomes a draft the prompt then offers. The legacy slots are
 // renamed to backups, never deleted.
