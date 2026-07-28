@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
 import { action } from "mobx";
 import { useRouter } from "next/router";
@@ -14,6 +14,7 @@ import { DocsStrip } from "@/src/components/EditorV2/DocsStrip";
 import { CanopyControls } from "@/src/components/EditorV2/CanopyControls";
 import { useStore } from "@/src/types/StoreContext";
 import { Layer } from "@/src/types/Layer";
+import { LayerV2 } from "@/src/types/Layer/LayerV2";
 import { Block } from "@/src/types/Block";
 import { Pattern } from "@/src/types/Pattern";
 import { Song } from "@/src/types/Song";
@@ -107,18 +108,84 @@ export const EditorV2Page = observer(function EditorV2Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [store, store.initializationState, store.experienceName]);
 
-  // Their keyboard set (decision 27b): save and save-as. Open joins
-  // with the gear pane's browser.
+  // ---- Undo: debounced session snapshots of the layers. ----
+  // Their store has no undo; the spell crafter keeps its own. A
+  // snapshot is the serialized layers; restore rebuilds Block
+  // instances through their own deserializer. Session-scoped by
+  // design (decision 6's memory-only philosophy).
+  const history = useRef<{ stack: string[]; index: number }>({
+    stack: [],
+    index: -1,
+  });
+  const suppressCapture = useRef(false);
+  useEffect(() => {
+    if (store.initializationState !== "initialized") return;
+    history.current = {
+      stack: [JSON.stringify(store.layers.map((layer) => layer.serialize()))],
+      index: 0,
+    };
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    const dispose = autorun(() => {
+      const serialized = JSON.stringify(
+        store.layers.map((layer) => layer.serialize()),
+      );
+      if (suppressCapture.current) return;
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        const h = history.current;
+        if (h.stack[h.index] === serialized) return;
+        h.stack = [...h.stack.slice(0, h.index + 1), serialized];
+        h.index = h.stack.length - 1;
+      }, 400);
+    });
+    return () => {
+      dispose();
+      if (timer) clearTimeout(timer);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [store, store.initializationState, store.experienceName]);
+
+  const restoreSnapshot = action((serialized: string) => {
+    suppressCapture.current = true;
+    const layersData = JSON.parse(serialized);
+    store.layers = layersData.map((layerData: unknown) =>
+      LayerV2.deserialize(store, layerData),
+    );
+    store.selectedLayer = store.layers[0];
+    setSelectedLane(null);
+    // Let the autorun see the restored state without capturing it.
+    setTimeout(() => {
+      suppressCapture.current = false;
+    }, 0);
+  });
+
+  // Their keyboard set (decision 27b): save, save-as, undo, redo.
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       if (!(event.metaKey || event.ctrlKey)) return;
-      if (event.key.toLowerCase() !== "s") return;
-      event.preventDefault();
-      if (event.shiftKey)
-        runInAction(() => {
-          store.uiStore.showingSaveExperienceModal = true;
-        });
-      else saveExperience();
+      const key = event.key.toLowerCase();
+      if (key === "s") {
+        event.preventDefault();
+        if (event.shiftKey)
+          runInAction(() => {
+            store.uiStore.showingSaveExperienceModal = true;
+          });
+        else saveExperience();
+      } else if (key === "z") {
+        const target = event.target as HTMLElement;
+        if (target.tagName === "INPUT" || target.tagName === "TEXTAREA") return;
+        event.preventDefault();
+        const h = history.current;
+        if (event.shiftKey) {
+          if (h.index < h.stack.length - 1) {
+            h.index += 1;
+            restoreSnapshot(h.stack[h.index]);
+          }
+        } else if (h.index > 0) {
+          h.index -= 1;
+          restoreSnapshot(h.stack[h.index]);
+        }
+      }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);

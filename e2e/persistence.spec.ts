@@ -65,6 +65,29 @@ test.describe("persistence and drafts", () => {
     expect(blockCount).toBe(0);
   });
 
+  test("undo and redo step the layers", async ({ page }) => {
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+    await page.waitForTimeout(600); // snapshot debounce
+    await insertPattern(page, "Disc");
+    await page.waitForTimeout(600);
+    const blockNames = () =>
+      page.evaluate(() =>
+        (window as any).__editorStore.layers
+          .flatMap((layer: any) => layer.getAllBlocks())
+          .map((block: any) => block.pattern.name),
+      );
+    expect(await blockNames()).toEqual(["Nebula", "Disc"]);
+
+    await page.keyboard.press("Escape"); // close the dock
+    await page.keyboard.press("Control+z");
+    expect(await blockNames()).toEqual(["Nebula"]);
+    await page.keyboard.press("Control+z");
+    expect(await blockNames()).toEqual([]);
+    await page.keyboard.press("Control+Shift+z");
+    expect(await blockNames()).toEqual(["Nebula"]);
+  });
+
   test("a legacy save migrates into the draft channel", async ({ page }) => {
     // Seed an old-format Spell Crafter save: one Nebula entry with a
     // ramp lane and a hidden Disc.
