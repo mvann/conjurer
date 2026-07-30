@@ -1,4 +1,8 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { observer } from "mobx-react-lite";
+import { useRouter } from "next/router";
+import { useStore } from "@/src/types/StoreContext";
+import { loadExperienceIntoStore } from "@/src/components/EditorV2/editorExperience";
 import styles from "@/styles/EditorV2.module.css";
 import { CanopyPane } from "@/src/components/EditorV2/CanopyPane";
 import {
@@ -45,7 +49,30 @@ export type BeatGrid = BpmAnalysis & { durationSeconds: number };
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
 
-export function EditorV2Page() {
+export const EditorV2Page = observer(function EditorV2Page() {
+  // The shared main-app store. Experiences load into it through upstream's
+  // own pipeline (row -> deserialize -> v1 migration -> bake to curves), so
+  // both editors hold identical in-memory data (decision 26).
+  //
+  // Nothing below reads it yet: the legacy state still drives every part of
+  // the UI, and each part moves over to a projection of store.layers one at
+  // a time. Loading first, and switching the UI second, is deliberate — the
+  // editor keeps working at every commit in between.
+  const store = useStore();
+  const router = useRouter();
+  useEffect(() => {
+    if (store.initializationState !== "uninitialized" || !router.isReady)
+      return;
+    const experienceName = (router.query.experience as string) ?? "untitled";
+    // Upstream's own init wires up the user, ui, and audio stores and the
+    // role; it is called WITHOUT a name so it does not reach for tRPC, which
+    // the static demo has no backend for. Spell Crafter loads the experience
+    // itself, through the transport seam that demo mode can swap.
+    store.initializeClientSide().then(() => {
+      void loadExperienceIntoStore(store, experienceName);
+    });
+  }, [store, router.isReady, router.query.experience]);
+
   const [entries, setEntries] = useState<StackEntry[]>([]);
   const [song, setSong] = useState<Song | null>(null);
   const [volume, setVolume] = useState(1);
@@ -718,4 +745,4 @@ export function EditorV2Page() {
       <DocsStrip />
     </div>
   );
-}
+});
