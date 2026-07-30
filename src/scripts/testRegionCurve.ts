@@ -20,10 +20,14 @@
  * - Fraction/seconds conversion is correct for blocks that do not start at
  *   zero, not just the full-song default.
  */
+import { Vector4 } from "three";
 import {
   CurveVariation,
   makeCurveNode,
 } from "@/src/types/Variations/CurveVariation";
+import { LinearVariation4 } from "@/src/types/Variations/LinearVariation4";
+import { PaletteVariation } from "@/src/params/palette/variation/PaletteVariation";
+import { Palette } from "@/src/params/palette/Palette";
 import { PeriodicVariation } from "@/src/types/Variations/PeriodicVariation";
 import { AudioVariation } from "@/src/types/Variations/AudioVariation";
 import { FlatVariation } from "@/src/types/Variations/FlatVariation";
@@ -359,6 +363,102 @@ for (const testCase of cases) {
     console.log(
       `  fraction mapping: block 30..75s of a 200s song -> ${expectedFirst}..${expectedLast}`,
     );
+}
+
+// ---- value lanes: color and palette periods
+{
+  const ctx = fullSong;
+  // Three periods: a solid red, a genuine gradient, then a solid blue.
+  const red: [number, number, number, number] = [1, 0, 0, 1];
+  const green: [number, number, number, number] = [0, 1, 0, 1];
+  const blue: [number, number, number, number] = [0, 0, 1, 1];
+  const v4 = (c: [number, number, number, number]) =>
+    new Vector4(c[0], c[1], c[2], c[3]);
+
+  const original: Variation[] = [
+    new LinearVariation4(40, v4(red), v4(red)),
+    new LinearVariation4(40, v4(red), v4(green)),
+    new LinearVariation4(40, v4(blue), v4(blue)),
+  ];
+
+  const curve = variationsToCurve(original, ctx);
+  if (!curve) fail("a color lane must project to a curve");
+  else {
+    if (curve.keyframes.length !== 3)
+      fail(`color lane: 3 periods -> 3 keyframes, got ${curve.keyframes.length}`);
+    const [first, second, third] = curve.keyframes;
+    if (Math.abs(first.time - 0) > 1e-9)
+      fail("the first period starts at the block start");
+    if (Math.abs(second.time - 40 / 120) > 1e-9)
+      fail(`second period at fraction 1/3, got ${second.time}`);
+    if (first.colorTo)
+      fail("a constant period must NOT record colorTo, or it reads as a gradient");
+    if (!second.colorTo)
+      fail("a genuine gradient must record its far end on colorTo");
+    if (second.colorTo && !second.colorTo.every((c, i) => Math.abs(c - green[i]) < 1e-9))
+      fail("the gradient's far end must be its `to` color");
+    if (!third.color || !third.color.every((c, i) => Math.abs(c - blue[i]) < 1e-9))
+      fail("the third period keeps its own color");
+
+    const back = curveToVariations(curve, ctx, stubStore);
+    if (back.length !== 3)
+      fail(`color lane round trip: 3 regions, got ${back.length}`);
+    if (!back.every((r) => r.type === "linear4"))
+      fail(`color regions must stay linear4, got ${back.map((r) => r.type).join(", ")}`);
+    checkTiling("color lane", back, ctx.blockDuration);
+    const grad = back[1] as any;
+    if (
+      !grad ||
+      Math.abs(grad.from.x - 1) > 1e-9 ||
+      Math.abs(grad.to.y - 1) > 1e-9
+    )
+      fail("the gradient region must round trip from red to green");
+    const solid = back[0] as any;
+    if (Math.abs(solid.from.x - solid.to.x) > 1e-9)
+      fail("a solid period must write from == to");
+
+    const shapeA = shapeOf(back);
+    const again = curveToVariations(variationsToCurve(back, ctx)!, ctx, stubStore);
+    if (shapeA !== shapeOf(again))
+      fail(`color lane not idempotent: ${shapeA} vs ${shapeOf(again)}`);
+    if (failures === 0)
+      console.log(
+        "  color lane: 3 periods round trip as linear4, gradient carried on colorTo",
+      );
+  }
+}
+
+// ---- palette lanes
+{
+  const ctx = fullSong;
+  const paletteAt = (n: number) =>
+    Palette.deserialize({
+      a: [n, n, n],
+      b: [0.5, 0.5, 0.5],
+      c: [1, 1, 1],
+      d: [0, 0.33, 0.67],
+    });
+  const original: Variation[] = [
+    new PaletteVariation(60, paletteAt(0.1)),
+    new PaletteVariation(60, paletteAt(0.9)),
+  ];
+  const curve = variationsToCurve(original, ctx);
+  if (!curve) fail("a palette lane must project to a curve");
+  else {
+    if (curve.keyframes.length !== 2)
+      fail(`palette lane: 2 periods -> 2 keyframes, got ${curve.keyframes.length}`);
+    if (!curve.keyframes[0].palette)
+      fail("each palette period carries its palette payload");
+    const back = curveToVariations(curve, ctx, stubStore);
+    if (!back.every((r) => r.type === "palette"))
+      fail(`palette regions must stay palette, got ${back.map((r) => r.type).join(", ")}`);
+    checkTiling("palette lane", back, ctx.blockDuration);
+    const restored = (back[1] as any).palette.serialize();
+    if (Math.abs(restored.a[0] - 0.9) > 1e-9)
+      fail(`the second period's palette must survive, got a=${restored.a[0]}`);
+    if (failures === 0)
+      console.log("  palette lane: 2 periods round trip as palette regions");
+  }
 }
 
 // An empty lane is not a curve.

@@ -27,7 +27,11 @@
 //   upstream's loader rewrites flat / linear / easing / spline on every
 //   open, so writing those would guarantee drift on the next round trip.
 
+import { Vector4 } from "three";
 import { Variation } from "@/src/types/Variations/Variation";
+import { LinearVariation4 } from "@/src/types/Variations/LinearVariation4";
+import { PaletteVariation } from "@/src/params/palette/variation/PaletteVariation";
+import { Palette } from "@/src/params/palette/Palette";
 import {
   CurveVariation,
   CurveNode,
@@ -70,6 +74,135 @@ const VALUE_EPS = 1e-9;
 const isGenerator = (type: SegmentSpec["type"]) =>
   type === "wave" || type === "audio";
 
+// -------------------------------------------------------------- value lanes
+//
+// Color and palette parameters automate the WHOLE value, not a number, so
+// their lanes work differently from scalar ones and upstream treats them
+// differently too: `previewAllParamsAsCurves` skips anything whose value is
+// not a number, so these arrive raw and `linear4` / `palette` are the correct
+// types to write back.
+//
+// The editor's model is periods: keyframes are boundaries and each one's
+// payload holds from its time until the next. That lines up with regions
+// exactly — one region IS one period — so the mapping is direct, with the
+// first region starting at the block's start (leadIn dissolves).
+//
+// A color region is always `linear4` from->to upstream, which means a period is
+// structurally always a gradient. Equal ends read as a plain single color; a
+// genuine gradient carries its far end on `colorTo` (decision 23).
+
+const asTuple = (vector: Vector4): [number, number, number, number] => [
+  vector.x,
+  vector.y,
+  vector.z,
+  vector.w,
+];
+
+const sameColor = (
+  a: [number, number, number, number],
+  b: [number, number, number, number],
+) => a.every((component, index) => Math.abs(component - b[index]) < VALUE_EPS);
+
+/** Whether a region list is a value lane (color or palette) rather than scalar. */
+export const isValueLaneRegions = (
+  variations: Variation[] | undefined | null,
+): boolean =>
+  !!variations &&
+  variations.length > 0 &&
+  variations.every(
+    (variation) =>
+      variation instanceof LinearVariation4 ||
+      variation instanceof PaletteVariation,
+  );
+
+/** Color and palette regions, as the period keyframes the editor draws. */
+const valueLaneToCurve = (
+  variations: Variation[],
+  ctx: RegionContext,
+): AutomationCurve | null => {
+  const { blockStartTime, songDuration } = ctx;
+  const frac = (localSeconds: number) =>
+    (blockStartTime + localSeconds) / songDuration;
+
+  const keyframes: AutomationKeyframe[] = [];
+  let cursor = 0;
+  for (const variation of variations) {
+    const keyframe: AutomationKeyframe = {
+      time: frac(cursor),
+      // Value lanes have no vertical meaning; the payload carries everything.
+      value: 0,
+    };
+    if (variation instanceof LinearVariation4) {
+      const from = asTuple(variation.from);
+      const to = asTuple(variation.to);
+      keyframe.color = from;
+      // Only a real gradient records its far end, so a constant period reads
+      // back as one color rather than a gradient of nothing.
+      if (!sameColor(from, to)) keyframe.colorTo = to;
+    } else if (variation instanceof PaletteVariation) {
+      keyframe.palette = variation.palette.serialize() as NonNullable<
+        AutomationKeyframe["palette"]
+      >;
+    }
+    keyframes.push(keyframe);
+    cursor += variation.duration;
+  }
+
+  if (keyframes.length === 0) return null;
+  // Segments carry no shape here, but the list has to stay sized to the
+  // keyframes or getSegments will pad it and callers will misread the lane.
+  return {
+    keyframes,
+    segments: keyframes.slice(1).map(() => ({ type: "flat" as const })),
+  };
+};
+
+/** Period keyframes, back to color or palette regions tiling the block. */
+const valueLaneToVariations = (
+  curve: AutomationCurve,
+  ctx: RegionContext,
+  kind: "color" | "palette",
+): Variation[] => {
+  const { blockStartTime, blockDuration, songDuration } = ctx;
+  const local = (fraction: number) =>
+    Math.min(
+      Math.max(fraction * songDuration - blockStartTime, 0),
+      blockDuration,
+    );
+
+  const { keyframes } = curve;
+  const variations: Variation[] = [];
+  for (let index = 0; index < keyframes.length; index++) {
+    const keyframe = keyframes[index];
+    // The first period starts at the block's start whatever its keyframe says
+    // (leadIn dissolves); the last runs to the block's end.
+    const start = index === 0 ? 0 : local(keyframe.time);
+    const end =
+      index === keyframes.length - 1
+        ? blockDuration
+        : local(keyframes[index + 1].time);
+    const duration = end - start;
+    if (duration <= TIME_EPS) continue;
+
+    if (kind === "palette" && keyframe.palette) {
+      variations.push(
+        new PaletteVariation(duration, Palette.deserialize(keyframe.palette)),
+      );
+      continue;
+    }
+    const from = keyframe.color ?? [0, 0, 0, 1];
+    const to = keyframe.colorTo ?? from;
+    variations.push(
+      new LinearVariation4(
+        duration,
+        new Vector4(from[0], from[1], from[2], from[3]),
+        new Vector4(to[0], to[1], to[2], to[3]),
+      ),
+    );
+  }
+  return variations;
+};
+
 // ---------------------------------------------------------------- read path
 
 /** Phase as upstream stores it, converted to the editor's cycles. */
@@ -105,6 +238,9 @@ export const variationsToCurve = (
   if (!variations || variations.length === 0) return null;
   const { blockStartTime, songDuration } = ctx;
   if (!(songDuration > 0)) return null;
+
+  // Color and palette lanes are periods, not shapes; they take their own path.
+  if (isValueLaneRegions(variations)) return valueLaneToCurve(variations, ctx);
 
   const frac = (localSeconds: number) =>
     (blockStartTime + localSeconds) / songDuration;
@@ -295,6 +431,19 @@ export const curveToVariations = (
   const { blockStartTime, blockDuration, songDuration } = ctx;
   const { keyframes } = curve;
   if (keyframes.length === 0 || !(songDuration > 0)) return [];
+
+  // A curve whose keyframes carry payloads is a value lane, and its periods map
+  // straight back to color or palette regions.
+  const carriesPalette = keyframes.some((keyframe) => keyframe.palette);
+  const carriesColor = keyframes.some(
+    (keyframe) => keyframe.color || keyframe.colorTo,
+  );
+  if (carriesPalette || carriesColor)
+    return valueLaneToVariations(
+      curve,
+      ctx,
+      carriesPalette ? "palette" : "color",
+    );
 
   // Fractions back to block-local seconds, clamped into the block: the
   // first region starts at the block start (leadIn dissolves) and nothing
