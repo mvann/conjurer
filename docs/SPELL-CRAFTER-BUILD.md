@@ -178,19 +178,56 @@ the UPSTREAM remote here, so always pass `--repo mvann/conjurer`.
 Unit suites: `migrate`, `regioncurve`, `autorange`, `clipboard`, `bpm`,
 `peaks`, `transients`, `docs` — all green, zero type errors.
 
+- **`810eadb`** The block lane read model (`blockLanes.ts`), `yarn
+  test:blocklanes`. Stable curve identity via mobx `computed`, invalidation on
+  write, lane existence by the lone-constant convention, effect lanes framed by
+  the parent block.
+
 ### Where the next increment picks up
 
-The projection exists and is trusted, and the store loads. Not yet done:
+Everything below the UI is in place and tested: the projection, the store load
+and save, the migration, and the lane read model. **The remaining work is the
+model swap for the pattern list, and it is the step the previous attempt got
+wrong** — it built the adapter and then wrote a new view anyway.
 
-1. **Feed the projection to the existing components.** `AutomationPane`'s
-   `LaneCurve` and `AutomationEditorView` both take `curve: AutomationCurve`
-   props today, so they can be fed `variationsToCurve(...)` without being
-   rewritten — that is the whole point. Write path: edits call
-   `curveToVariations` back onto the block. **This is the step the previous
-   attempt got wrong**: it built the adapter and then wrote a new view anyway.
-2. Color/palette *sequences* — blocked on an owner decision, see below.
-3. Left pane becomes the layer list (decisions 1–2, 28).
-4. Legacy save migration (22): fraction-time curves to block-local seconds.
+The blocker is that `entries: StackEntry[]` is React state with no relationship
+to `store.layers`. The components cannot be fed from blocks until an entry knows
+its block. Order that keeps HEAD working throughout:
+
+1. **`StackEntry` gains `block: Block`**, and `EditorV2Page` derives its entry
+   list from `store.layers[...].blockMap` instead of holding it in `useState`.
+   Pattern add / remove / duplicate / reorder and effect add / remove / reorder
+   become block operations. New blocks get `startTime 0, duration = song length`
+   (decision 24) — that is what keeps the always-on stack feeling unchanged.
+2. **Swap the lane data source.** Replace `entry.automation[key]` reads with
+   `laneCurve(entry.block, key)` and `onCurveChange` writes with
+   `writeLaneCurve(...)`. Roughly 14 read sites and 14 `automatedParams` sites,
+   in `EditorV2Page`, `PatternsPanel`, and `AutomationPane`.
+   `automatedParams` becomes `laneKeysOf(block)`.
+3. **Make those three components mobx `observer`s.** Without it they will not
+   re-render when a lane changes — `blockLanes` invalidation is mobx-driven.
+   `EditorV2Page` already is one.
+4. **Call `setLaneSongDuration(...)`** wherever the song loads or changes; every
+   keyframe time is a fraction of it.
+5. **Undo** becomes snapshots of `store.layers` serialized, restored through
+   `LayerV2.deserialize`, with `lanedParams` included (owner's call). The
+   in-place identity restore has to be rebuilt keyed by block id.
+6. Only once all of the above is live does `experiencePersistence.ts` retire.
+   **Do not delete it before then** — it is what currently makes the editor work.
+
+Known traps for step 2, both already understood:
+
+- **Do not round-trip through regions mid-gesture.** `makeCurveNode` mints fresh
+  ids, so converting on every pointer move would change node identity under a
+  drag and the grabbed keyframe would slip. Keep the working curve stable during
+  a gesture and commit on release.
+- **Colour lanes are a sequence of `linear4` regions**, and `variationsToCurve`
+  currently handles the scalar path only. The value-lane projection (colour and
+  palette periods, `colorTo` for gradients) still needs writing — see the
+  resolved colour spec below for exactly what it must feed.
+
+After that: the layer list in the left pane (decisions 1–2, 28), the gear pane
+(27), and the chrome.
 
 ## The color / palette lane — resolved
 
