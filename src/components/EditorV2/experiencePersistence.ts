@@ -3,7 +3,29 @@ import { Song } from "@/src/types/Song";
 import { BASE_UNIFORMS, Pattern } from "@/src/types/Pattern";
 import { isVector4 } from "@/src/utils/object";
 import { isPalette, Palette } from "@/src/params/palette/Palette";
-import { StackEntry } from "@/src/components/EditorV2/PatternsPanel";
+import {
+  EffectEntry,
+  StackEntry,
+  VISIBILITY_PARAM,
+} from "@/src/components/EditorV2/PatternsPanel";
+import type { Block } from "@/src/types/Block";
+import type { Store } from "@/src/types/Store";
+import {
+  armLane,
+  effectLaneKey,
+  laneCurve,
+  laneKeysOf,
+  resumeLane,
+  writeLaneCurve,
+} from "@/src/components/EditorV2/blockLanes";
+import {
+  addEffectToBlock,
+  addPatternBlock,
+  ensureFirstLayer,
+  removeEffectFromBlock,
+  duplicatePatternBlock,
+  removePatternBlock,
+} from "@/src/components/EditorV2/blockStack";
 import { AutomationCurve } from "@/src/components/EditorV2/automation";
 import {
   effectFactoryByName,
@@ -35,13 +57,13 @@ export type SerializedEditorState = {
   laneOrder?: string[];
   entries: {
     pattern: string;
-    // Runtime entry id, kept so undo/redo restores preserve identity
-    // (selections keyed by id survive). Absent in older saves.
-    id?: number;
+    // The block's id. Older saves carry a numeric runtime id instead; both are
+    // accepted and normalised to a string on restore.
+    id?: string | number;
     params: Record<string, unknown>;
     // The entry's effect chain, in render order. Absent in older saves.
     effects?: {
-      id?: number;
+      id?: string | number;
       pattern: string;
       params: Record<string, unknown>;
     }[];
@@ -73,20 +95,35 @@ export const serializeEditorState = (
   savedAt: Date.now(),
   song,
   laneOrder,
-  entries: entries.map((entry) => ({
-    pattern: entry.pattern.name,
-    id: entry.id,
-    params: serializeParams(entry.pattern),
-    effects: entry.effects.map((effect) => ({
-      id: effect.id,
-      pattern: effect.pattern.name,
-      params: serializeParams(effect.pattern),
-    })),
-    visible: entry.visible,
-    expanded: entry.expanded,
-    automatedParams: [...entry.automatedParams],
-    automation: entry.automation,
-  })),
+  entries: entries.map((entry) => {
+    // Lanes and curves are read out of the block, which owns them now. The
+    // saved shape is unchanged, so an existing save still loads.
+    const laneKeys = laneKeysOf(entry.block);
+    const automation: Record<string, AutomationCurve> = {};
+    for (const laneKey of laneKeys) {
+      const curve = laneCurve(entry.block, laneKey);
+      if (curve) automation[laneKey] = curve;
+    }
+    if (entry.visibilityCurve)
+      automation[VISIBILITY_PARAM] = entry.visibilityCurve;
+    return {
+      pattern: entry.pattern.name,
+      id: entry.id,
+      params: serializeParams(entry.pattern),
+      effects: entry.effects.map((effect) => ({
+        id: effect.id,
+        pattern: effect.pattern.name,
+        params: serializeParams(effect.pattern),
+      })),
+      visible: entry.visible,
+      expanded: entry.expanded,
+      automatedParams: [
+        ...laneKeys,
+        ...(entry.visibilityCurve ? [VISIBILITY_PARAM] : []),
+      ],
+      automation,
+    };
+  }),
 });
 
 // Rebuilds stack entries from a serialized state. Unknown patterns and
@@ -119,111 +156,152 @@ const applyParams = (pattern: Pattern, params: Record<string, unknown>) => {
 
 export const restoreEntries = (
   state: SerializedEditorState,
-  allocateId: () => number,
+  store: Store,
   currentEntries: StackEntry[] = [],
 ): StackEntry[] => {
+  const layer = ensureFirstLayer(store);
   const currentById = new Map(currentEntries.map((entry) => [entry.id, entry]));
-  return state.entries.flatMap((saved) => {
-    const current =
-      saved.id !== undefined ? currentById.get(saved.id) : undefined;
-    let pattern: Pattern;
+  // Blocks the restore does not claim are stale (an undo that removes a
+  // pattern, say) and are dropped at the end, so the store never drifts
+  // ahead of what the editor shows.
+  const claimed = new Set<string>();
+
+  const entries = state.entries.flatMap((saved) => {
+    const savedId = saved.id !== undefined ? String(saved.id) : undefined;
+    const current = savedId ? currentById.get(savedId) : undefined;
+
+    // Reuse the live block (and therefore the live Pattern) when the restore
+    // is describing the same entry: object identity is load-bearing, since
+    // the canopy's materials and the pattern list share pattern.params by
+    // reference. Replacing the instance would leave them editing something
+    // nothing renders.
+    let block: Block;
     if (current && current.pattern.name === saved.pattern) {
-      pattern = current.pattern;
+      block = current.block;
     } else {
       const factory = patternFactoryByName(saved.pattern);
       if (!factory) return [];
-      pattern = factory();
+      block = addPatternBlock(store, layer, factory);
     }
-    applyParams(pattern, saved.params ?? {});
+    claimed.add(block.id);
+    applyParams(block.pattern, saved.params ?? {});
 
-    // Effects reuse live instances by id too: their params are shared by
-    // reference with the canopy's materials exactly like pattern params.
+    // Effects become nested effect blocks, reusing live ones by id.
     const currentEffects = new Map(
       (current?.effects ?? []).map((effect) => [effect.id, effect]),
     );
-    const effects = (saved.effects ?? []).flatMap((savedEffect) => {
-      const currentEffect =
-        savedEffect.id !== undefined
-          ? currentEffects.get(savedEffect.id)
+    // Saved lane keys carry the OLD effect id; map them onto the live blocks.
+    const effectIdMap = new Map<string, string>();
+    const effects: EffectEntry[] = (saved.effects ?? []).flatMap(
+      (savedEffect) => {
+        const savedEffectId =
+          savedEffect.id !== undefined ? String(savedEffect.id) : undefined;
+        const currentEffect = savedEffectId
+          ? currentEffects.get(savedEffectId)
           : undefined;
-      let effectPattern: Pattern;
-      if (currentEffect && currentEffect.pattern.name === savedEffect.pattern) {
-        effectPattern = currentEffect.pattern;
-      } else {
-        const factory = effectFactoryByName(savedEffect.pattern);
-        if (!factory) return [];
-        effectPattern = factory();
+        let effectBlock: Block | undefined;
+        if (
+          currentEffect &&
+          currentEffect.pattern.name === savedEffect.pattern &&
+          block.effectBlocks.includes(currentEffect.block)
+        ) {
+          effectBlock = currentEffect.block;
+        } else {
+          const factory = effectFactoryByName(savedEffect.pattern);
+          if (!factory) return [];
+          effectBlock = addEffectToBlock(block, factory);
+        }
+        if (!effectBlock) return [];
+        applyParams(effectBlock.pattern, savedEffect.params ?? {});
+        if (savedEffectId) effectIdMap.set(savedEffectId, effectBlock.id);
+        return [
+          {
+            id: effectBlock.id,
+            pattern: effectBlock.pattern,
+            block: effectBlock,
+          },
+        ];
+      },
+    );
+
+    // Effect blocks no longer described by the save go with it.
+    for (const effectBlock of [...block.effectBlocks])
+      if (!effects.some((effect) => effect.block === effectBlock))
+        removeEffectFromBlock(block, effectBlock);
+
+    // Write the saved curves back onto the block, remapping effect lane keys
+    // onto the live effect block ids.
+    let visibilityCurve: AutomationCurve | undefined;
+    const savedAutomation = saved.automation ?? {};
+    const savedLanes = saved.automatedParams ?? Object.keys(savedAutomation);
+    for (const savedKey of savedLanes) {
+      if (savedKey === VISIBILITY_PARAM) {
+        visibilityCurve = savedAutomation[savedKey] ?? { keyframes: [] };
+        continue;
       }
-      applyParams(effectPattern, savedEffect.params ?? {});
-      return [{ id: savedEffect.id ?? allocateId(), pattern: effectPattern }];
-    });
+      let laneKey = savedKey;
+      if (savedKey.startsWith("effect:")) {
+        const [, oldId, uniform] = savedKey.split(":");
+        const liveId = effectIdMap.get(oldId);
+        if (!liveId || !uniform) continue;
+        laneKey = effectLaneKey(liveId, uniform);
+      }
+      const curve = savedAutomation[savedKey];
+      // Arm first so the lane exists even when the save had no curve for it,
+      // then write whatever curve there was.
+      armLane(block, laneKey);
+      if (curve && curve.keyframes.length > 0)
+        writeLaneCurve(block, laneKey, curve, store);
+      // A save never carries takeover state (decision 6), so a restored lane
+      // is always driving.
+      resumeLane(block, laneKey);
+    }
 
     return [
       {
-        // Reuse the serialized id when present so restores (undo/redo in
-        // particular) keep entry identity; allocateId still hands out
-        // fresh ids for older saves without them.
-        id: saved.id ?? allocateId(),
-        pattern,
+        id: block.id,
+        block,
+        pattern: block.pattern,
         effects,
         visible: saved.visible ?? true,
         expanded: saved.expanded ?? true,
-        automatedParams: saved.automatedParams ?? [],
-        automation: saved.automation ?? {},
+        visibilityCurve,
       },
     ];
   });
+
+  for (const block of layer.getAllBlocks())
+    if (!claimed.has(block.id)) removePatternBlock(layer, block);
+
+  return entries;
 };
 
-// Deep-copies a stack entry: fresh pattern and effect instances carrying
-// the same values, fresh ids, and the automation remapped onto the new
-// effect ids. The copy shares nothing live with the source, so editing
-// one never bleeds into the other.
+// Duplicates a stack entry. Upstream's own Block.clone carries the pattern,
+// the timing, every region lane, and the effect chain, so the deep copy is
+// theirs; this re-ids the copy and hands back an entry pointing at it. Lane
+// keys need no remapping because they are derived from the new effect blocks'
+// own ids rather than stored anywhere.
 export const duplicateStackEntry = (
+  store: Store,
   source: StackEntry,
-  allocateId: () => number,
 ): StackEntry | null => {
-  const factory = patternFactoryByName(source.pattern.name);
-  if (!factory) return null;
-  const pattern = factory();
-  applyParams(pattern, serializeParams(source.pattern));
-
-  const effectIds = new Map<number, number>();
-  const effects = source.effects.flatMap((effect) => {
-    const effectFactory = effectFactoryByName(effect.pattern.name);
-    if (!effectFactory) return [];
-    const effectPattern = effectFactory();
-    applyParams(effectPattern, serializeParams(effect.pattern));
-    const id = allocateId();
-    effectIds.set(effect.id, id);
-    return [{ id, pattern: effectPattern }];
-  });
-
-  // Effect lanes are keyed by effect id; point them at the copies.
-  const remapLaneKey = (laneKey: string) => {
-    const match = laneKey.match(/^effect:(\d+):(.*)$/);
-    if (!match) return laneKey;
-    const mapped = effectIds.get(Number(match[1]));
-    return mapped === undefined ? null : `effect:${mapped}:${match[2]}`;
-  };
-  const automatedParams = source.automatedParams.flatMap((laneKey) => {
-    const mapped = remapLaneKey(laneKey);
-    return mapped ? [mapped] : [];
-  });
-  const automation: Record<string, AutomationCurve> = {};
-  for (const [laneKey, curve] of Object.entries(source.automation)) {
-    const mapped = remapLaneKey(laneKey);
-    if (mapped) automation[mapped] = JSON.parse(JSON.stringify(curve));
-  }
-
+  const layer = ensureFirstLayer(store);
+  const copy = duplicatePatternBlock(layer, source.block);
+  if (!copy) return null;
   return {
-    id: allocateId(),
-    pattern,
-    effects,
+    id: copy.id,
+    block: copy,
+    pattern: copy.pattern,
+    effects: copy.effectBlocks.map((effectBlock) => ({
+      id: effectBlock.id,
+      pattern: effectBlock.pattern,
+      block: effectBlock,
+    })),
     visible: source.visible,
     expanded: source.expanded,
-    automatedParams,
-    automation,
+    visibilityCurve: source.visibilityCurve
+      ? JSON.parse(JSON.stringify(source.visibilityCurve))
+      : undefined,
   };
 };
 

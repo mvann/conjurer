@@ -34,9 +34,9 @@ const PATTERN_PRIORITY = 2;
 const MERGE_PRIORITY = 100;
 
 export type VisiblePattern = {
-  id: number;
+  id: string;
   pattern: Pattern;
-  effects: { id: number; pattern: Pattern }[];
+  effects: { id: string; pattern: Pattern }[];
 };
 
 // Fills the render target with the checkerboard placeholder. The canopy

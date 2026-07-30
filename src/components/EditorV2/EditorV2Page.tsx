@@ -3,7 +3,26 @@ import { observer } from "mobx-react-lite";
 import { useRouter } from "next/router";
 import { useStore } from "@/src/types/StoreContext";
 import { loadExperienceIntoStore } from "@/src/components/EditorV2/editorExperience";
-import { setLaneSongDuration } from "@/src/components/EditorV2/blockLanes";
+import {
+  armLane,
+  disarmLane,
+  laneCurve,
+  laneKeysOf,
+  resumeLane,
+  setLaneSongDuration,
+  suspendLane,
+  writeLaneCurve,
+} from "@/src/components/EditorV2/blockLanes";
+import {
+  addEffectToBlock,
+  addPatternBlock,
+  ensureFirstLayer,
+  layerOf,
+  moveEffectInBlock,
+  removeEffectFromBlock,
+  removePatternBlock,
+  respanFullSongBlocks,
+} from "@/src/components/EditorV2/blockStack";
 import styles from "@/styles/EditorV2.module.css";
 import { CanopyPane } from "@/src/components/EditorV2/CanopyPane";
 import {
@@ -17,6 +36,7 @@ import {
   VISIBILITY_PARAM,
 } from "@/src/components/EditorV2/PatternsPanel";
 import {
+  AutomationCurve,
   evaluateCurve,
   isCurveActive,
   payloadAtTime,
@@ -88,7 +108,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
   // button glows only then.
   const [isDirty, setIsDirty] = useState(false);
   const [selectedLane, setSelectedLane] = useState<{
-    entryId: number;
+    entryId: string;
     uniform: string;
   } | null>(null);
   // Assign mode (the Add Automation lane): the pattern editor opens
@@ -96,11 +116,13 @@ export const EditorV2Page = observer(function EditorV2Page() {
   // outside the pattern editor cancels; the editor stays open either
   // way.
   const [assigningLane, setAssigningLane] = useState(false);
-  const nextId = useRef(1);
-  const allocateId = () => nextId.current++;
 
   // Display order of the automation lanes (see SerializedEditorState).
   const [laneOrder, setLaneOrder] = useState<string[]>([]);
+
+  // The song length the lanes were last projected against, so a change can
+  // re-span the full-song blocks exactly once.
+  const lastSongDuration = useRef(0);
 
   // Latest state for the debounced writer and the dirty-event listener.
   const latest = useRef({ entries, song, laneOrder });
@@ -122,11 +144,28 @@ export const EditorV2Page = observer(function EditorV2Page() {
       // Mirrored from the transport rather than plumbed separately, since this
       // is already the one place that watches it; the setter no-ops when
       // unchanged, so the cost per frame is a comparison.
-      setLaneSongDuration(durationSeconds);
+      if (lastSongDuration.current !== durationSeconds) {
+        const previous = lastSongDuration.current;
+        lastSongDuration.current = durationSeconds;
+        setLaneSongDuration(durationSeconds);
+        // A Spell Crafter block is implicitly "the whole song", but the song's
+        // length is unknown until one loads and changes when one is swapped.
+        // Without this, a block created before a song arrives keeps its
+        // fallback span and every lane in it maps into the wrong slice of the
+        // timeline. Deliberately trimmed blocks are left alone.
+        respanFullSongBlocks(store, previous, durationSeconds);
+      }
       const frac = Math.min(Math.max(seconds / durationSeconds, 0), 1);
       for (const entry of latest.current.entries) {
-        for (const uniform of entry.automatedParams) {
-          const curve = entry.automation[uniform];
+        const lanes = [
+          ...laneKeysOf(entry.block),
+          ...(entry.visibilityCurve ? [VISIBILITY_PARAM] : []),
+        ];
+        for (const uniform of lanes) {
+          const curve =
+            uniform === VISIBILITY_PARAM
+              ? entry.visibilityCurve ?? null
+              : laneCurve(entry.block, uniform);
           if (!curve || curve.keyframes.length === 0 || !isCurveActive(curve))
             continue;
           if (uniform === VISIBILITY_PARAM) {
@@ -187,25 +226,12 @@ export const EditorV2Page = observer(function EditorV2Page() {
   });
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Restore a snapshot's entries, keeping the id counter ahead of any
-  // reused ids so future allocations cannot collide.
-  const restoreSnapshot = (snapshot: SerializedEditorState) => {
+  // Restore a snapshot's entries. Identity comes from the blocks now, so
+  // there is no id counter to keep ahead of anything.
+  const restoreSnapshot = (snapshot: SerializedEditorState) =>
     // Live entries flow in so pattern instances survive the restore:
     // materials and scrub fields keep the same param objects.
-    const restored = restoreEntries(
-      snapshot,
-      allocateId,
-      latest.current.entries,
-    );
-    nextId.current = Math.max(
-      nextId.current,
-      ...restored.map((entry) => entry.id + 1),
-      ...restored.flatMap((entry) =>
-        entry.effects.map((effect) => effect.id + 1),
-      ),
-    );
-    return restored;
-  };
+    restoreEntries(snapshot, store, latest.current.entries);
 
   // Snapshots carry a savedAt timestamp (autosave metadata); comparisons
   // must ignore it or no two snapshots ever match.
@@ -290,22 +316,24 @@ export const EditorV2Page = observer(function EditorV2Page() {
   };
 
   const addPattern = (factory: () => Pattern) => {
+    // A new pattern is a block spanning the whole song (decision 24), so the
+    // stack still behaves like an always-on pile of patterns.
+    const block = addPatternBlock(store, ensureFirstLayer(store), factory);
     setEntries((current) => [
       ...current,
       {
-        id: allocateId(),
-        pattern: factory(),
+        id: block.id,
+        block,
+        pattern: block.pattern,
         effects: [],
         visible: true,
         expanded: true,
-        automatedParams: [],
-        automation: {},
       },
     ]);
     scheduleAutosave();
   };
 
-  const updateEntry = (id: number, update: Partial<StackEntry>) => {
+  const updateEntry = (id: string, update: Partial<StackEntry>) => {
     setEntries((current) =>
       current.map((entry) =>
         entry.id === id ? { ...entry, ...update } : entry,
@@ -314,31 +342,38 @@ export const EditorV2Page = observer(function EditorV2Page() {
     scheduleAutosave();
   };
 
-  const removeEntry = (id: number) => {
-    setEntries((current) => current.filter((entry) => entry.id !== id));
+  const removeEntry = (id: string) => {
+    const entry = entries.find((candidate) => candidate.id === id);
+    if (entry) {
+      const layer = layerOf(store, entry.block) ?? ensureFirstLayer(store);
+      removePatternBlock(layer, entry.block);
+    }
+    setEntries((current) => current.filter((candidate) => candidate.id !== id));
     scheduleAutosave();
   };
 
   // Deep copy of a pattern entry (params, effects, automation), inserted
   // right below the original.
-  const duplicateEntry = (id: number) => {
-    setEntries((current) => {
-      const index = current.findIndex((entry) => entry.id === id);
-      if (index < 0) return current;
-      const copy = duplicateStackEntry(current[index], allocateId);
-      if (!copy) return current;
-      return [
-        ...current.slice(0, index + 1),
-        copy,
-        ...current.slice(index + 1),
-      ];
-    });
+  const duplicateEntry = (id: string) => {
+    const index = entries.findIndex((entry) => entry.id === id);
+    if (index < 0) return;
+    const copy = duplicateStackEntry(store, entries[index]);
+    if (!copy) return;
+    setEntries((current) => [
+      ...current.slice(0, index + 1),
+      copy,
+      ...current.slice(index + 1),
+    ]);
     scheduleAutosave();
   };
 
   // ---- Effects: a chain of texture-transforming patterns per entry. ----
 
-  const addEffect = (entryId: number, factory: () => Pattern) => {
+  const addEffect = (entryId: string, factory: () => Pattern) => {
+    const target = entries.find((entry) => entry.id === entryId);
+    if (!target) return;
+    const effectBlock = addEffectToBlock(target.block, factory);
+    if (!effectBlock) return;
     setEntries((current) =>
       current.map((entry) =>
         entry.id === entryId
@@ -346,7 +381,11 @@ export const EditorV2Page = observer(function EditorV2Page() {
               ...entry,
               effects: [
                 ...entry.effects,
-                { id: allocateId(), pattern: factory() },
+                {
+                  id: effectBlock.id,
+                  pattern: effectBlock.pattern,
+                  block: effectBlock,
+                },
               ],
             }
           : entry,
@@ -355,26 +394,26 @@ export const EditorV2Page = observer(function EditorV2Page() {
     scheduleAutosave();
   };
 
-  const removeEffect = (entryId: number, effectId: number) => {
+  const removeEffect = (entryId: string, effectId: string) => {
     const prefix = `effect:${effectId}:`;
+    const target = entries.find((entry) => entry.id === entryId);
+    const effect = target?.effects.find(
+      (candidate) => candidate.id === effectId,
+    );
+    // Removing the effect block takes its lanes and their regions with it:
+    // the automation lived on the effect block, not beside it.
+    if (target && effect) removeEffectFromBlock(target.block, effect.block);
     setEntries((current) =>
-      current.map((entry) => {
-        if (entry.id !== entryId) return entry;
-        // The effect's lanes and curves go with it.
-        const automation = Object.fromEntries(
-          Object.entries(entry.automation).filter(
-            ([laneKey]) => !laneKey.startsWith(prefix),
-          ),
-        );
-        return {
-          ...entry,
-          effects: entry.effects.filter((effect) => effect.id !== effectId),
-          automatedParams: entry.automatedParams.filter(
-            (laneKey) => !laneKey.startsWith(prefix),
-          ),
-          automation,
-        };
-      }),
+      current.map((entry) =>
+        entry.id === entryId
+          ? {
+              ...entry,
+              effects: entry.effects.filter(
+                (candidate) => candidate.id !== effectId,
+              ),
+            }
+          : entry,
+      ),
     );
     setSelectedLane((current) =>
       current?.entryId === entryId && current.uniform.startsWith(prefix)
@@ -384,12 +423,18 @@ export const EditorV2Page = observer(function EditorV2Page() {
     scheduleAutosave();
   };
 
-  const moveEffect = (entryId: number, effectId: number, delta: -1 | 1) => {
+  const moveEffect = (entryId: string, effectId: string, delta: -1 | 1) => {
+    const owner = entries.find((entry) => entry.id === entryId);
+    const effect = owner?.effects.find((candidate) => candidate.id === effectId);
+    if (!owner || !effect) return;
+    // Chain order is the effect blocks' array order, so reorder there and let
+    // the entry mirror it.
+    moveEffectInBlock(owner.block, effect.block, delta);
     setEntries((current) =>
       current.map((entry) => {
         if (entry.id !== entryId) return entry;
         const index = entry.effects.findIndex(
-          (effect) => effect.id === effectId,
+          (candidate) => candidate.id === effectId,
         );
         const target = index + delta;
         if (index < 0 || target < 0 || target >= entry.effects.length)
@@ -409,17 +454,19 @@ export const EditorV2Page = observer(function EditorV2Page() {
 
   // ---- Lane controls shared by the pane and the pattern editor. ----
 
-  const deleteLane = (entryId: number, laneKey: string) => {
+  const deleteLane = (entryId: string, laneKey: string) => {
     const entry = entries.find((candidate) => candidate.id === entryId);
     if (!entry) return;
-    const automation = { ...entry.automation };
-    delete automation[laneKey];
-    updateEntry(entryId, {
-      automatedParams: entry.automatedParams.filter(
-        (candidate) => candidate !== laneKey,
-      ),
-      automation,
-    });
+    if (laneKey === VISIBILITY_PARAM) {
+      updateEntry(entryId, { visibilityCurve: undefined });
+    } else {
+      // Deleting a lane returns the parameter to its manual value, which in
+      // this data model is a lone constant region (decision 7).
+      resumeLane(entry.block, laneKey);
+      writeLaneCurve(entry.block, laneKey, null, store);
+      disarmLane(entry.block, laneKey);
+      scheduleAutosave();
+    }
     setSelectedLane((current) =>
       current?.entryId === entryId && current.uniform === laneKey
         ? null
@@ -429,16 +476,22 @@ export const EditorV2Page = observer(function EditorV2Page() {
 
   // The lane's eye: whether the curve drives the parameter. Only a
   // curve with keyframes can toggle; an empty lane drives nothing.
-  const toggleLaneActive = (entryId: number, laneKey: string) => {
+  const toggleLaneActive = (entryId: string, laneKey: string) => {
     const entry = entries.find((candidate) => candidate.id === entryId);
-    const curve = entry?.automation[laneKey];
-    if (!entry || !curve || curve.keyframes.length === 0) return;
-    updateEntry(entryId, {
-      automation: {
-        ...entry.automation,
-        [laneKey]: { ...curve, active: !isCurveActive(curve) },
-      },
-    });
+    if (!entry) return;
+    const curve =
+      laneKey === VISIBILITY_PARAM
+        ? entry.visibilityCurve ?? null
+        : laneCurve(entry.block, laneKey);
+    if (!curve || curve.keyframes.length === 0) return;
+    const nowActive = isCurveActive(curve);
+    if (laneKey === VISIBILITY_PARAM)
+      updateEntry(entryId, {
+        visibilityCurve: { ...curve, active: !nowActive },
+      });
+    // Takeover never reaches the data model (decision 6).
+    else if (nowActive) suspendLane(entry.block, laneKey);
+    else resumeLane(entry.block, laneKey);
   };
 
   const reorderLanes = (nextOrder: string[]) => {
@@ -448,12 +501,19 @@ export const EditorV2Page = observer(function EditorV2Page() {
 
   // ---- Assign mode plumbing. ----
 
-  const assignLane = (entryId: number, laneKey: string) => {
+  const assignLane = (entryId: string, laneKey: string) => {
     const entry = entries.find((candidate) => candidate.id === entryId);
-    if (entry && !entry.automatedParams.includes(laneKey))
-      updateEntry(entryId, {
-        automatedParams: [...entry.automatedParams, laneKey],
-      });
+    if (entry) {
+      if (laneKey === VISIBILITY_PARAM) {
+        if (!entry.visibilityCurve)
+          updateEntry(entryId, { visibilityCurve: { keyframes: [] } });
+      } else if (!laneKeysOf(entry.block).includes(laneKey)) {
+        // Arming seeds a full-span region, so the new lane opens onto the
+        // parameter's current value rather than onto nothing.
+        armLane(entry.block, laneKey);
+        scheduleAutosave();
+      }
+    }
     setAssigningLane(false);
   };
 
@@ -503,7 +563,9 @@ export const EditorV2Page = observer(function EditorV2Page() {
   const selectedResolved =
     selectedLane &&
     selectedEntry &&
-    selectedEntry.automatedParams.includes(selectedLane.uniform)
+    (selectedLane.uniform === VISIBILITY_PARAM
+      ? !!selectedEntry.visibilityCurve
+      : laneKeysOf(selectedEntry.block).includes(selectedLane.uniform))
       ? resolveLane(selectedEntry, selectedLane.uniform)
       : null;
 
@@ -523,7 +585,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, [selectedLane]);
 
-  const toggleLane = (lane: { entryId: number; uniform: string }) =>
+  const toggleLane = (lane: { entryId: string; uniform: string }) =>
     setSelectedLane((current) =>
       current?.entryId === lane.entryId && current?.uniform === lane.uniform
         ? null
@@ -534,6 +596,12 @@ export const EditorV2Page = observer(function EditorV2Page() {
 
   const didRestore = useRef(false);
   useEffect(() => {
+    // Wait for the store to finish loading before restoring. store.deserialize
+    // REPLACES store.layers wholesale, so restoring first would leave every
+    // entry pointing at a block that is no longer in any layer — the editor
+    // would look right and save nothing.
+    if (store.initializationState !== "initialized" || didRestore.current)
+      return;
     // The static demo ships a starter experience for first-time visitors.
     if (IS_DEMO)
       seedDemoExperience(demoExperience as unknown as SerializedEditorState);
@@ -559,7 +627,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
       history.current;
     didRestore.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [store.initializationState]);
 
   useEffect(() => {
     const onDirty = () => scheduleAutosave();
@@ -614,7 +682,27 @@ export const EditorV2Page = observer(function EditorV2Page() {
   // Test hooks: e2e and diagnostics read live editor state through these.
   useEffect(() => {
     const hooks = window as unknown as Record<string, unknown>;
-    hooks.__editorEntries = entries;
+    // The lanes and curves now live on the blocks, but the hook keeps its old
+    // shape so diagnostics and e2e read the editor the same way they always
+    // have: `automation` is projected from the block's regions on demand.
+    hooks.__editorEntries = entries.map((entry) => {
+      const automation: Record<string, AutomationCurve> = {};
+      for (const laneKey of laneKeysOf(entry.block)) {
+        const curve = laneCurve(entry.block, laneKey);
+        if (curve) automation[laneKey] = curve;
+      }
+      if (entry.visibilityCurve)
+        automation[VISIBILITY_PARAM] = entry.visibilityCurve;
+      return {
+        id: entry.id,
+        pattern: entry.pattern,
+        effects: entry.effects,
+        visible: entry.visible,
+        expanded: entry.expanded,
+        automatedParams: Object.keys(automation),
+        automation,
+      };
+    });
     hooks.__editorBeatGrid = beatGrid;
     hooks.__editorTransients = transients;
   });
@@ -668,15 +756,29 @@ export const EditorV2Page = observer(function EditorV2Page() {
                 param={selectedResolved.param}
                 beatGrid={beatGrid}
                 transients={transients}
-                curve={selectedEntry.automation[selectedLane.uniform] ?? null}
-                onCurveChange={(curve) =>
-                  updateEntry(selectedLane.entryId, {
-                    automation: {
-                      ...selectedEntry.automation,
-                      [selectedLane.uniform]: curve,
-                    },
-                  })
+                curve={
+                  selectedLane.uniform === VISIBILITY_PARAM
+                    ? selectedEntry.visibilityCurve ?? null
+                    : laneCurve(selectedEntry.block, selectedLane.uniform)
                 }
+                onCurveChange={(curve) => {
+                  if (selectedLane.uniform === VISIBILITY_PARAM) {
+                    updateEntry(selectedLane.entryId, {
+                      visibilityCurve: curve,
+                    });
+                    return;
+                  }
+                  // Editing a curve reactivates its lane: a suspended lane
+                  // resumes the moment the curve itself is touched.
+                  resumeLane(selectedEntry.block, selectedLane.uniform);
+                  writeLaneCurve(
+                    selectedEntry.block,
+                    selectedLane.uniform,
+                    curve,
+                    store,
+                  );
+                  scheduleAutosave();
+                }}
                 onClose={() => setSelectedLane(null)}
               />
             )}

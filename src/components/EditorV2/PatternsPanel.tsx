@@ -1,3 +1,4 @@
+import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
 import {
   FaArrowDown,
@@ -29,6 +30,16 @@ import {
 } from "@/src/components/EditorV2/ValueEditors";
 import { EDITOR_DIRTY_EVENT } from "@/src/components/EditorV2/experiencePersistence";
 import { effectLibrary } from "@/src/components/EditorV2/patternLibrary";
+import type { Block } from "@/src/types/Block";
+import {
+  armLane,
+  disarmLane,
+  laneCurve,
+  laneKeysOf,
+  resumeLane,
+  suspendLane,
+  writeLaneCurve,
+} from "@/src/components/EditorV2/blockLanes";
 import { Vector4 } from "three";
 
 const formatParamValue = (value: ParamType) => {
@@ -48,44 +59,56 @@ export const VISIBILITY_PARAM = "__visibility";
 
 // An effect applied to a pattern: a Pattern whose shader transforms the
 // previous render stage (u_texture). Chained in order after the pattern.
+//
+// `block` is the effect's nested block in the data model, and `pattern` is
+// that block's own pattern object — the SAME reference, not a copy, so there
+// is nothing to keep in sync.
 export type EffectEntry = {
-  id: number;
+  id: string;
   pattern: Pattern;
+  block: Block;
 };
 
 // Lane key for an effect's parameter. Pattern params use the bare
-// uniform name; effect params carry the effect's id so lanes survive
+// uniform name; effect params carry the effect block's id so lanes survive
 // reordering and duplicate effect types.
-export const effectLaneKey = (effectId: number, uniform: string) =>
+export const effectLaneKey = (effectId: string, uniform: string) =>
   `effect:${effectId}:${uniform}`;
 
+// One pattern in the stack, which in the data model is a BLOCK spanning the
+// whole song (decision 24).
+//
+// The block owns the automation: a lane's curve is projected from
+// `block.parameterVariations` on read and written straight back on edit (see
+// blockLanes), so no curve lives here to fall out of sync. `pattern` and each
+// effect's `pattern` are the block's own live pattern objects by reference.
 export type StackEntry = {
-  id: number;
+  id: string;
+  block: Block;
   pattern: Pattern;
   effects: EffectEntry[];
   visible: boolean;
   expanded: boolean;
-  // Lane keys of params that have an automation lane: bare uniform names
-  // for pattern params, effect:<id>:<uniform> for effect params. May
-  // also contain VISIBILITY_PARAM for the visibility toggle's lane.
-  automatedParams: string[];
-  // Keyframe curves keyed by lane key (see automation.ts).
-  automation: Record<string, AutomationCurve>;
+  // The one lane still held in React state: visibility is not a shader
+  // uniform, so it has no home in the block's parameterVariations. It moves to
+  // the layer and stops being automatable when decision 5 lands; until then it
+  // stays here rather than being force-fitted onto u_opacity.
+  visibilityCurve?: AutomationCurve;
 };
 
 type Props = {
   entries: StackEntry[];
   onAdd: (factory: () => Pattern) => void;
-  onUpdate: (id: number, update: Partial<StackEntry>) => void;
-  onRemove: (id: number) => void;
-  onDuplicate: (id: number) => void;
-  onAddEffect: (entryId: number, factory: () => Pattern) => void;
-  onRemoveEffect: (entryId: number, effectId: number) => void;
-  onMoveEffect: (entryId: number, effectId: number, delta: -1 | 1) => void;
+  onUpdate: (id: string, update: Partial<StackEntry>) => void;
+  onRemove: (id: string) => void;
+  onDuplicate: (id: string) => void;
+  onAddEffect: (entryId: string, factory: () => Pattern) => void;
+  onRemoveEffect: (entryId: string, effectId: string) => void;
+  onMoveEffect: (entryId: string, effectId: string, delta: -1 | 1) => void;
   // Assign mode (Add Automation): clicking any parameter row gives
   // it a lane instead of its normal interaction.
   assigning: boolean;
-  onAssignParam: (entryId: number, laneKey: string) => void;
+  onAssignParam: (entryId: string, laneKey: string) => void;
   onCancelAssign: () => void;
 };
 
@@ -95,7 +118,7 @@ type Props = {
 // Adding widens the panel to reveal the add column (AddPatternPane). The
 // stack itself lives in EditorV2Page so the canopy can render it.
 type PanelContextMenu = {
-  entryId: number;
+  entryId: string;
   // A lane key for a parameter row's menu; null for the pattern row's
   // own menu (Duplicate).
   uniform: string | null;
@@ -103,7 +126,7 @@ type PanelContextMenu = {
   y: number;
 };
 
-export function PatternsPanel({
+export const PatternsPanel = observer(function PatternsPanel({
   entries,
   onAdd,
   onUpdate,
@@ -125,7 +148,7 @@ export function PatternsPanel({
   }, [assigning]);
   const [contextMenu, setContextMenu] = useState<PanelContextMenu | null>(null);
   // The entry whose inline effect picker is open, if any.
-  const [effectPickerFor, setEffectPickerFor] = useState<number | null>(null);
+  const [effectPickerFor, setEffectPickerFor] = useState<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   // Composite params (palette, color) render expanded by default; this set
   // tracks the ones collapsed, keyed by `entryId:uniform`. UI-only state.
@@ -165,12 +188,25 @@ export function PatternsPanel({
     };
   }, [contextMenu]);
 
+  // Lane access goes through the block: a lane's curve is projected from its
+  // regions on read (see blockLanes). Visibility is the one exception — not a
+  // shader uniform, so it has no home in the block and stays in React state
+  // until decision 5 moves it to the layer.
+  const lanesOf = (entry: StackEntry) => [
+    ...laneKeysOf(entry.block),
+    ...(entry.visibilityCurve ? [VISIBILITY_PARAM] : []),
+  ];
+  const curveOf = (entry: StackEntry, laneKey: string) =>
+    laneKey === VISIBILITY_PARAM
+      ? entry.visibilityCurve ?? null
+      : laneCurve(entry.block, laneKey);
+
   // The colored edge on an automated param row: green while its curve is
   // active, red once deactivated (a lane with no keyframes counts as
   // active; there is nothing to suspend).
   const laneEdgeClass = (entry: StackEntry, laneKey: string) => {
-    if (!entry.automatedParams.includes(laneKey)) return "";
-    const curve = entry.automation[laneKey];
+    if (!lanesOf(entry).includes(laneKey)) return "";
+    const curve = curveOf(entry, laneKey);
     const suspended =
       !!curve && curve.keyframes.length > 0 && !isCurveActive(curve);
     return `${styles.paramAutomated} ${
@@ -181,21 +217,22 @@ export function PatternsPanel({
   // A user edit on an automated param takes over: the value becomes the
   // manual value and the curve deactivates until it is edited again.
   const deactivateLane = (entry: StackEntry, laneKey: string) => () => {
-    const curve = entry.automation[laneKey];
+    const curve = curveOf(entry, laneKey);
     if (!curve || curve.keyframes.length === 0 || !isCurveActive(curve)) return;
-    onUpdate(entry.id, {
-      automation: {
-        ...entry.automation,
-        [laneKey]: { ...curve, active: false },
-      },
-    });
+    // Takeover is memory-only (decision 6): suspend the lane rather than
+    // writing an `active` flag no part of the data model has room for.
+    if (laneKey === VISIBILITY_PARAM)
+      onUpdate(entry.id, {
+        visibilityCurve: { ...curve, active: false },
+      });
+    else suspendLane(entry.block, laneKey);
   };
 
   // The bar under an automated visibility eye: green while the curve
   // drives it, red while deactivated.
   const eyeBarClass = (entry: StackEntry) => {
-    if (!entry.automatedParams.includes(VISIBILITY_PARAM)) return "";
-    const curve = entry.automation[VISIBILITY_PARAM];
+    if (!entry.visibilityCurve) return "";
+    const curve = entry.visibilityCurve;
     const suspended =
       !!curve && curve.keyframes.length > 0 && !isCurveActive(curve);
     return suspended ? styles.eyeBarInactive : styles.eyeBarActive;
@@ -330,10 +367,11 @@ export function PatternsPanel({
     : undefined;
   const menuHasLane =
     contextMenu?.uniform != null &&
-    !!menuEntry?.automatedParams.includes(contextMenu.uniform);
+    !!menuEntry &&
+    lanesOf(menuEntry).includes(contextMenu.uniform);
   const menuCurve =
-    contextMenu?.uniform != null && menuHasLane
-      ? menuEntry?.automation[contextMenu.uniform]
+    contextMenu?.uniform != null && menuHasLane && menuEntry
+      ? curveOf(menuEntry, contextMenu.uniform) ?? undefined
       : undefined;
   // Only a curve with keyframes can be disabled; an empty lane drives
   // nothing.
@@ -342,35 +380,36 @@ export function PatternsPanel({
   const toggleAutomationActive = () => {
     const laneKey = contextMenu?.uniform;
     if (!contextMenu || laneKey == null || !menuEntry || !menuCurve) return;
-    onUpdate(contextMenu.entryId, {
-      automation: {
-        ...menuEntry.automation,
-        [laneKey]: {
-          ...menuCurve,
-          active: !isCurveActive(menuCurve),
-        },
-      },
-    });
+    const nowActive = isCurveActive(menuCurve);
+    if (laneKey === VISIBILITY_PARAM)
+      onUpdate(contextMenu.entryId, {
+        visibilityCurve: { ...menuCurve, active: !nowActive },
+      });
+    // Memory-only takeover (decision 6), not a stored flag.
+    else if (nowActive) suspendLane(menuEntry.block, laneKey);
+    else resumeLane(menuEntry.block, laneKey);
     setContextMenu(null);
   };
 
   const toggleAutomationLane = () => {
     const laneKey = contextMenu?.uniform;
     if (!contextMenu || laneKey == null || !menuEntry) return;
+    if (laneKey === VISIBILITY_PARAM) {
+      onUpdate(contextMenu.entryId, {
+        visibilityCurve: menuHasLane ? undefined : { keyframes: [] },
+      });
+      setContextMenu(null);
+      return;
+    }
     if (menuHasLane) {
-      // Deleting the lane also discards its curve.
-      const automation = { ...menuEntry.automation };
-      delete automation[laneKey];
-      onUpdate(contextMenu.entryId, {
-        automatedParams: menuEntry.automatedParams.filter(
-          (uniform) => uniform !== laneKey,
-        ),
-        automation,
-      });
+      // Deleting the lane discards its curve and returns the parameter to its
+      // manual value — which in this data model is a lone constant region.
+      resumeLane(menuEntry.block, laneKey);
+      writeLaneCurve(menuEntry.block, laneKey, null, menuEntry.block.store);
+      disarmLane(menuEntry.block, laneKey);
     } else {
-      onUpdate(contextMenu.entryId, {
-        automatedParams: [...menuEntry.automatedParams, laneKey],
-      });
+      // Arming seeds a full-span region so the lane never opens onto nothing.
+      armLane(menuEntry.block, laneKey);
     }
     setContextMenu(null);
   };
@@ -661,4 +700,4 @@ export function PatternsPanel({
       )}
     </>
   );
-}
+});

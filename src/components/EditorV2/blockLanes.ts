@@ -35,18 +35,62 @@ import {
   RegionContext,
 } from "@/src/components/EditorV2/regionCurve";
 
+// A nominal span for an experience with no song. The editor works perfectly
+// well before one is loaded — its curves are fractions of the timeline, not
+// seconds — so the projection needs SOME basis or every lane reads as empty.
+// The value is arbitrary and cancels out: a block spanning it maps to
+// fractions 0..1 either way. It matches the migration's basis for songless
+// saves so the two agree.
+export const NO_SONG_DURATION_SECONDS = 60;
+
 // The song's length, shared the way the editor already shares transport state
 // (see timeViewport): a tiny module-level store. Observable so the lane
 // computeds re-derive when a song is loaded or swapped, since every keyframe
 // time is a fraction of it.
-const songDurationBox = observable.box(0);
+const songDurationBox = observable.box(NO_SONG_DURATION_SECONDS);
 
 export const setLaneSongDuration = (seconds: number) => {
-  if (songDurationBox.get() === seconds) return;
-  runInAction(() => songDurationBox.set(seconds));
+  // Zero means "no song yet", not "a zero-length song": keep the nominal span
+  // rather than collapsing every lane to nothing.
+  const next = seconds > 0 ? seconds : NO_SONG_DURATION_SECONDS;
+  if (songDurationBox.get() === next) return;
+  runInAction(() => songDurationBox.set(next));
 };
 
 export const getLaneSongDuration = () => songDurationBox.get();
+
+// ------------------------------------------------------------- takeover
+//
+// Scrubbing an automated parameter suspends its curve: the manual value drives
+// until the curve is edited again. Decision 6 keeps that behaviour but keeps it
+// OUT of the data model — it is a live editing posture, not a property of the
+// piece, so saving and reloading finds the curve driving again.
+//
+// Which means it cannot live on the block. It lives here, keyed by block and
+// lane, and the lane projection folds it into the curve's `active` flag. That
+// way every existing `isCurveActive(curve)` call keeps working untouched, and
+// identity still only changes when the suspension actually does — the flag is
+// read inside the computed, so mobx invalidates exactly once per toggle.
+const suspended = observable.set<string>();
+
+const suspensionKey = (blockId: string, laneKey: string) =>
+  `${blockId}:${laneKey}`;
+
+export const isLaneSuspended = (block: Block, laneKey: string) =>
+  suspended.has(suspensionKey(block.id, laneKey));
+
+export const suspendLane = (block: Block, laneKey: string) => {
+  runInAction(() => suspended.add(suspensionKey(block.id, laneKey)));
+};
+
+export const resumeLane = (block: Block, laneKey: string) => {
+  runInAction(() => suspended.delete(suspensionKey(block.id, laneKey)));
+};
+
+/** Clear every suspension — a fresh load is never mid-takeover. */
+export const clearLaneSuspensions = () => {
+  runInAction(() => suspended.clear());
+};
 
 // ---------------------------------------------------------------- lane keys
 
@@ -131,10 +175,17 @@ export const laneCurve = (
       () => {
         const resolved = resolveLaneOwner(block, laneKey);
         if (!resolved) return null;
-        return variationsToCurve(
+        const curve = variationsToCurve(
           resolved.owner.parameterVariations[resolved.uniform],
           regionContextFor(resolved.owner),
         );
+        if (!curve) return null;
+        // Suspension is memory-only (see above), so it is applied here rather
+        // than stored: the curve the editor sees carries `active: false` while
+        // the manual value is driving.
+        return suspended.has(suspensionKey(block.id, laneKey))
+          ? { ...curve, active: false }
+          : curve;
       },
       { keepAlive: true },
     );
@@ -241,22 +292,29 @@ export const writeLaneCurve = (
 };
 
 /**
- * Arm a lane (decision 8): the gesture that promotes a constant to automation.
+ * Arm a lane (decision 8): the gesture that expresses "automate this".
  *
- * Goes through upstream's setParamLanes rather than touching `lanedParams`,
- * because arming also SEEDS a default full-span region for a parameter that has
- * none — without which the lane would open onto nothing — and persists the open
- * lanes locally. Both are upstream's behaviour and worth inheriting.
+ * Deliberately does NOT seed a region, which is where upstream's
+ * setParamLanes differs. An armed lane with no regions is Spell Crafter's
+ * EMPTY lane, and empty is a real state here: the editor draws the manual
+ * value as a line and the first double-click lays down the first keyframe.
+ * Seeding a flat region instead would erase that state, and with it the manual
+ * value line and the takeover affordances built around it.
+ *
+ * Decision 7 is untouched by this: it governs LOADING — a parameter whose
+ * saved variations are a lone constant gets no lane at all. Once armed, that
+ * same constant shows as the flat line decision 8 describes, because the
+ * region is already there from the load.
  */
 export const armLane = (block: Block, laneKey: string) => {
   const resolved = resolveLaneOwner(block, laneKey);
   if (!resolved) return;
-  runInAction(() => resolved.owner.setParamLanes([resolved.uniform], true));
+  runInAction(() => resolved.owner.lanedParams.add(resolved.uniform));
 };
 
 /** Disarm a lane. A constant lane returns to being the manual value. */
 export const disarmLane = (block: Block, laneKey: string) => {
   const resolved = resolveLaneOwner(block, laneKey);
   if (!resolved) return;
-  runInAction(() => resolved.owner.setParamLanes([resolved.uniform], false));
+  runInAction(() => resolved.owner.lanedParams.delete(resolved.uniform));
 };

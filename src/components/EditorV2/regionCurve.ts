@@ -306,7 +306,11 @@ export const variationsToCurve = (
           },
           index === 0,
         );
-        // Bezier shape lives in the handles; bend stays neutral.
+        // Always "curve": that is the editor's DEFAULT segment type, and a
+        // bend of 1 draws straight, so a straight run is an unbent curve
+        // rather than a linear segment. Reporting straight runs as linear
+        // would silently retype every default segment on its first round trip.
+        // The Bezier shape lives in the handles; bend stays neutral.
         if (index < nodes.length - 1)
           segments.push({ type: "curve", bend: 1 });
       });
@@ -404,15 +408,10 @@ export const variationsToCurve = (
   }
 
   if (keyframes.length === 0) return null;
-  // A single point is not a curve the editor can draw a segment through;
-  // give it the block's span so it reads as a flat lane.
-  if (keyframes.length === 1) {
-    keyframes.push({
-      time: frac(ctx.blockDuration),
-      value: keyframes[0].value,
-    });
-    segments.push({ type: "flat" });
-  }
+  // A lone keyframe stays lone: it is a legitimate constant curve in the
+  // editor's model, and the state the first double-click on an empty lane
+  // produces. Padding it to two would make that first keyframe un-round-
+  // trippable.
   return { keyframes, segments: segments.slice(0, keyframes.length - 1) };
 };
 
@@ -454,23 +453,104 @@ export const curveToVariations = (
       blockDuration,
     );
 
-  const segments = getSegments(curve);
-  const variations: Variation[] = [];
+  // One keyframe is a constant curve. A single-node Curve region evaluates to
+  // that value everywhere (upstream returns nodes[0].value when there is only
+  // one), so it survives the round trip as exactly one keyframe — which is what
+  // the editor shows after the first double-click on an empty lane.
+  if (keyframes.length === 1) {
+    const only = keyframes[0];
+    const handleIn = only.handleIn ?? { dt: 0, dv: 0 };
+    const handleOut = only.handleOut ?? { dt: 0, dv: 0 };
+    return [
+      new CurveVariation(blockDuration, [
+        makeCurveNode(
+          local(only.time),
+          only.value,
+          { dt: handleIn.dt * songDuration, dv: handleIn.dv },
+          { dt: handleOut.dt * songDuration, dv: handleOut.dv },
+        ),
+      ]),
+    ];
+  }
 
-  // Split the lane into runs: each generator segment is its own region,
-  // and a maximal run of interpolator segments becomes one Curve region.
-  // Runs also break at a step (coincident keyframes with different values),
-  // because the fitter is only valid over a continuous function.
+  const segments = getSegments(curve);
+
+  // Regions carry no start time: a region's position IS the sum of the
+  // durations before it. So the lane is laid out as a tiling of spans, and the
+  // keyframes are placed INSIDE those spans rather than defining their edges.
+  //
+  // That distinction is what keeps the projection from inventing keyframes. A
+  // Curve region's nodes need not touch its edges — upstream returns the first
+  // node's value before it and the last node's value after it — so the editor's
+  // "hold the first value until the first keyframe" falls out for free, with no
+  // extra node to render as a dot the author never placed.
+  //
+  // Generators are the exception: a wave occupies exactly the span between its
+  // two keyframes, because its phase and period are measured from the region's
+  // own start.
+  type Chunk = {
+    kind: "generator" | "run";
+    firstSegment: number;
+    lastSegment: number; // exclusive
+    startT: number;
+    endT: number;
+  };
+
+  const chunks: Chunk[] = [];
   let index = 0;
   while (index < segments.length) {
-    const segment = segments[index];
-
-    if (isGenerator(segment.type)) {
+    if (isGenerator(segments[index].type)) {
+      chunks.push({
+        kind: "generator",
+        firstSegment: index,
+        lastSegment: index + 1,
+        startT: local(keyframes[index].time),
+        endT: local(keyframes[index + 1].time),
+      });
+      index++;
+      continue;
+    }
+    const runStart = index;
+    while (index < segments.length && !isGenerator(segments[index].type)) {
       const a = keyframes[index];
       const b = keyframes[index + 1];
-      const start = local(a.time);
-      const duration = local(b.time) - start;
+      // A zero-width segment between differing values is a step; it belongs to
+      // this run as coincident nodes, and ends it.
+      const zeroWidth = Math.abs(b.time - a.time) < TIME_EPS;
+      index++;
+      if (zeroWidth && Math.abs(b.value - a.value) > VALUE_EPS) break;
+    }
+    chunks.push({
+      kind: "run",
+      firstSegment: runStart,
+      lastSegment: index,
+      startT: local(keyframes[runStart].time),
+      endT: local(keyframes[index].time),
+    });
+  }
+
+  const variations: Variation[] = [];
+  let cursor = 0;
+  for (let i = 0; i < chunks.length; i++) {
+    const chunk = chunks[i];
+    const next = chunks[i + 1];
+    const isLast = i === chunks.length - 1;
+
+    if (chunk.kind === "generator") {
+      // Anything before the wave starts is a hold at its first value.
+      if (chunk.startT - cursor > TIME_EPS) {
+        variations.push(
+          CurveVariation.flat(
+            chunk.startT - cursor,
+            keyframes[chunk.firstSegment].value,
+          ),
+        );
+        cursor = chunk.startT;
+      }
+      const duration = Math.max(chunk.endT - cursor, 0);
       if (duration > TIME_EPS) {
+        const segment = segments[chunk.firstSegment];
+        const a = keyframes[chunk.firstSegment];
         if (segment.type === "wave") {
           const period = segment.cycles !== 0 ? duration / segment.cycles : 0;
           variations.push(
@@ -480,63 +560,37 @@ export const curveToVariations = (
               segment.amplitude,
               period,
               phaseFromCycles(segment.wave, segment.phase, period),
-              // Upstream's generator centre is constant; seed it from the
-              // left boundary, which is where creation lines the wave up.
+              // The generator's centre is constant; seed it from the left
+              // boundary, which is where creation lines the wave up.
               a.value,
             ),
           );
         } else if (segment.type === "audio") {
           variations.push(
-            new AudioVariation(
-              duration,
-              segment.factor,
-              a.value,
-              segment.smoothing,
-              store,
-            ),
+            new AudioVariation(duration, segment.factor, a.value, segment.smoothing, store),
           );
         }
+        cursor += duration;
       }
-      index++;
       continue;
     }
 
-    // Gather a maximal interpolator run, stopping before a generator or a
-    // step boundary.
-    const runStart = index;
-    let runEnd = index; // exclusive segment index
-    while (runEnd < segments.length && !isGenerator(segments[runEnd].type)) {
-      const a = keyframes[runEnd];
-      const b = keyframes[runEnd + 1];
-      // A zero-width segment between differing values is a step: it ends
-      // the run so the coincident nodes can be emitted inside one region.
-      const zeroWidth = Math.abs(b.time - a.time) < TIME_EPS;
-      if (zeroWidth && Math.abs(b.value - a.value) > VALUE_EPS) {
-        runEnd++;
-        break;
-      }
-      runEnd++;
-    }
-
-    const first = keyframes[runStart];
-    const last = keyframes[runEnd];
-    const start = local(first.time);
-    const duration = local(last.time) - start;
-
-    if (duration <= TIME_EPS) {
-      index = runEnd;
-      continue;
-    }
+    // A run fills from wherever the previous region ended to wherever the next
+    // one begins — the whole remaining block when it is last.
+    const spanStart = cursor;
+    const spanEnd = isLast ? blockDuration : next.startT;
+    const duration = spanEnd - spanStart;
+    if (duration <= TIME_EPS) continue;
 
     variations.push(
-      curveRegionForRun(curve, segments, keyframes, runStart, runEnd, {
-        start,
+      curveRegionForRun(curve, segments, keyframes, chunk.firstSegment, chunk.lastSegment, {
+        start: spanStart,
         duration,
         songDuration,
         localOf: local,
       }),
     );
-    index = runEnd;
+    cursor = spanEnd;
   }
 
   return spanToBlock(variations, blockDuration);
@@ -573,11 +627,27 @@ const curveRegionForRun = (
   // Requiring both everywhere would send a run that begins where a wave
   // ended (so its first keyframe has no incoming handle) down the fitting
   // path and quietly approximate an exactly representable Bezier.
-  const runIsHandled = runKeyframes.every((keyframe, i) => {
-    const needsOut = i < runKeyframes.length - 1;
-    const needsIn = i > 0;
-    return (!needsOut || !!keyframe.handleOut) && (!needsIn || !!keyframe.handleIn);
-  });
+  // The handles only describe the shape while the segments say nothing else.
+  // A curve segment with a real bend, or any shaped type, means the author has
+  // just changed the shape THROUGH the spec — and the handles still on the
+  // keyframes are the previous shape. Copying them would swallow the edit, so
+  // such a run is re-fit instead.
+  const shapeLivesInHandles = segments
+    .slice(runStart, runEnd)
+    .every(
+      (segment) =>
+        segment.type === "curve" &&
+        (segment.bend === undefined || Math.abs(segment.bend - 1) < 1e-9),
+    );
+  const runIsHandled =
+    shapeLivesInHandles &&
+    runKeyframes.every((keyframe, i) => {
+      const needsOut = i < runKeyframes.length - 1;
+      const needsIn = i > 0;
+      return (
+        (!needsOut || !!keyframe.handleOut) && (!needsIn || !!keyframe.handleIn)
+      );
+    });
   const everySegmentIsStraight = segments
     .slice(runStart, runEnd)
     .every((segment) => segment.type === "linear" || segment.type === "flat");
@@ -615,16 +685,27 @@ const curveRegionForRun = (
         { dt: outDt / 3, dv: levelOut ? 0 : outDv / 3 },
       );
     });
-    const region = new CurveVariation(duration, nodes);
-    region.ensureTerminalNode();
-    return region;
+    // Deliberately no ensureTerminalNode: the region may legitimately end
+    // after its last node (the editor holds that value), and adding one would
+    // show the author a keyframe they never placed.
+    return new CurveVariation(duration, nodes);
   }
 
   // Shaped run: fit the lane's own evaluation, so bends and easings land
-  // within tolerance and interior keyframes are seeded exactly. `t` arrives
-  // region-local (0..duration); the lane is indexed in block-local seconds.
-  const valueAtRegionTime = (t: number) => {
-    const target = start + t;
+  // within tolerance and interior keyframes are seeded exactly.
+  //
+  // The fit runs over the KEYFRAME range, not the region's whole span. The
+  // fitter always anchors a node at each end of what it is given, so fitting
+  // the full span would plant nodes at the region's edges — keyframes the
+  // author never placed, appearing as dots in the editor. Fitting the curve
+  // itself and then sliding the nodes into position inside the region keeps
+  // the node set exactly the author's, while the region still tiles.
+  const nodesStart = localOf(keyframes[runStart].time);
+  const nodesDuration = localOf(keyframes[runEnd].time) - nodesStart;
+  const offset = nodesStart - start;
+
+  const valueAtCurveTime = (t: number) => {
+    const target = nodesStart + t;
     for (let i = runStart; i < runEnd; i++) {
       const a = keyframes[i];
       const b = keyframes[i + 1];
@@ -636,19 +717,23 @@ const curveRegionForRun = (
         return evaluateSegment(a, b, segments[i], Math.min(Math.max(u, 0), 1));
       }
     }
-    return keyframes[runEnd].value;
+    return target < nodesStart
+      ? keyframes[runStart].value
+      : keyframes[runEnd].value;
   };
 
-  const seedUs = runKeyframes
-    .slice(1, -1)
-    .map((keyframe) => (localOf(keyframe.time) - start) / duration);
+  if (nodesDuration <= TIME_EPS)
+    return new CurveVariation(duration, [
+      makeCurveNode(offset, keyframes[runStart].value),
+    ]);
 
-  const region = new CurveVariation(
-    duration,
-    fitCurveNodes(valueAtRegionTime, duration, {}, seedUs),
-  );
-  region.ensureTerminalNode();
-  return region;
+  const seedUs = runKeyframes
+    .map((keyframe) => (localOf(keyframe.time) - nodesStart) / nodesDuration)
+    .filter((u) => u > 1e-6 && u < 1 - 1e-6);
+
+  const fitted = fitCurveNodes(valueAtCurveTime, nodesDuration, {}, seedUs);
+  for (const node of fitted) node.time += offset;
+  return new CurveVariation(duration, fitted);
 };
 
 /**
@@ -666,10 +751,23 @@ const spanToBlock = (
     0,
   );
   const shortfall = blockDuration - total;
-  if (shortfall > TIME_EPS) {
-    const last = variations[variations.length - 1];
-    if (last instanceof CurveVariation) last.resizeEnd(last.duration + shortfall);
-    else last.duration += shortfall;
+  if (shortfall <= TIME_EPS) return variations;
+
+  const last = variations[variations.length - 1];
+  // A generator keeps its size: stretching a wave would make it oscillate on
+  // into the extension, where decision 16 says the value freezes at the
+  // region's end. So the tail becomes a constant region holding that value.
+  if (last instanceof PeriodicVariation || last instanceof AudioVariation) {
+    const held = (last as Variation<number>).valueAtTime(
+      last.duration,
+      last.duration,
+    );
+    variations.push(
+      CurveVariation.flat(shortfall, typeof held === "number" ? held : 0),
+    );
+    return variations;
   }
+  if (last instanceof CurveVariation) last.resizeEnd(last.duration + shortfall);
+  else last.duration += shortfall;
   return variations;
 };

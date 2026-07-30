@@ -1,3 +1,4 @@
+import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
 import { FaEye, FaEyeSlash, FaPlus, FaTrashAlt } from "react-icons/fa";
 import styles from "@/styles/EditorV2.module.css";
@@ -21,6 +22,10 @@ import {
   rgbaToCss,
 } from "@/src/components/EditorV2/ValueEditors";
 import { isVector4 } from "@/src/utils/object";
+import {
+  laneCurve,
+  laneKeysOf,
+} from "@/src/components/EditorV2/blockLanes";
 import { isPalette } from "@/src/params/palette/Palette";
 import {
   TIME_VIEWPORT_EVENT,
@@ -43,13 +48,13 @@ const clampHeight = (height: number) =>
 
 type Props = {
   entries: StackEntry[];
-  selectedLane: { entryId: number; uniform: string } | null;
-  onSelectLane: (lane: { entryId: number; uniform: string }) => void;
+  selectedLane: { entryId: string; uniform: string } | null;
+  onSelectLane: (lane: { entryId: string; uniform: string }) => void;
   // Starts assign mode: the pattern editor opens and the next parameter
   // clicked gets an automation lane.
   onStartAssign: () => void;
-  onToggleLaneActive: (entryId: number, laneKey: string) => void;
-  onDeleteLane: (entryId: number, laneKey: string) => void;
+  onToggleLaneActive: (entryId: string, laneKey: string) => void;
+  onDeleteLane: (entryId: string, laneKey: string) => void;
   // Display order as `${entryId}/${laneKey}` keys; lanes not listed
   // follow in natural order. Dragging a label reorders and persists.
   laneOrder: string[];
@@ -365,7 +370,7 @@ export function ManualValueLine({
 // as the timeline's transport box so the lane areas align with the timeline
 // ticks. Lane content itself is still to come. The pane is resized by
 // dragging its top edge.
-export function AutomationPane({
+export const AutomationPane = observer(function AutomationPane({
   entries,
   selectedLane,
   onSelectLane,
@@ -392,7 +397,12 @@ export function AutomationPane({
   );
 
   const unorderedLanes = entries.flatMap((entry) =>
-    entry.automatedParams.flatMap((uniform) => {
+    // The block's lanes, plus visibility if it has one — visibility is not a
+    // shader uniform so it has no home in the block (see StackEntry).
+    [
+      ...laneKeysOf(entry.block),
+      ...(entry.visibilityCurve ? [VISIBILITY_PARAM] : []),
+    ].flatMap((uniform: string) => {
       const resolved = resolveLane(entry, uniform);
       if (!resolved) return [];
       return [
@@ -406,7 +416,10 @@ export function AutomationPane({
               : formatDisplayName(entry.pattern.name),
           paramName: resolved.paramName,
           param: resolved.param,
-          curve: entry.automation[uniform] ?? null,
+          curve:
+            uniform === VISIBILITY_PARAM
+              ? entry.visibilityCurve ?? null
+              : laneCurve(entry.block, uniform),
         },
       ];
     }),
@@ -414,7 +427,7 @@ export function AutomationPane({
 
   // Sort by the persisted order; lanes not yet listed keep their natural
   // position after the listed ones (sort is stable).
-  const orderKey = (lane: { entryId: number; uniform: string }) =>
+  const orderKey = (lane: { entryId: string; uniform: string }) =>
     `${lane.entryId}/${lane.uniform}`;
   const orderIndex = new Map(laneOrder.map((key, index) => [key, index]));
   const lanes = [...unorderedLanes].sort((a, b) => {
@@ -625,4 +638,4 @@ export function AutomationPane({
       </div>
     </section>
   );
-}
+});

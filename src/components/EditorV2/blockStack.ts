@@ -23,12 +23,13 @@ import { LayerV2 } from "@/src/types/Layer/LayerV2";
 import type { Layer } from "@/src/types/Layer";
 import type { Store } from "@/src/types/Store";
 import type { Pattern } from "@/src/types/Pattern";
-import { getLaneSongDuration } from "@/src/components/EditorV2/blockLanes";
+import {
+  getLaneSongDuration,
+  NO_SONG_DURATION_SECONDS,
+} from "@/src/components/EditorV2/blockLanes";
 
-/** Fallback span when no song is loaded, matching the migration's basis. */
-const NO_SONG_DURATION_SECONDS = 60;
-
-const fullSongDuration = () => getLaneSongDuration() || NO_SONG_DURATION_SECONDS;
+const fullSongDuration = () =>
+  getLaneSongDuration() || NO_SONG_DURATION_SECONDS;
 
 // ------------------------------------------------------------------- layers
 
@@ -44,6 +45,10 @@ export const layerOf = (store: Store, block: Block): Layer | null =>
   store.layers.find((layer) =>
     layer.getAllBlocks().some((candidate) => candidate.id === block.id),
   ) ?? null;
+
+/** The layer the stack lives in, created if the experience has none yet. */
+export const ensureFirstLayer = (store: Store): Layer =>
+  store.layers[0] ?? addLayer(store);
 
 /** Add Layer — the button under all the layers (decision 28). */
 export const addLayer = (store: Store): Layer => {

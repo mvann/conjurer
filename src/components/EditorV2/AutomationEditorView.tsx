@@ -1,3 +1,4 @@
+import { observer } from "mobx-react-lite";
 import { useEffect, useLayoutEffect, useRef, useState } from "react";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { MdOpacity } from "react-icons/md";
@@ -121,7 +122,7 @@ type Props = {
 // Right click a segment to change its type (curve, flat, linear, wave,
 // easing); a selected segment's parameters are edited in the inspector
 // card. The scale on the right labels the value range; it manages itself.
-export function AutomationEditorView({
+export const AutomationEditorView = observer(function AutomationEditorView({
   param,
   curve,
   beatGrid,
@@ -1849,4 +1850,4 @@ export function AutomationEditorView({
       </div>
     </div>
   );
-}
+});
