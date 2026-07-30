@@ -252,6 +252,30 @@ if undone:
 - **Test hooks must be built during render**, not in an effect, or an observer
   never tracks the state they read.
 
+### Decisions made WITHOUT a transcript check — review these
+
+Debugging hides design decisions inside things that look like bugs. These three
+were settled mid-debug from code and the plan rather than from the owner's own
+words. All three were checked afterwards; none contradicted anything he said,
+because he never covered them. Listed so they stay reviewable:
+
+- **Curves stretch when the song length changes** (`applySongDuration`). Not in
+  the transcript. Settled by `dev` instead, which is the oracle: its keyframe
+  times are *"a fraction 0..1 of the song"* evaluated at
+  `seconds / durationSeconds`, so swapping to a longer song already stretched
+  every curve proportionally there. The implementation reproduces that.
+- **leadIn becomes the first region.** Zero occurrences in the owner's messages
+  — it is a Claude-side term from the original build, so nothing was overridden.
+  The reading preserves dev's period count, which is the conservative choice.
+- **Easing keeps its own region** rather than folding into a Bezier. Decision 15
+  is Claude's analysis in the plan, not the owner's words. Flagged to him at the
+  time; still open to veto.
+
+The lesson worth keeping: the check happens reliably at forks that ANNOUNCE
+themselves, and unreliably during a long debugging run, where a design decision
+arrives disguised as a failing test. When a fix requires choosing what something
+should DO rather than why it broke, that is a fork — grep first.
+
 ### Where the next increment picks up
 
 1. **Retire `experiencePersistence.ts`.** Switch to the blob and the draft
