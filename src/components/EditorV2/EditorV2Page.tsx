@@ -3,6 +3,7 @@ import { observer } from "mobx-react-lite";
 import { useRouter } from "next/router";
 import { useStore } from "@/src/types/StoreContext";
 import { loadExperienceIntoStore } from "@/src/components/EditorV2/editorExperience";
+import { setLaneSongDuration } from "@/src/components/EditorV2/blockLanes";
 import styles from "@/styles/EditorV2.module.css";
 import { CanopyPane } from "@/src/components/EditorV2/CanopyPane";
 import {
@@ -116,6 +117,12 @@ export const EditorV2Page = observer(function EditorV2Page() {
       frame = requestAnimationFrame(apply);
       const { seconds, durationSeconds } = transportTime;
       if (!durationSeconds) return;
+      // The region projection needs the song's length: every keyframe time is a
+      // fraction of it, so with a length of zero every lane reads as empty.
+      // Mirrored from the transport rather than plumbed separately, since this
+      // is already the one place that watches it; the setter no-ops when
+      // unchanged, so the cost per frame is a comparison.
+      setLaneSongDuration(durationSeconds);
       const frac = Math.min(Math.max(seconds / durationSeconds, 0), 1);
       for (const entry of latest.current.entries) {
         for (const uniform of entry.automatedParams) {
