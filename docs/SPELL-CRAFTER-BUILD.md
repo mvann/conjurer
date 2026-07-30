@@ -192,13 +192,54 @@ The projection exists and is trusted, and the store loads. Not yet done:
 3. Left pane becomes the layer list (decisions 1–2, 28).
 4. Legacy save migration (22): fraction-time curves to block-local seconds.
 
+## The color / palette lane — resolved
+
+The plan compressed this to "gradient toggle, memory-only," which is not enough
+to build from. The real spec is in the transcript, and `dev` already implements
+most of it. **Grep `SPEC-user.txt` before touching this**; see
+[[check-the-transcript-first]].
+
+From the owner, verbatim:
+
+> "that animation curve should just be a straight line, and there should be no
+> range on the right side because you're just picking different palettes and
+> different colors for different periods of time. You're not really changing the
+> color." (@@L5846)
+
+> "I don't want the animation curve to be the color of what you're picking. I
+> just want, like, a little tiny square to hover above that segment with the
+> color inside of it, and you can also click that to select the segment… It's
+> just a tiny rectangle with the color inside of it and a border, like other
+> things have, and that just sits in the middle of the segment." (@@L6136)
+
+> "for the color, you don't need to have that golden circle representing the
+> value." (@@L6141)
+
+So the lane is:
+
+- **No value axis** — no scale, no guides, no curve shapes, no golden value dot.
+  Keyframes sit at the vertical MIDDLE (`top: 50%`). dev does this already; the
+  abandoned branch moved them to the top, which the owner flagged (@@L18666).
+- **One bordered chip per period, centred in the segment**, clickable to select.
+  Same chip in the lane preview (@@L6136).
+- **A gradient period** (`from != to`) uses that same centred chip filled
+  left-to-right with the gradient, and the chip is **twice as wide** as a solid
+  one. Owner's call, chosen over end-stop chips or a full-width sweep.
+- **The inspector opens only on segment selection** and closes on any click
+  elsewhere (@@L18666, @@L17728).
+- **Time selection works on color lanes.** It does not on `dev` — a real gap the
+  owner confirmed (@@L19430) — and it is in scope to fix here, not preserve.
+- **It IS the regular expanded editor**, not a stripped-down variant: same BPM
+  grid, same canopy/waveform backdrops. dev gates neither on lane kind. The
+  abandoned branch built a separate stripped editor, which drew the owner's
+  sharpest complaint (@@L19078).
+- The preview must **fit the block** (@@L18784).
+- One deliberate change from dev: decision 30 replaces the backdrop *menu* with
+  two toggle BUTTONS — teardrop for canopy, the conjurer waveform icon for
+  waveform.
+
 ## Questions for the owner
 
-Held here rather than blocking. (Answered: canopy docks **left** in horizontal
-mode; pushing this branch to `origin` — the owner's fork only — is approved.)
-
-- **Color/palette region *sequences*** (plan final-audit item 6) is the one
-  genuinely undesigned area, and it is exactly what broke last time. The plan
-  reduced scope to "make decision 23 apply per-region across a sequence, and
-  render gradients," but no editor surface was ever designed for editing runs of
-  gradient regions. Will need a decision before step 5.
+Held here rather than blocking. All currently answered: canopy docks **left** in
+horizontal mode; pushing to `origin` (the owner's fork only) is approved; the
+color lane is settled above.
