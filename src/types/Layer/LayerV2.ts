@@ -286,6 +286,7 @@ export class LayerV2 implements Layer {
   serialize = () => ({
     id: this.id,
     name: this.name,
+    visible: this.visible,
     blockMap: this.blockMap.serialize(),
   });
 
@@ -293,6 +294,7 @@ export class LayerV2 implements Layer {
     const layer = new LayerV2(store);
     if (data.id) layer.id = data.id;
     layer.name = data.name ?? "";
+    layer.visible = data.visible ?? true;
 
     layer.blockMap = BlockMap.deserialize(store, layer, data.blockMap);
     return layer;
