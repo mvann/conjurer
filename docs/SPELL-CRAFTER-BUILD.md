@@ -183,12 +183,43 @@ Unit suites: `migrate`, `regioncurve`, `autorange`, `clipboard`, `bpm`,
   write, lane existence by the lone-constant convention, effect lanes framed by
   the parent block.
 
+- **Value lanes** — color and palette *sequences* now project both ways, with
+  gradients carried on `colorTo` (decision 23). This was the prerequisite that
+  blocked touching color lanes at all.
+- **`blockStack.ts`** — the block-side operations for layers, patterns, and
+  effect chains, implementing decision 24 (full-song blocks) and 28 (layer
+  lifecycle). Nothing calls it yet.
+
+### The layer design, and its two gaps
+
+Specified by the owner (@@L10477, @@L11012, @@L18418): the left pane becomes a
+layer list holding patterns-as-blocks; the lane hierarchy is layer lane → block
+header lane labelled with the pattern name → that block's automated param lanes
+beneath; the block's header lane is a spacer for now, opacity maybe later; **Add
+Layer** sits under all layers and **Add Pattern** inside each layer, adding a
+full-width block to *that* layer; rename by double-clicking the layer name, the
+same gesture as a parameter value; reorder by click-and-**hold** then drag, and
+layer order is real blob data; layers get their own lane in the automation area,
+ordered to match the left pane; assign mode works as in dev but over the layer
+panel's params.
+
+**Never specified — do not invent silently:**
+
+- **Layer deletion.** What happens to its blocks, whether the last layer can go,
+  and whether it confirms. `blockStack.removeLayer` currently mirrors upstream and
+  refuses to remove the last layer. Upstream has a delete confirmation modal to
+  mirror if wanted.
+- **Layer collapse.** The owner specified the standard collapse control for
+  automation *lanes* (@@L16001) but said nothing about layers. Upstream's
+  `LayerV2.collapsed` is editor-only and unserialized.
+
 ### Where the next increment picks up
 
-Everything below the UI is in place and tested: the projection, the store load
-and save, the migration, and the lane read model. **The remaining work is the
-model swap for the pattern list, and it is the step the previous attempt got
-wrong** — it built the adapter and then wrote a new view anyway.
+Everything below the UI is in place and tested: the projection (scalar AND value
+lanes), the store load and save, the migration, the lane read model, and the
+block-side stack operations. **The remaining work is the model swap for the
+pattern list, and it is the step the previous attempt got wrong** — it built the
+adapter and then wrote a new view anyway.
 
 The blocker is that `entries: StackEntry[]` is React state with no relationship
 to `store.layers`. The components cannot be fed from blocks until an entry knows
