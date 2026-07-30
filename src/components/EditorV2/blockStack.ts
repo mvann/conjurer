@@ -25,7 +25,11 @@ import type { Store } from "@/src/types/Store";
 import type { Pattern } from "@/src/types/Pattern";
 import {
   getLaneSongDuration,
+  laneCurve,
+  laneKeysOf,
   NO_SONG_DURATION_SECONDS,
+  setLaneSongDuration,
+  writeLaneCurve,
 } from "@/src/components/EditorV2/blockLanes";
 
 const fullSongDuration = () =>
@@ -187,26 +191,57 @@ export const moveEffectInBlock = (
 // -------------------------------------------------------------------- song
 
 /**
- * Re-span every full-song block when the song changes.
+ * Adopt a new song length: re-span the full-song blocks and move their lanes
+ * with them.
  *
- * A Spell Crafter block is implicitly "the whole song", but that length is only
- * known once a song is loaded — and it changes when one is swapped. Blocks the
- * author has deliberately trimmed are left alone: only those still spanning the
- * previous full length follow.
+ * A Spell Crafter block is implicitly "the whole song", but that length is
+ * unknown until a song loads and changes when one is swapped. Blocks the author
+ * deliberately trimmed are left alone; only those still spanning the previous
+ * full length follow.
+ *
+ * The lanes have to follow too. Regions are measured in SECONDS and tile the
+ * block exactly, so growing the block without moving them would leave every
+ * lane covering only the opening slice of the song — automation would appear to
+ * stop partway through.
+ *
+ * Rather than rescaling each variation type by hand (a curve's node times and
+ * handle widths, a wave's period, a triangle's seconds-valued phase), this
+ * reads each lane out as a curve FIRST. The projected curve is in fractions of
+ * the song, which are basis-independent, so writing it back against the new
+ * length reproduces every one of those rescalings through the same code path
+ * the round-trip tests already cover.
  */
-export const respanFullSongBlocks = (
+export const applySongDuration = (
   store: Store,
-  previousDuration: number,
   nextDuration: number,
+  store2?: Store,
 ) => {
-  if (!(nextDuration > 0) || previousDuration === nextDuration) return;
+  void store2;
+  const previous = getLaneSongDuration();
+  if (!(nextDuration > 0) || previous === nextDuration) return;
+
+  const following = allBlocks(store).filter(
+    (block) =>
+      block.startTime === 0 && Math.abs(block.duration - previous) < 1e-6,
+  );
+
+  // Capture at the OLD basis, before anything moves.
+  const captured = following.map((block) => ({
+    block,
+    lanes: laneKeysOf(block).map((laneKey) => ({
+      laneKey,
+      curve: laneCurve(block, laneKey),
+    })),
+  }));
+
+  setLaneSongDuration(nextDuration);
   runInAction(() => {
-    for (const block of allBlocks(store)) {
-      const spansEverything =
-        block.startTime === 0 &&
-        (previousDuration === 0 ||
-          Math.abs(block.duration - previousDuration) < 1e-6);
-      if (spansEverything) block.duration = nextDuration;
-    }
+    for (const { block } of captured) block.duration = nextDuration;
   });
+
+  // Write back at the new basis: the fractions are unchanged, the seconds are
+  // not.
+  for (const { block, lanes } of captured)
+    for (const { laneKey, curve } of lanes)
+      if (curve) writeLaneCurve(block, laneKey, curve, store);
 };

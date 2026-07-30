@@ -124,9 +124,15 @@ const valueLaneToCurve = (
   const frac = (localSeconds: number) =>
     (blockStartTime + localSeconds) / songDuration;
 
+  // Keyframes are period BOUNDARIES here, so N keyframes make N+1 periods: the
+  // run before the first keyframe is its own period, which the editor calls
+  // leadIn. "leadIn dissolves" means it stops being a special field and becomes
+  // simply the first region — not that the period disappears. Dropping it would
+  // cost the author an editable colour.
   const keyframes: AutomationKeyframe[] = [];
+  let leadIn: AutomationCurve["leadIn"];
   let cursor = 0;
-  for (const variation of variations) {
+  for (const [regionIndex, variation] of variations.entries()) {
     const keyframe: AutomationKeyframe = {
       time: frac(cursor),
       // Value lanes have no vertical meaning; the payload carries everything.
@@ -144,15 +150,20 @@ const valueLaneToCurve = (
         AutomationKeyframe["palette"]
       >;
     }
-    keyframes.push(keyframe);
     cursor += variation.duration;
+    if (regionIndex === 0) {
+      leadIn = { color: keyframe.color, palette: keyframe.palette };
+      continue;
+    }
+    keyframes.push(keyframe);
   }
 
-  if (keyframes.length === 0) return null;
+  if (!leadIn && keyframes.length === 0) return null;
   // Segments carry no shape here, but the list has to stay sized to the
   // keyframes or getSegments will pad it and callers will misread the lane.
   return {
     keyframes,
+    leadIn,
     segments: keyframes.slice(1).map(() => ({ type: "flat" as const })),
   };
 };
@@ -171,17 +182,33 @@ const valueLaneToVariations = (
     );
 
   const { keyframes } = curve;
+  // The leadIn period comes first, running from the block's start to the first
+  // keyframe. It is a region like any other; only the editor calls it leadIn.
+  const periods: { payload: AutomationKeyframe; start: number; end: number }[] =
+    [];
+  const firstBoundary = keyframes.length ? local(keyframes[0].time) : blockDuration;
+  if (curve.leadIn && firstBoundary > TIME_EPS)
+    periods.push({
+      payload: { time: 0, value: 0, ...curve.leadIn },
+      start: 0,
+      end: firstBoundary,
+    });
+  for (let index = 0; index < keyframes.length; index++)
+    periods.push({
+      payload: keyframes[index],
+      // With no leadIn the first period still starts at the block's start.
+      start:
+        index === 0 && !periods.length ? 0 : local(keyframes[index].time),
+      end:
+        index === keyframes.length - 1
+          ? blockDuration
+          : local(keyframes[index + 1].time),
+    });
+
   const variations: Variation[] = [];
-  for (let index = 0; index < keyframes.length; index++) {
-    const keyframe = keyframes[index];
-    // The first period starts at the block's start whatever its keyframe says
-    // (leadIn dissolves); the last runs to the block's end.
-    const start = index === 0 ? 0 : local(keyframe.time);
-    const end =
-      index === keyframes.length - 1
-        ? blockDuration
-        : local(keyframes[index + 1].time);
-    const duration = end - start;
+  for (const period of periods) {
+    const keyframe = period.payload;
+    const duration = period.end - period.start;
     if (duration <= TIME_EPS) continue;
 
     if (kind === "palette" && keyframe.palette) {
@@ -290,7 +317,25 @@ export const variationsToCurve = (
     if (variation instanceof CurveVariation) {
       const nodes = variation.nodes;
       if (nodes.length === 0) continue;
+
+      // A hold-then-step — a level pair followed by a jump at the same time —
+      // is how a FLAT segment is stored (see the write path). Recognising the
+      // fingerprint here is what lets the author's flat segment come back as a
+      // flat segment rather than as two curve segments around a step. Same
+      // move the plan makes for lone constants and for from == to colours.
+      const flatMiddle = new Set<number>();
+      for (let i = 0; i + 2 < nodes.length; i++) {
+        const level =
+          Math.abs(nodes[i + 1].value - nodes[i].value) < VALUE_EPS &&
+          nodes[i + 1].time - nodes[i].time > TIME_EPS;
+        const steps =
+          Math.abs(nodes[i + 2].time - nodes[i + 1].time) < TIME_EPS &&
+          Math.abs(nodes[i + 2].value - nodes[i + 1].value) > VALUE_EPS;
+        if (level && steps) flatMiddle.add(i + 1);
+      }
+
       nodes.forEach((node, index) => {
+        if (flatMiddle.has(index)) return;
         push(
           {
             time: frac(start + node.time),
@@ -306,13 +351,17 @@ export const variationsToCurve = (
           },
           index === 0,
         );
-        // Always "curve": that is the editor's DEFAULT segment type, and a
+        // Otherwise "curve": that is the editor's DEFAULT segment type, and a
         // bend of 1 draws straight, so a straight run is an unbent curve
         // rather than a linear segment. Reporting straight runs as linear
         // would silently retype every default segment on its first round trip.
         // The Bezier shape lives in the handles; bend stays neutral.
         if (index < nodes.length - 1)
-          segments.push({ type: "curve", bend: 1 });
+          segments.push(
+            flatMiddle.has(index + 1)
+              ? { type: "flat" }
+              : { type: "curve", bend: 1 },
+          );
       });
       continue;
     }
@@ -433,10 +482,11 @@ export const curveToVariations = (
 
   // A curve whose keyframes carry payloads is a value lane, and its periods map
   // straight back to color or palette regions.
-  const carriesPalette = keyframes.some((keyframe) => keyframe.palette);
-  const carriesColor = keyframes.some(
-    (keyframe) => keyframe.color || keyframe.colorTo,
-  );
+  const carriesPalette =
+    keyframes.some((keyframe) => keyframe.palette) || !!curve.leadIn?.palette;
+  const carriesColor =
+    keyframes.some((keyframe) => keyframe.color || keyframe.colorTo) ||
+    !!curve.leadIn?.color;
   if (carriesPalette || carriesColor)
     return valueLaneToVariations(
       curve,
@@ -537,13 +587,17 @@ export const curveToVariations = (
     const isLast = i === chunks.length - 1;
 
     if (chunk.kind === "generator") {
-      // Anything before the wave starts is a hold at its first value.
+      // Anything before the generator starts is a hold at its first value.
+      // One node, placed at the END of the hold, so it projects to a keyframe
+      // exactly where the generator's own first keyframe sits and collapses
+      // into it. A two-node flat would instead show the author a keyframe at
+      // the block's start that they never placed.
       if (chunk.startT - cursor > TIME_EPS) {
+        const gap = chunk.startT - cursor;
         variations.push(
-          CurveVariation.flat(
-            chunk.startT - cursor,
-            keyframes[chunk.firstSegment].value,
-          ),
+          new CurveVariation(gap, [
+            makeCurveNode(gap, keyframes[chunk.firstSegment].value),
+          ]),
         );
         cursor = chunk.startT;
       }
@@ -652,42 +706,56 @@ const curveRegionForRun = (
     .slice(runStart, runEnd)
     .every((segment) => segment.type === "linear" || segment.type === "flat");
 
-  if (runIsHandled || everySegmentIsStraight) {
-    const nodes: CurveNode[] = runKeyframes.map((keyframe, i) => {
-      const time = localOf(keyframe.time) - start;
-      if (runIsHandled) {
-        const handleIn = keyframe.handleIn ?? { dt: 0, dv: 0 };
-        const handleOut = keyframe.handleOut ?? { dt: 0, dv: 0 };
-        return makeCurveNode(
-          time,
-          keyframe.value,
-          { dt: handleIn.dt * songDuration, dv: handleIn.dv },
-          { dt: handleOut.dt * songDuration, dv: handleOut.dv },
-        );
-      }
-      // Straight run: control points at the chord thirds, which is how
-      // flat and linear both fall out of a Bezier.
-      const previous = runKeyframes[i - 1];
-      const next = runKeyframes[i + 1];
-      const inDt = previous ? time - (localOf(previous.time) - start) : 0;
-      const outDt = next ? localOf(next.time) - start - time : 0;
-      const inDv = previous ? keyframe.value - previous.value : 0;
-      const outDv = next ? next.value - keyframe.value : 0;
-      // A flat segment holds its start value, so its outgoing chord is level.
-      const outSegment = segments[runStart + i];
-      const levelOut = outSegment && outSegment.type === "flat";
-      const inSegment = segments[runStart + i - 1];
-      const levelIn = inSegment && inSegment.type === "flat";
+  if (runIsHandled) {
+    const nodes: CurveNode[] = runKeyframes.map((keyframe) => {
+      const handleIn = keyframe.handleIn ?? { dt: 0, dv: 0 };
+      const handleOut = keyframe.handleOut ?? { dt: 0, dv: 0 };
       return makeCurveNode(
-        time,
+        localOf(keyframe.time) - start,
         keyframe.value,
-        { dt: -inDt / 3, dv: levelIn ? 0 : -inDv / 3 },
-        { dt: outDt / 3, dv: levelOut ? 0 : outDv / 3 },
+        { dt: handleIn.dt * songDuration, dv: handleIn.dv },
+        { dt: handleOut.dt * songDuration, dv: handleOut.dv },
       );
     });
-    // Deliberately no ensureTerminalNode: the region may legitimately end
-    // after its last node (the editor holds that value), and adding one would
-    // show the author a keyframe they never placed.
+    return new CurveVariation(duration, nodes);
+  }
+
+  if (everySegmentIsStraight) {
+    // Straight runs are built point by point, because a FLAT segment is two
+    // points rather than one: it holds its start value all the way to the next
+    // keyframe and then steps. That step is a coincident-time node pair, which
+    // is exactly how the data model encodes a jump — so a hold-then-step
+    // survives as a hold-then-step instead of flattening into a ramp.
+    const points: { t: number; v: number }[] = [
+      {
+        t: localOf(runKeyframes[0].time) - start,
+        v: runKeyframes[0].value,
+      },
+    ];
+    for (let i = runStart; i < runEnd; i++) {
+      const a = keyframes[i];
+      const b = keyframes[i + 1];
+      const bt = localOf(b.time) - start;
+      if (segments[i].type === "flat") points.push({ t: bt, v: a.value });
+      points.push({ t: bt, v: b.value });
+    }
+
+    const nodes = points.map((point, i) => {
+      const previous = points[i - 1];
+      const next = points[i + 1];
+      const inDt = previous ? point.t - previous.t : 0;
+      const outDt = next ? next.t - point.t : 0;
+      const inDv = previous ? point.v - previous.v : 0;
+      const outDv = next ? next.v - point.v : 0;
+      // Control points at the chord thirds: both flat and linear fall out of
+      // straight handles.
+      return makeCurveNode(
+        point.t,
+        point.v,
+        { dt: -inDt / 3, dv: -inDv / 3 },
+        { dt: outDt / 3, dv: outDv / 3 },
+      );
+    });
     return new CurveVariation(duration, nodes);
   }
 
@@ -756,14 +824,13 @@ const spanToBlock = (
   const last = variations[variations.length - 1];
   // A generator keeps its size: stretching a wave would make it oscillate on
   // into the extension, where decision 16 says the value freezes at the
-  // region's end. So the tail becomes a constant region holding that value.
+  // region's end. The tail becomes a hold instead — one node at the START of
+  // it, so it lands on the generator's own end keyframe and collapses into it
+  // rather than adding a dot at the block's end. It holds the generator's
+  // centre, which is the value the editor draws that keyframe at.
   if (last instanceof PeriodicVariation || last instanceof AudioVariation) {
-    const held = (last as Variation<number>).valueAtTime(
-      last.duration,
-      last.duration,
-    );
     variations.push(
-      CurveVariation.flat(shortfall, typeof held === "number" ? held : 0),
+      new CurveVariation(shortfall, [makeCurveNode(0, last.offset)]),
     );
     return variations;
   }

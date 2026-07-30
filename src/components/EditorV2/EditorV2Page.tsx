@@ -9,7 +9,6 @@ import {
   laneCurve,
   laneKeysOf,
   resumeLane,
-  setLaneSongDuration,
   suspendLane,
   writeLaneCurve,
 } from "@/src/components/EditorV2/blockLanes";
@@ -21,7 +20,7 @@ import {
   moveEffectInBlock,
   removeEffectFromBlock,
   removePatternBlock,
-  respanFullSongBlocks,
+  applySongDuration,
 } from "@/src/components/EditorV2/blockStack";
 import styles from "@/styles/EditorV2.module.css";
 import { CanopyPane } from "@/src/components/EditorV2/CanopyPane";
@@ -145,15 +144,10 @@ export const EditorV2Page = observer(function EditorV2Page() {
       // is already the one place that watches it; the setter no-ops when
       // unchanged, so the cost per frame is a comparison.
       if (lastSongDuration.current !== durationSeconds) {
-        const previous = lastSongDuration.current;
         lastSongDuration.current = durationSeconds;
-        setLaneSongDuration(durationSeconds);
-        // A Spell Crafter block is implicitly "the whole song", but the song's
-        // length is unknown until one loads and changes when one is swapped.
-        // Without this, a block created before a song arrives keeps its
-        // fallback span and every lane in it maps into the wrong slice of the
-        // timeline. Deliberately trimmed blocks are left alone.
-        respanFullSongBlocks(store, previous, durationSeconds);
+        // Adopting a song length re-spans the full-song blocks AND carries
+        // their lanes with them; see applySongDuration.
+        applySongDuration(store, durationSeconds);
       }
       const frac = Math.min(Math.max(seconds / durationSeconds, 0), 1);
       for (const entry of latest.current.entries) {

@@ -384,21 +384,27 @@ for (const testCase of cases) {
   const curve = variationsToCurve(original, ctx);
   if (!curve) fail("a color lane must project to a curve");
   else {
-    if (curve.keyframes.length !== 3)
-      fail(`color lane: 3 periods -> 3 keyframes, got ${curve.keyframes.length}`);
-    const [first, second, third] = curve.keyframes;
-    if (Math.abs(first.time - 0) > 1e-9)
-      fail("the first period starts at the block start");
+    // Keyframes are period BOUNDARIES, so N periods are leadIn + N-1
+    // keyframes. leadIn "dissolving" means it stops being a special field and
+    // becomes the first region — the period itself still exists, and dropping
+    // it would cost the author an editable colour.
+    if (!curve.leadIn)
+      fail("the first period must come back as leadIn");
+    if (curve.leadIn && !curve.leadIn.color?.every((c, i) => Math.abs(c - red[i]) < 1e-9))
+      fail("leadIn keeps the first period's colour");
+    if (curve.keyframes.length !== 2)
+      fail(`3 periods -> leadIn + 2 keyframes, got ${curve.keyframes.length}`);
+    const [second, third] = curve.keyframes;
     if (Math.abs(second.time - 40 / 120) > 1e-9)
-      fail(`second period at fraction 1/3, got ${second.time}`);
-    if (first.colorTo)
-      fail("a constant period must NOT record colorTo, or it reads as a gradient");
+      fail(`second period boundary at 1/3, got ${second.time}`);
     if (!second.colorTo)
       fail("a genuine gradient must record its far end on colorTo");
     if (second.colorTo && !second.colorTo.every((c, i) => Math.abs(c - green[i]) < 1e-9))
-      fail("the gradient's far end must be its `to` color");
+      fail("the gradient's far end must be its `to` colour");
+    if (third.colorTo)
+      fail("a constant period must NOT record colorTo, or it reads as a gradient");
     if (!third.color || !third.color.every((c, i) => Math.abs(c - blue[i]) < 1e-9))
-      fail("the third period keeps its own color");
+      fail("the third period keeps its own colour");
 
     const back = curveToVariations(curve, ctx, stubStore);
     if (back.length !== 3)
@@ -407,11 +413,7 @@ for (const testCase of cases) {
       fail(`color regions must stay linear4, got ${back.map((r) => r.type).join(", ")}`);
     checkTiling("color lane", back, ctx.blockDuration);
     const grad = back[1] as any;
-    if (
-      !grad ||
-      Math.abs(grad.from.x - 1) > 1e-9 ||
-      Math.abs(grad.to.y - 1) > 1e-9
-    )
+    if (!grad || Math.abs(grad.from.x - 1) > 1e-9 || Math.abs(grad.to.y - 1) > 1e-9)
       fail("the gradient region must round trip from red to green");
     const solid = back[0] as any;
     if (Math.abs(solid.from.x - solid.to.x) > 1e-9)
@@ -423,7 +425,7 @@ for (const testCase of cases) {
       fail(`color lane not idempotent: ${shapeA} vs ${shapeOf(again)}`);
     if (failures === 0)
       console.log(
-        "  color lane: 3 periods round trip as linear4, gradient carried on colorTo",
+        "  color lane: leadIn + 2 keyframes = 3 linear4 periods, gradient on colorTo",
       );
   }
 }
@@ -445,8 +447,11 @@ for (const testCase of cases) {
   const curve = variationsToCurve(original, ctx);
   if (!curve) fail("a palette lane must project to a curve");
   else {
-    if (curve.keyframes.length !== 2)
-      fail(`palette lane: 2 periods -> 2 keyframes, got ${curve.keyframes.length}`);
+    // Same boundary convention as colour: 2 periods are leadIn + 1 keyframe.
+    if (!curve.leadIn?.palette)
+      fail("the first palette period comes back as leadIn");
+    if (curve.keyframes.length !== 1)
+      fail(`2 periods -> leadIn + 1 keyframe, got ${curve.keyframes.length}`);
     if (!curve.keyframes[0].palette)
       fail("each palette period carries its palette payload");
     const back = curveToVariations(curve, ctx, stubStore);
