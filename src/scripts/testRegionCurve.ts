@@ -82,7 +82,18 @@ const evaluateRegions = (variations: Variation[], t: number): number => {
   return typeof value === "number" ? value : 0;
 };
 
-const SCALAR_TYPES = new Set(["curve", "periodic", "audio"]);
+// What a scalar lane may write. flat / linear / spline are excluded because
+// upstream's loader refits them into curves on every open, so emitting them
+// would guarantee drift — the curve encoding covers both anyway (flat is a
+// level pair plus a coincident step; linear is straight handles).
+//
+// `easing` IS allowed, deliberately. Upstream bakes it too, but on LOAD, and
+// decision 15 already accepts that ("their load pipeline bakes easing to curves
+// anyway"). Folding it away at WRITE time instead would destroy the named
+// easing the instant the author picked it, taking the inspector's modes and
+// families with it. Writing the region keeps the feature whole for the session
+// and defers the documented loss to the reload the plan expects.
+const SCALAR_TYPES = new Set(["curve", "periodic", "audio", "easing"]);
 
 const checkVocabulary = (label: string, variations: Variation[]) => {
   for (const variation of variations)
@@ -248,12 +259,12 @@ const cases: Case[] = [
     tolerance: 1e-6,
   },
   {
-    name: "easing (fit to bezier, upstream does the same)",
+    name: "easing (its own region; upstream bakes it on load)",
     variations: () => [
       new EasingVariation(120, "easeInOutCubic", 0.2, 0.85),
     ],
     ctx: fullSong,
-    tolerance: 0.02,
+    tolerance: 1e-6,
   },
   {
     name: "sequence: flat, wave, linear",

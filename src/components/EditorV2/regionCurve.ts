@@ -71,8 +71,18 @@ const TIME_EPS = 1e-9;
 // regions that agree renders as one keyframe rather than a false step.
 const VALUE_EPS = 1e-9;
 
-const isGenerator = (type: SegmentSpec["type"]) =>
-  type === "wave" || type === "audio";
+// Segment types that occupy a region of their own, rather than folding into a
+// Curve run: the generators, plus easing.
+//
+// Easing is written as a real EasingVariation even though upstream's loader
+// bakes those into curves. Decision 15 accepts that bake — "their load pipeline
+// bakes easing to curves anyway" — but it happens on LOAD, not during editing.
+// Folding easing away at write time instead would lose the named easing the
+// moment the author picked it, taking the inspector's modes and families with
+// it. Writing the region keeps the feature intact for the whole session and
+// defers the documented loss to the reload that decision 15 already expects.
+const ownsRegion = (type: SegmentSpec["type"]) =>
+  type === "wave" || type === "audio" || type === "easing";
 
 // -------------------------------------------------------------- value lanes
 //
@@ -539,7 +549,7 @@ export const curveToVariations = (
   // two keyframes, because its phase and period are measured from the region's
   // own start.
   type Chunk = {
-    kind: "generator" | "run";
+    kind: "owned" | "run";
     firstSegment: number;
     lastSegment: number; // exclusive
     startT: number;
@@ -549,9 +559,9 @@ export const curveToVariations = (
   const chunks: Chunk[] = [];
   let index = 0;
   while (index < segments.length) {
-    if (isGenerator(segments[index].type)) {
+    if (ownsRegion(segments[index].type)) {
       chunks.push({
-        kind: "generator",
+        kind: "owned",
         firstSegment: index,
         lastSegment: index + 1,
         startT: local(keyframes[index].time),
@@ -561,7 +571,7 @@ export const curveToVariations = (
       continue;
     }
     const runStart = index;
-    while (index < segments.length && !isGenerator(segments[index].type)) {
+    while (index < segments.length && !ownsRegion(segments[index].type)) {
       const a = keyframes[index];
       const b = keyframes[index + 1];
       // A zero-width segment between differing values is a step; it belongs to
@@ -586,7 +596,7 @@ export const curveToVariations = (
     const next = chunks[i + 1];
     const isLast = i === chunks.length - 1;
 
-    if (chunk.kind === "generator") {
+    if (chunk.kind === "owned") {
       // Anything before the generator starts is a hold at its first value.
       // One node, placed at the END of the hold, so it projects to a keyframe
       // exactly where the generator's own first keyframe sits and collapses
@@ -622,6 +632,16 @@ export const curveToVariations = (
         } else if (segment.type === "audio") {
           variations.push(
             new AudioVariation(duration, segment.factor, a.value, segment.smoothing, store),
+          );
+        } else if (segment.type === "easing") {
+          const b = keyframes[chunk.firstSegment + 1];
+          variations.push(
+            new EasingVariation(
+              duration,
+              segment.easing as never,
+              a.value,
+              b.value,
+            ),
           );
         }
         cursor += duration;
@@ -832,6 +852,12 @@ const spanToBlock = (
     variations.push(
       new CurveVariation(shortfall, [makeCurveNode(0, last.offset)]),
     );
+    return variations;
+  }
+  // An easing keeps its shape too: stretching it would restretch the curve the
+  // author chose. The tail holds its end value instead.
+  if (last instanceof EasingVariation) {
+    variations.push(new CurveVariation(shortfall, [makeCurveNode(0, last.to)]));
     return variations;
   }
   if (last instanceof CurveVariation) last.resizeEnd(last.duration + shortfall);
