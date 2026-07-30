@@ -142,6 +142,14 @@ export const duplicatePatternBlock = (
   const copy = block.clone();
   runInAction(() => {
     copy.regenerateId();
+    // clone carries the regions but not which lanes are ARMED, and arming is
+    // what makes a constant lane visible at all (decision 8). Without this a
+    // duplicated pattern silently loses its lane rows.
+    copy.lanedParams = new Set(block.lanedParams);
+    copy.effectBlocks.forEach((effectCopy, index) => {
+      const source = block.effectBlocks[index];
+      if (source) effectCopy.lanedParams = new Set(source.lanedParams);
+    });
     // Spell Crafter's blocks are full-song, so a duplicate sits on top of its
     // original rather than being nudged into the next gap. Overlapping
     // identical spans composite additively (see the header note).

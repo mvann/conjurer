@@ -674,29 +674,34 @@ export const EditorV2Page = observer(function EditorV2Page() {
   );
 
   // Test hooks: e2e and diagnostics read live editor state through these.
+  //
+  // The snapshot is built during RENDER, not inside the effect. Lanes and their
+  // suspension are mobx state, and only what an observer touches while
+  // rendering is tracked — reading them in an effect would leave the hook
+  // showing stale automation after any change that does not also move React
+  // state, such as disabling a lane.
+  const entriesSnapshot = entries.map((entry) => {
+    const automation: Record<string, AutomationCurve> = {};
+    for (const laneKey of laneKeysOf(entry.block)) {
+      const curve = laneCurve(entry.block, laneKey);
+      if (curve) automation[laneKey] = curve;
+    }
+    if (entry.visibilityCurve)
+      automation[VISIBILITY_PARAM] = entry.visibilityCurve;
+    return {
+      id: entry.id,
+      pattern: entry.pattern,
+      effects: entry.effects,
+      visible: entry.visible,
+      expanded: entry.expanded,
+      automatedParams: Object.keys(automation),
+      automation,
+    };
+  });
+
   useEffect(() => {
     const hooks = window as unknown as Record<string, unknown>;
-    // The lanes and curves now live on the blocks, but the hook keeps its old
-    // shape so diagnostics and e2e read the editor the same way they always
-    // have: `automation` is projected from the block's regions on demand.
-    hooks.__editorEntries = entries.map((entry) => {
-      const automation: Record<string, AutomationCurve> = {};
-      for (const laneKey of laneKeysOf(entry.block)) {
-        const curve = laneCurve(entry.block, laneKey);
-        if (curve) automation[laneKey] = curve;
-      }
-      if (entry.visibilityCurve)
-        automation[VISIBILITY_PARAM] = entry.visibilityCurve;
-      return {
-        id: entry.id,
-        pattern: entry.pattern,
-        effects: entry.effects,
-        visible: entry.visible,
-        expanded: entry.expanded,
-        automatedParams: Object.keys(automation),
-        automation,
-      };
-    });
+    hooks.__editorEntries = entriesSnapshot;
     hooks.__editorBeatGrid = beatGrid;
     hooks.__editorTransients = transients;
   });

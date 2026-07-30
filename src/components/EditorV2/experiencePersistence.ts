@@ -1,3 +1,4 @@
+import { runInAction } from "mobx";
 import { Vector4 } from "three";
 import { Song } from "@/src/types/Song";
 import { BASE_UNIFORMS, Pattern } from "@/src/types/Pattern";
@@ -182,6 +183,11 @@ export const restoreEntries = (
       const factory = patternFactoryByName(saved.pattern);
       if (!factory) return [];
       block = addPatternBlock(store, layer, factory);
+      // Keep the saved id. Identity is not cosmetic here: lane display order is
+      // stored as `${entryId}/${laneKey}` keys, and selections are keyed the
+      // same way, so a fresh random id would silently drop the author's lane
+      // ordering on every reload.
+      if (savedId) runInAction(() => (block.id = savedId));
     }
     claimed.add(block.id);
     applyParams(block.pattern, saved.params ?? {});
@@ -210,6 +216,11 @@ export const restoreEntries = (
           const factory = effectFactoryByName(savedEffect.pattern);
           if (!factory) return [];
           effectBlock = addEffectToBlock(block, factory);
+          // Same reason as the block above: effect lane keys carry this id.
+          if (savedEffectId && effectBlock) {
+            const restored = effectBlock;
+            runInAction(() => (restored.id = savedEffectId));
+          }
         }
         if (!effectBlock) return [];
         applyParams(effectBlock.pattern, savedEffect.params ?? {});

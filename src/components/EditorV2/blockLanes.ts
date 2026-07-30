@@ -207,15 +207,19 @@ export const laneKeysOf = (block: Block): string[] => {
   const keys: string[] = [];
 
   const collect = (owner: Block, keyOf: (uniform: string) => string) => {
+    // Armed lanes first, in the order they were armed. `lanedParams` is a Set,
+    // so it preserves insertion order, and decision 21 makes that order the
+    // per-block lane ordering — which is why it is read here rather than
+    // walking the pattern's params in declaration order. Ordering by
+    // declaration would silently reshuffle every author's lanes.
+    for (const uniform of owner.lanedParams)
+      if (uniform in owner.pattern.params) keys.push(keyOf(uniform));
+
+    // Then anything carrying real automation that was never explicitly armed —
+    // content authored elsewhere, or loaded from a save.
     for (const uniform of Object.keys(owner.pattern.params)) {
-      const armed = owner.lanedParams.has(uniform);
+      if (owner.lanedParams.has(uniform)) continue;
       const regions = owner.parameterVariations[uniform];
-      // An armed lane always shows, even before it has regions: arming is the
-      // author's expressed intent, and upstream seeds a region for it anyway.
-      if (armed) {
-        keys.push(keyOf(uniform));
-        continue;
-      }
       if (!regions || regions.length === 0) continue;
       // An unarmed lone constant is the manual value, not a lane (decision 7).
       if (isConstantLane(regions)) continue;
