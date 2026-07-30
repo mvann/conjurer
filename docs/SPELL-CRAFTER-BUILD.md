@@ -166,6 +166,17 @@ later — plus seven PRs since. Gap E of the plan requires re-verifying decision
   seam (`experienceClient.ts`) that demo mode swaps for localStorage. **The UI
   still runs on legacy state** — deliberately. Full e2e green (63 passed, 1
   timing flake).
+- **`f55b0bd`** Legacy save migration (decision 22), `yarn test:migrate`.
+  Establishes the entry→block mapping rules the UI switch will reuse:
+  full-song blocks, one layer, lone-constant regions as manual values, effects
+  as nested blocks with their lane keys dissolved, visibility as opacity.
+
+Demo deploy from this branch is confirmed working — each push rebuilds the
+GitHub Pages demo (`gh run list --repo mvann/conjurer`). Note `gh` defaults to
+the UPSTREAM remote here, so always pass `--repo mvann/conjurer`.
+
+Unit suites: `migrate`, `regioncurve`, `autorange`, `clipboard`, `bpm`,
+`peaks`, `transients`, `docs` — all green, zero type errors.
 
 ### Where the next increment picks up
 
