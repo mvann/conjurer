@@ -58,8 +58,8 @@ const makeBlock = (
   params: Record<string, unknown>,
   variations: Record<string, unknown[]>,
   effects: unknown[] = [],
-) =>
-  observable({
+) => {
+  const block: Record<string, unknown> = observable({
     id: "block-1",
     pattern: { params },
     parameterVariations: variations,
@@ -68,7 +68,31 @@ const makeBlock = (
     startTime: 0,
     duration: SONG,
     parentBlock: null,
-  }) as unknown as Block;
+  });
+  // Mirrors upstream's setParamLanes closely enough to hold blockLanes to its
+  // real contract: arming both records the lane AND seeds a full-span region
+  // for a parameter that has none, so the lane never opens onto nothing.
+  (block as { setParamLanes: unknown }).setParamLanes = (
+    uniforms: string[],
+    on: boolean,
+  ) => {
+    for (const uniform of uniforms) {
+      const laned = block.lanedParams as Set<string>;
+      const regions = block.parameterVariations as Record<string, unknown[]>;
+      if (!on) {
+        laned.delete(uniform);
+        continue;
+      }
+      laned.add(uniform);
+      if (!regions[uniform]?.length) {
+        const value = (params[uniform] as { value?: unknown })?.value;
+        if (typeof value === "number")
+          regions[uniform] = [CurveVariation.flat(SONG, value)];
+      }
+    }
+  };
+  return block as unknown as Block;
+};
 
 console.log("block lane read model\n");
 

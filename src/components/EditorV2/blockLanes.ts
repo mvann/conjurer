@@ -157,10 +157,17 @@ export const laneKeysOf = (block: Block): string[] => {
 
   const collect = (owner: Block, keyOf: (uniform: string) => string) => {
     for (const uniform of Object.keys(owner.pattern.params)) {
-      const regions = owner.parameterVariations[uniform];
-      if (!regions || regions.length === 0) continue;
       const armed = owner.lanedParams.has(uniform);
-      if (!armed && isConstantLane(regions)) continue;
+      const regions = owner.parameterVariations[uniform];
+      // An armed lane always shows, even before it has regions: arming is the
+      // author's expressed intent, and upstream seeds a region for it anyway.
+      if (armed) {
+        keys.push(keyOf(uniform));
+        continue;
+      }
+      if (!regions || regions.length === 0) continue;
+      // An unarmed lone constant is the manual value, not a lane (decision 7).
+      if (isConstantLane(regions)) continue;
       keys.push(keyOf(uniform));
     }
   };
@@ -233,16 +240,23 @@ export const writeLaneCurve = (
   });
 };
 
-/** Arm a lane (decision 8): the gesture that promotes a constant to automation. */
+/**
+ * Arm a lane (decision 8): the gesture that promotes a constant to automation.
+ *
+ * Goes through upstream's setParamLanes rather than touching `lanedParams`,
+ * because arming also SEEDS a default full-span region for a parameter that has
+ * none — without which the lane would open onto nothing — and persists the open
+ * lanes locally. Both are upstream's behaviour and worth inheriting.
+ */
 export const armLane = (block: Block, laneKey: string) => {
   const resolved = resolveLaneOwner(block, laneKey);
   if (!resolved) return;
-  runInAction(() => resolved.owner.lanedParams.add(resolved.uniform));
+  runInAction(() => resolved.owner.setParamLanes([resolved.uniform], true));
 };
 
 /** Disarm a lane. A constant lane returns to being the manual value. */
 export const disarmLane = (block: Block, laneKey: string) => {
   const resolved = resolveLaneOwner(block, laneKey);
   if (!resolved) return;
-  runInAction(() => resolved.owner.lanedParams.delete(resolved.uniform));
+  runInAction(() => resolved.owner.setParamLanes([resolved.uniform], false));
 };
