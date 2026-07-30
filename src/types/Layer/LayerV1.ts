@@ -327,9 +327,9 @@ export class LayerV1 implements Layer {
     const layer = new LayerV1(store);
     if (data.id) layer.id = data.id;
     layer.name = data.name ?? "";
-    layer.patternBlocks = data.patternBlocks.map((b: any) =>
-      Block.deserialize(store, b),
-    );
+    layer.patternBlocks = data.patternBlocks
+      .map((b: any) => Block.deserialize(store, b))
+      .filter((b: Block | undefined): b is Block => Boolean(b));
     layer.patternBlocks.forEach((b) => (b.layer = layer));
     return layer;
   };

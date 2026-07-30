@@ -842,14 +842,26 @@ export class Block {
     ),
   });
 
-  static deserialize = (store: Store, data: any, parentBlock?: Block) => {
+  static deserialize = (
+    store: Store,
+    data: any,
+    parentBlock?: Block,
+  ): Block | undefined => {
     const patternName =
       typeof data.pattern === "string" ? data.pattern : data.pattern.name;
 
-    const block = new Block(
-      store,
-      defaultPatternEffectMap[patternName].clone(),
-    );
+    // A pattern that has been renamed or removed since this experience was
+    // saved would otherwise throw here and take the whole experience down with
+    // it. Skip the block instead, so the rest of the experience still opens.
+    const patternOrEffect = defaultPatternEffectMap[patternName];
+    if (!patternOrEffect) {
+      console.warn(
+        `Skipping block with unknown pattern or effect name "${patternName}".`,
+      );
+      return undefined;
+    }
+
+    const block = new Block(store, patternOrEffect.clone());
 
     if (data.id) block.id = data.id;
     block.setTiming({
@@ -867,9 +879,13 @@ export class Block {
       );
     }
 
-    block.effectBlocks = data.effectBlocks.map((effectBlockData: any) =>
-      Block.deserialize(store, effectBlockData, block),
-    );
+    block.effectBlocks = data.effectBlocks
+      .map((effectBlockData: any) =>
+        Block.deserialize(store, effectBlockData, block),
+      )
+      .filter((effectBlock: Block | undefined): effectBlock is Block =>
+        Boolean(effectBlock),
+      );
 
     // restore locally-persisted open lanes for this experience (UI state, not
     // part of the serialized experience data)

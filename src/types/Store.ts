@@ -802,9 +802,9 @@ export class Store {
       const layerToPasteInto = this.selectedLayer;
       if (!layerToPasteInto) return;
 
-      const blocksToPaste = blocksOrVariationsData.map((b: any) =>
-        Block.deserialize(this, b),
-      );
+      const blocksToPaste = blocksOrVariationsData
+        .map((b: any) => Block.deserialize(this, b))
+        .filter((b: Block | undefined): b is Block => Boolean(b));
       blocksToPaste.forEach((block) => block.regenerateId());
       this.selectedBlocksOrVariations = new Set();
       for (const blockToPaste of blocksToPaste) {
