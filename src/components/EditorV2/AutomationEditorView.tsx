@@ -78,6 +78,8 @@ const WAVE_KINDS: { kind: WaveKind; label: string }[] = [
   { kind: "sine", label: "Sine" },
   { kind: "square", label: "Square" },
   { kind: "triangle", label: "Triangle" },
+  { kind: "sawUp", label: "Saw up" },
+  { kind: "sawDown", label: "Saw down" },
 ];
 
 const EASING_FAMILIES = [

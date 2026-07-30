@@ -34,6 +34,20 @@ export type AutomationKeyframe = {
     c: [number, number, number];
     d: [number, number, number];
   };
+  // Cubic-Bezier control handles, as (time, value) offsets from the
+  // keyframe, matching the data model's CurveNode. dt is in the same
+  // fraction-of-song units as `time`. Present only on keyframes that came
+  // from (or are headed for) a Curve region: a segment whose endpoints
+  // both carry handles is drawn as a Bezier rather than a Schlick bend,
+  // which is what makes the pen-tool degree of freedom survive a round
+  // trip through the data model. OUT points forward (dt >= 0), IN back.
+  handleIn?: { dt: number; dv: number };
+  handleOut?: { dt: number; dv: number };
+  // Value lanes only: the far end of a gradient period. The data model's
+  // color region is always linear4 from->to, so a period is structurally
+  // always a gradient; `color` is the `from` and this is the `to`. Equal
+  // values (or absence) read as a plain single color. See decision 23.
+  colorTo?: [number, number, number, number];
 };
 
 export type ValuePayload = {
@@ -71,7 +85,14 @@ export const payloadAtTime = (
   return { color: holder.color, palette: holder.palette };
 };
 
-export type WaveKind = "sine" | "square" | "triangle";
+// Mirrors the data model's PeriodicVariationType, including the saw kinds
+// added upstream after the merge plan was written.
+export type WaveKind =
+  | "sine"
+  | "square"
+  | "triangle"
+  | "sawUp"
+  | "sawDown";
 
 export type SegmentSpec =
   | { type: "curve"; bend: number }
@@ -204,6 +225,9 @@ export const defaultSegment = (
   }
 };
 
+// Fraction of the way through the current cycle, in [0, 1).
+const cyclePosition = (u: number) => ((u % 1) + 1) % 1;
+
 const waveShape = (kind: WaveKind, u: number) => {
   switch (kind) {
     case "sine":
@@ -213,6 +237,13 @@ const waveShape = (kind: WaveKind, u: number) => {
     case "triangle":
       // Exact triangle with sine's alignment: 0 at u=0, peak at u=0.25.
       return (2 / Math.PI) * Math.asin(Math.sin(2 * Math.PI * u));
+    // Ramp across one cycle then jump back, matching the data model's saws:
+    // up runs -1 to 1, down runs 1 to -1. Direction is the kind, not the
+    // sign of the amplitude, so min/max stay ordered.
+    case "sawUp":
+      return 2 * cyclePosition(u) - 1;
+    case "sawDown":
+      return 1 - 2 * cyclePosition(u);
   }
 };
 
