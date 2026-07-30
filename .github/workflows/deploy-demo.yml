@@ -1,12 +1,14 @@
 name: Deploy Spell Crafter Demo
 # Rebuilds the static demo (scripts/deployDemo.sh --build) and publishes
-# it to GitHub Pages on every push to dev. The demo song ships from the
-# repo (public/cloud-assets/audio); everything else the build needs is
-# self-contained.
+# it to GitHub Pages on every push to dev or to the branch adapting the
+# editor onto the upstream block/region data model. The demo song ships
+# from the repo (public/cloud-assets/audio); everything else the build
+# needs is self-contained.
 on:
   push:
     branches:
       - dev
+      - spell-crafter-blocks
   workflow_dispatch:
 
 # One deploy at a time; a newer push supersedes an in-flight one.
