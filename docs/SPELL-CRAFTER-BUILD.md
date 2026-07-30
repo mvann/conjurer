@@ -212,49 +212,60 @@ Both former gaps are now answered:
 - **Layer deletion:** proceed as built — mirror upstream, keep the last layer
   (an experience with no layers has nowhere to put a pattern).
 
+### The model swap: DONE
+
+`store.layers` is now the source of truth. `StackEntry` carries its `Block`; a
+lane's curve is projected from `block.parameterVariations` on read and written
+straight back on edit, so no curve lives in React state. Entry and effect ids
+are block ids. Pattern add/remove/duplicate and effect add/remove/reorder are
+block operations. Persistence keeps its existing shape but sources curves from
+the blocks, so existing saves still load.
+
+**Full e2e suite: 64 of 64** — better than the pre-swap baseline of 63 plus a
+flake. All nine unit suites green, zero type errors.
+
+Hard-won details, each of which cost a debugging round and would cost another
+if undone:
+
+- **Takeover cannot live on the block.** Decision 6 makes it memory-only, so
+  suspension sits beside the projection and folds into the curve's `active`
+  flag, leaving every `isCurveActive` call untouched.
+- **Arming must NOT seed a region.** Upstream's `setParamLanes` does; adopting
+  that erased Spell Crafter's EMPTY lane, which the manual value line and its
+  takeover affordances are built around. Decision 7 governs LOADING, not the
+  add-lane gesture.
+- **The editor works with no song** — its curves are fractions, not seconds —
+  so the projection keeps a nominal basis and blocks re-span when a song
+  arrives, carrying their lanes with them via `applySongDuration`.
+- **Regions carry no start time**; position IS the sum of durations before
+  them. The lane is a tiling of spans with keyframes placed INSIDE them.
+- **Never let the fitter see a discontinuity.** `fitCurveNodes` requires a
+  continuous function; a flat segment steps. Fitting across it subdivides to
+  the 64-node ceiling and the lane grows on every edit.
+- **`ensureTerminalNode` and whole-span fitting invent keyframes** the author
+  never placed. Both avoided.
+- **Lane order is arming order** (decision 21, `lanedParams` is insertion
+  ordered), not param-declaration order.
+- **Restored blocks keep their saved id** — lane order and selections are keyed
+  `${entryId}/${laneKey}`.
+- **`Block.clone` does not copy `lanedParams`**, so duplication must.
+- **Test hooks must be built during render**, not in an effect, or an observer
+  never tracks the state they read.
+
 ### Where the next increment picks up
 
-Everything below the UI is in place and tested: the projection (scalar AND value
-lanes), the store load and save, the migration, the lane read model, and the
-block-side stack operations. **The remaining work is the model swap for the
-pattern list, and it is the step the previous attempt got wrong** — it built the
-adapter and then wrote a new view anyway.
+1. **Retire `experiencePersistence.ts`.** Switch to the blob and the draft
+   (decision 17). The e2e tests bind to behaviour rather than to localStorage
+   keys, so they should survive the mechanism change.
+2. **The left pane becomes the layer list** (decisions 1–2, 28) with Add Layer,
+   per-layer Add Pattern, rename, reorder, and collapse via the pattern row's
+   caret gesture. `blockStack.ts` already has the operations.
+3. **Undo** over `store.layers` snapshots, `lanedParams` included.
+4. The gear pane (27), the chrome, and the color lane's presentation.
 
-The blocker is that `entries: StackEntry[]` is React state with no relationship
-to `store.layers`. The components cannot be fed from blocks until an entry knows
-its block. Order that keeps HEAD working throughout:
-
-1. **`StackEntry` gains `block: Block`**, and `EditorV2Page` derives its entry
-   list from `store.layers[...].blockMap` instead of holding it in `useState`.
-   Pattern add / remove / duplicate / reorder and effect add / remove / reorder
-   become block operations. New blocks get `startTime 0, duration = song length`
-   (decision 24) — that is what keeps the always-on stack feeling unchanged.
-2. **Swap the lane data source.** Replace `entry.automation[key]` reads with
-   `laneCurve(entry.block, key)` and `onCurveChange` writes with
-   `writeLaneCurve(...)`. Roughly 14 read sites and 14 `automatedParams` sites,
-   in `EditorV2Page`, `PatternsPanel`, and `AutomationPane`.
-   `automatedParams` becomes `laneKeysOf(block)`.
-3. **Make those three components mobx `observer`s.** Without it they will not
-   re-render when a lane changes — `blockLanes` invalidation is mobx-driven.
-   `EditorV2Page` already is one.
-4. **Call `setLaneSongDuration(...)`** wherever the song loads or changes; every
-   keyframe time is a fraction of it.
-5. **Undo** becomes snapshots of `store.layers` serialized, restored through
-   `LayerV2.deserialize`, with `lanedParams` included (owner's call). The
-   in-place identity restore has to be rebuilt keyed by block id.
-6. Only once all of the above is live does `experiencePersistence.ts` retire.
-   **Do not delete it before then** — it is what currently makes the editor work.
-
-Known traps for step 2, both already understood:
-
-- **Do not round-trip through regions mid-gesture.** `makeCurveNode` mints fresh
-  ids, so converting on every pointer move would change node identity under a
-  drag and the grabbed keyframe would slip. Keep the working curve stable during
-  a gesture and commit on release.
-- **Colour lanes are a sequence of `linear4` regions**, and `variationsToCurve`
-  currently handles the scalar path only. The value-lane projection (colour and
-  palette periods, `colorTo` for gradients) still needs writing — see the
-  resolved colour spec below for exactly what it must feed.
+One deliberate divergence to keep in mind: `easing` IS written as its own
+region even though upstream bakes it on load. Folding it away at write time
+destroyed the named easing the moment the author picked it. See the commit.
 
 After that: the layer list in the left pane (decisions 1–2, 28), the gear pane
 (27), and the chrome.
