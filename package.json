@@ -11,6 +11,7 @@
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
     "test:docs": "ts-node --project tsconfig.script.json src/scripts/testDocs.ts",
+    "test:regioncurve": "ts-node -r tsconfig-paths/register --project tsconfig.script.json src/scripts/testRegionCurve.ts",
     "test:autorange": "ts-node --project tsconfig.script.json src/scripts/testAutoRange.ts",
     "test:clipboard": "ts-node --project tsconfig.script.json src/scripts/testClipboard.ts",
     "test:bpm": "ts-node --project tsconfig.script.json src/scripts/testBpm.ts",

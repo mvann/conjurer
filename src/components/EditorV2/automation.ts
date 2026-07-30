@@ -1,6 +1,7 @@
 // Relative imports (not @/ aliases) so the ts-node test scripts, which
 // have no path mapping, can exercise this module directly.
 import { easings } from "../../utils/easings";
+import { bezierValueAtX } from "../../utils/envelopeCurve";
 
 // Same string union as the main app's EasingVariationType, derived from
 // the shared easing table itself.
@@ -248,6 +249,41 @@ const waveShape = (kind: WaveKind, u: number) => {
 };
 
 // The value of one segment at local time t (0 at keyframe a, 1 at b).
+// A curve segment carries Bezier handles when it came from (or is headed
+// for) a Curve region, and the handles are what hold its shape. Segments
+// without them fall back to the Schlick bend, which is how curves authored
+// before the data model adopted handles still draw.
+export const isBezierSegment = (
+  a: AutomationKeyframe,
+  b: AutomationKeyframe,
+  spec: SegmentSpec,
+) => spec.type === "curve" && !!a.handleOut && !!b.handleIn;
+
+// Value of a handled curve segment at local t, evaluated exactly as the
+// data model's CurveVariation does: solve X(s)=time, read Y(s).
+const bezierSegmentValue = (
+  a: AutomationKeyframe,
+  b: AutomationKeyframe,
+  t: number,
+) => {
+  const span = b.time - a.time;
+  // Coincident keyframes are a step; the later value wins once reached.
+  if (!(Math.abs(span) > 1e-12)) return t <= 0 ? a.value : b.value;
+  const out = a.handleOut ?? { dt: 0, dv: 0 };
+  const inn = b.handleIn ?? { dt: 0, dv: 0 };
+  return bezierValueAtX(
+    a.time,
+    a.value,
+    a.time + out.dt,
+    a.value + out.dv,
+    b.time + inn.dt,
+    b.value + inn.dv,
+    b.time,
+    b.value,
+    a.time + span * t,
+  );
+};
+
 export const evaluateSegment = (
   a: AutomationKeyframe,
   b: AutomationKeyframe,
@@ -256,6 +292,7 @@ export const evaluateSegment = (
 ): number => {
   switch (spec.type) {
     case "curve":
+      if (isBezierSegment(a, b, spec)) return bezierSegmentValue(a, b, t);
       return a.value + (b.value - a.value) * shapeSegment(t, spec.bend);
     case "flat":
       return t < 1 ? a.value : b.value;
@@ -300,7 +337,12 @@ export const sampleSegment = (
 
   let samples = Math.round(36 * detail);
   let gamma = 1;
-  if (spec.type === "curve") gamma = 1 / Math.sqrt(spec.bend);
+  // Warping samples toward the steep end is a Schlick trick; a Bezier's
+  // steepness lives in its handles, so sample it evenly and a bit denser.
+  if (spec.type === "curve") {
+    if (isBezierSegment(a, b, spec)) samples = Math.round(48 * detail);
+    else gamma = 1 / Math.sqrt(spec.bend);
+  }
   if (spec.type === "wave")
     // Enough samples for every cycle to stay smooth: the cap only guards
     // against runaway point counts, not normal use.
@@ -320,11 +362,12 @@ export const sampleSegment = (
 };
 
 // The lowest and highest points of the CURVE itself, not just its
-// keyframes: a wave's peaks and an overshooting easing (back, elastic)
-// reach beyond their endpoints and count toward the range. Curve, flat,
-// and linear segments never leave the span of their endpoints, so only
-// wave and easing segments are sampled. Memoized per curve object (edits
-// always produce a new object), since callers run every animation frame.
+// keyframes: a wave's peaks, an overshooting easing (back, elastic), and a
+// Bezier whose handles carry it past its endpoints all reach beyond the
+// keyframe values and count toward the range. Schlick curves, flat, and
+// linear never leave the span of their endpoints, so those are skipped.
+// Memoized per curve object (edits always produce a new object), since
+// callers run every animation frame.
 const extremesMemo = new WeakMap<
   AutomationCurve,
   { version: number; extremes: { low: number; high: number } | null }
@@ -357,8 +400,12 @@ const computeCurveExtremes = (
   const segments = getSegments(curve);
   for (let i = 0; i < keyframes.length - 1; i++) {
     const spec = segments[i];
-    if (spec.type !== "wave" && spec.type !== "easing" && spec.type !== "audio")
-      continue;
+    const reaches =
+      spec.type === "wave" ||
+      spec.type === "easing" ||
+      spec.type === "audio" ||
+      isBezierSegment(keyframes[i], keyframes[i + 1], spec);
+    if (!reaches) continue;
     for (const point of sampleSegment(keyframes[i], keyframes[i + 1], spec))
       push(point.value);
   }

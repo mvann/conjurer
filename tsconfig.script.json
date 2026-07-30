@@ -2,6 +2,16 @@
   "compilerOptions": {
     "resolveJsonModule": true,
     "esModuleInterop": true,
-    "target": "ES2015" // can probably be changed to something much more modern
+    "target": "ES2019",
+    // The older test scripts import the editor's pure modules by relative
+    // path and need no mapping. The region-projection tests exercise the
+    // real data-model classes, which import each other through the "@/"
+    // alias, so those scripts run with -r tsconfig-paths/register.
+    "baseUrl": ".",
+    "paths": {
+      "@/*": ["./*"],
+      // Not resolvable from CommonJS; see src/scripts/shims/threeMathUtils.ts.
+      "three/src/math/MathUtils": ["./src/scripts/shims/threeMathUtils.ts"]
+    }
   }
 }
