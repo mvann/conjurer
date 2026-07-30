@@ -147,6 +147,39 @@ later — plus seven PRs since. Gap E of the plan requires re-verifying decision
 - **`c1309fb`** Merged `upstream/main` (`c1ad601`). Textually clean, zero type
   errors, both `/` and `/editor` render. dev's editor work and upstream's
   main-app work turned out almost entirely disjoint.
+- **`59616ec`** The merge plan and this contract, onto the branch.
+- **`cf695a5`** Demo publishes from this branch, so pushes refresh the Pages demo.
+- **Step 1 done** — the three upstream fixes, each its own `fix:` commit, all
+  three still needed on `c1ad601`: `33586b4` AudioVariation smoothing,
+  `5dfcf1f` layer visibility, `4ff8f4c` unknown-pattern guard (that one now
+  returns undefined and four call sites skip it, instead of taking the whole
+  experience down over one renamed pattern).
+- **`eac2af5`** Additive model vocabulary: saw waves (upstream grew them in
+  #397 after the plan was written) and Bezier handles + `colorTo` on keyframes.
+- **`a860609`** **The projection** (`regionCurve.ts`) — region list <-> curve,
+  both ways, stateless. `yarn test:regioncurve`, 15 cases: everything exact at
+  0.000% except named easings at 0.648% (upstream's own fitter, 1% tolerance).
+  Also taught `evaluateSegment` real Bezier evaluation; without it a handled
+  segment silently fell back to a Schlick bend of 1, i.e. a straight line,
+  flattening every curve arriving from the data model.
+- **`c5daed7`** Load and save through the shared store, with the transport
+  seam (`experienceClient.ts`) that demo mode swaps for localStorage. **The UI
+  still runs on legacy state** — deliberately. Full e2e green (63 passed, 1
+  timing flake).
+
+### Where the next increment picks up
+
+The projection exists and is trusted, and the store loads. Not yet done:
+
+1. **Feed the projection to the existing components.** `AutomationPane`'s
+   `LaneCurve` and `AutomationEditorView` both take `curve: AutomationCurve`
+   props today, so they can be fed `variationsToCurve(...)` without being
+   rewritten — that is the whole point. Write path: edits call
+   `curveToVariations` back onto the block. **This is the step the previous
+   attempt got wrong**: it built the adapter and then wrote a new view anyway.
+2. Color/palette *sequences* — blocked on an owner decision, see below.
+3. Left pane becomes the layer list (decisions 1–2, 28).
+4. Legacy save migration (22): fraction-time curves to block-local seconds.
 
 ## Questions for the owner
 
