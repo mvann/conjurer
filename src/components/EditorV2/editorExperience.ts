@@ -35,6 +35,34 @@ export type Draft = {
   experience: Experience;
 };
 
+// -------------------------------------------------------------- lane order
+//
+// Lane display order has no home in the blob and must not get one: it is view
+// state, and the constraint is that Spell Crafter adds no new information to
+// the experience. Decision 21 keeps it local, alongside upstream's own
+// `lanedParams`, which it stores the same way and for the same reason.
+
+const laneOrderKey = (name: string) => `spellCrafter:laneOrder:${name}`;
+
+export const readLaneOrder = (name: string): string[] => {
+  if (typeof window === "undefined") return [];
+  try {
+    const raw = localStorage.getItem(laneOrderKey(name));
+    return raw ? (JSON.parse(raw) as string[]) : [];
+  } catch {
+    return [];
+  }
+};
+
+export const writeLaneOrder = (name: string, order: string[]) => {
+  if (typeof window === "undefined") return;
+  try {
+    localStorage.setItem(laneOrderKey(name), JSON.stringify(order));
+  } catch {
+    // A full quota should never take the editor down with it.
+  }
+};
+
 // ------------------------------------------------------------------- drafts
 
 export const readDraft = (name: string): Draft | null => {
@@ -124,6 +152,48 @@ export const loadExperienceIntoStore = async (
 /** Apply a draft the author chose to restore. */
 export const restoreDraft = (store: Store, draft: Draft) => {
   store.deserialize(draft.experience);
+};
+
+/**
+ * Whether a draft is unsaved work rather than a stale copy of what was saved.
+ *
+ * Existence IS the answer: saving clears the draft, so anything still sitting
+ * there was written after the last save. Comparing timestamps against the row
+ * would be worse than redundant — the row's own updatedAt is not carried on the
+ * experience, so the comparison would silently be against load time and every
+ * genuine draft would look stale.
+ *
+ * This is the condition behind both "the save button should only glow if the
+ * most recent auto save is ahead of the last save" and the reopen prompt.
+ */
+export const draftIsAhead = (draft: Draft | null) => !!draft;
+
+/**
+ * The store as an experience, for DRAFTING only.
+ *
+ * Mirrors Store.serialize with one substitution: it does not require a user.
+ * Upstream's serialize throws without one, which is right for a save — the row
+ * has an owner and a permission model — but a draft is local unsaved work that
+ * nobody has saved yet, and the editor has always worked logged out. Routing
+ * drafts through the authenticated path would silently stop autosaving for
+ * anyone not signed in, which is most of the time in development.
+ */
+const draftExperience = (store: Store): Experience => ({
+  id: store.experienceId,
+  name: store.experienceName || DEFAULT_EXPERIENCE_NAME,
+  user: store.userStore.me ?? { id: -1, username: "" },
+  song: store.audioStore.selectedSong,
+  status: store.experienceStatus,
+  version: store.experienceVersion,
+  data: { layers: store.layers.map((layer) => layer.serialize()) },
+  thumbnailURL: store.experienceThumbnailURL,
+});
+
+/** Capture the store as a draft: unsaved work, local to this browser. */
+export const captureDraft = (store: Store) => {
+  const serialized = draftExperience(store);
+  writeDraft(serialized.name, serialized, store.experienceLastSavedAt || null);
+  return serialized;
 };
 
 // -------------------------------------------------------------------- save

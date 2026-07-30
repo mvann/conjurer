@@ -23,6 +23,7 @@ import { LayerV2 } from "@/src/types/Layer/LayerV2";
 import type { Layer } from "@/src/types/Layer";
 import type { Store } from "@/src/types/Store";
 import type { Pattern } from "@/src/types/Pattern";
+import type { StackEntry } from "@/src/components/EditorV2/PatternsPanel";
 import {
   getLaneSongDuration,
   laneCurve,
@@ -53,6 +54,35 @@ export const layerOf = (store: Store, block: Block): Layer | null =>
 /** The layer the stack lives in, created if the experience has none yet. */
 export const ensureFirstLayer = (store: Store): Layer =>
   store.layers[0] ?? addLayer(store);
+
+/**
+ * The editor's stack, derived from the store.
+ *
+ * This is the direction the whole adaptation runs in: `store.layers` is the
+ * document, and the pattern list is a view over it. Nothing is copied — an
+ * entry's `pattern` IS its block's live pattern object, so the canopy's
+ * materials and the pattern list share the same params by reference.
+ *
+ * `visible` and `expanded` are deliberately not read from anywhere: they are
+ * editor UI state, which the owner put in memory ("any of that editor state
+ * stuff is, like, the UI state that can just be thrown in memory"). Pattern
+ * visibility is on its way to the layer entirely (decision 5).
+ */
+export const entriesFromStore = (store: Store): StackEntry[] =>
+  store.layers.flatMap((layer) =>
+    blocksOf(layer).map((block) => ({
+      id: block.id,
+      block,
+      pattern: block.pattern,
+      effects: block.effectBlocks.map((effectBlock) => ({
+        id: effectBlock.id,
+        pattern: effectBlock.pattern,
+        block: effectBlock,
+      })),
+      visible: true,
+      expanded: true,
+    })),
+  );
 
 /** Add Layer — the button under all the layers (decision 28). */
 export const addLayer = (store: Store): Layer => {
