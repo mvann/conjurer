@@ -203,15 +203,14 @@ layer order is real blob data; layers get their own lane in the automation area,
 ordered to match the left pane; assign mode works as in dev but over the layer
 panel's params.
 
-**Never specified — do not invent silently:**
+Both former gaps are now answered:
 
-- **Layer deletion.** What happens to its blocks, whether the last layer can go,
-  and whether it confirms. `blockStack.removeLayer` currently mirrors upstream and
-  refuses to remove the last layer. Upstream has a delete confirmation modal to
-  mirror if wanted.
-- **Layer collapse.** The owner specified the standard collapse control for
-  automation *lanes* (@@L16001) but said nothing about layers. Upstream's
-  `LayerV2.collapsed` is editor-only and unserialized.
+- **Layer collapse:** the same gesture as a pattern row in the old pattern list —
+  the `FaCaretRight` / `FaCaretDown` caret that toggles `expanded` there toggles
+  a layer's collapsed state here. It maps onto upstream's `LayerV2.collapsed`,
+  which is editor-only and unserialized, so it costs nothing in the blob.
+- **Layer deletion:** proceed as built — mirror upstream, keep the last layer
+  (an experience with no layers has nowhere to put a pattern).
 
 ### Where the next increment picks up
 
