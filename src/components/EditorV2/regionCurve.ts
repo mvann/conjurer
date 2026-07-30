@@ -84,6 +84,16 @@ const VALUE_EPS = 1e-9;
 const ownsRegion = (type: SegmentSpec["type"]) =>
   type === "wave" || type === "audio" || type === "easing";
 
+// Straight types are built structurally, point by point; everything else is
+// fit. The distinction matters because FLAT IS DISCONTINUOUS — it holds its
+// start value and then steps — and fitCurveNodes explicitly requires a
+// continuous function. Fitting across a jump makes it subdivide toward the
+// discontinuity until it hits its 64-node ceiling, so the lane would grow a
+// little on every edit. Runs therefore never mix the two, and a flat is always
+// encoded structurally as the coincident node pair the data model uses.
+const isStraightType = (type: SegmentSpec["type"]) =>
+  type === "flat" || type === "linear";
+
 // -------------------------------------------------------------- value lanes
 //
 // Color and palette parameters automate the WHOLE value, not a number, so
@@ -571,7 +581,10 @@ export const curveToVariations = (
       continue;
     }
     const runStart = index;
+    const runIsStraight = isStraightType(segments[index].type);
     while (index < segments.length && !ownsRegion(segments[index].type)) {
+      // Never mix straight and shaped segments in one run: see isStraightType.
+      if (isStraightType(segments[index].type) !== runIsStraight) break;
       const a = keyframes[index];
       const b = keyframes[index + 1];
       // A zero-width segment between differing values is a step; it belongs to
@@ -756,7 +769,16 @@ const curveRegionForRun = (
       const a = keyframes[i];
       const b = keyframes[i + 1];
       const bt = localOf(b.time) - start;
-      if (segments[i].type === "flat") points.push({ t: bt, v: a.value });
+      // The hold point only exists to carry the value up to the step. With
+      // equal endpoints there IS no step, so writing it anyway leaves a
+      // coincident pair the read side cannot recognise as a flat — and since
+      // every edit rewrites the lane, each pass would add another pair and the
+      // keyframes would multiply under a drag.
+      if (
+        segments[i].type === "flat" &&
+        Math.abs(b.value - a.value) > VALUE_EPS
+      )
+        points.push({ t: bt, v: a.value });
       points.push({ t: bt, v: b.value });
     }
 
