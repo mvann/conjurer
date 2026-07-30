@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { observer } from "mobx-react-lite";
+import { runInAction } from "mobx";
 import { useRouter } from "next/router";
 import { useStore } from "@/src/types/StoreContext";
 import { loadExperienceIntoStore } from "@/src/components/EditorV2/editorExperience";
@@ -61,7 +62,7 @@ import {
 import { IS_DEMO } from "@/src/utils/demo";
 import demoExperience from "@/src/components/EditorV2/demoExperience.json";
 import { Pattern } from "@/src/types/Pattern";
-import { Song } from "@/src/types/Song";
+import { NO_SONG, Song } from "@/src/types/Song";
 import { formatDisplayName } from "@/src/components/EditorV2/formatDisplayName";
 import { BpmAnalysis } from "@/src/components/EditorV2/bpm";
 
@@ -88,13 +89,28 @@ export const EditorV2Page = observer(function EditorV2Page() {
     // role; it is called WITHOUT a name so it does not reach for tRPC, which
     // the static demo has no backend for. Spell Crafter loads the experience
     // itself, through the transport seam that demo mode can swap.
-    store.initializeClientSide().then(() => {
-      void loadExperienceIntoStore(store, experienceName);
+    store.initializeClientSide().then(async () => {
+      await loadExperienceIntoStore(store, experienceName);
+      // Whatever the experience carries is the song; mirror it into the
+      // editor's own state so the transport and the song panel show it.
+      const loaded = store.audioStore.selectedSong;
+      if (loaded && loaded.id !== NO_SONG.id) setSong(loaded);
     });
   }, [store, router.isReady, router.query.experience]);
 
   const [entries, setEntries] = useState<StackEntry[]>([]);
   const [song, setSong] = useState<Song | null>(null);
+
+  // The song belongs to the EXPERIENCE, not just to this component: it is what
+  // Store.serialize writes out. Every path that changes it goes through here so
+  // the store and the UI can never disagree — the disagreement is exactly the
+  // "add a song, save, reopen, no song" bug.
+  const applySong = (nextSong: Song | null) => {
+    setSong(nextSong);
+    runInAction(() => {
+      store.audioStore.selectedSong = nextSong ?? NO_SONG;
+    });
+  };
   const [volume, setVolume] = useState(1);
   const [dust, setDust] = useState(0);
   const [beatGrid, setBeatGrid] = useState<BeatGrid | null>(null);
@@ -266,7 +282,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
     state.index = nextIndex;
     const snapshot = state.stack[nextIndex];
     setEntries(restoreSnapshot(snapshot));
-    setSong(snapshot.song ?? null);
+    applySong(snapshot.song ?? null);
     setLaneOrder(snapshot.laneOrder ?? []);
     // Persist the restored state directly rather than through
     // scheduleAutosave, which would capture it as a fresh history entry.
@@ -442,7 +458,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
   };
 
   const changeSong = (nextSong: Song | null) => {
-    setSong(nextSong);
+    applySong(nextSong);
     scheduleAutosave();
   };
 
@@ -602,7 +618,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
     const saved = loadSave();
     if (saved) {
       setEntries(restoreSnapshot(saved));
-      setSong(saved.song);
+      applySong(saved.song);
       setLaneOrder(saved.laneOrder ?? []);
     }
     const autosave = loadAutosave();
@@ -647,7 +663,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
   const openAutosave = () => {
     if (!autosavePrompt) return;
     setEntries(restoreSnapshot(autosavePrompt));
-    setSong(autosavePrompt.song);
+    applySong(autosavePrompt.song);
     setLaneOrder(autosavePrompt.laneOrder ?? []);
     setAutosavePrompt(null);
     // The restored autosave is the new baseline for undo.
@@ -703,6 +719,9 @@ export const EditorV2Page = observer(function EditorV2Page() {
     const hooks = window as unknown as Record<string, unknown>;
     hooks.__editorEntries = entriesSnapshot;
     hooks.__editorBeatGrid = beatGrid;
+    // The store itself, so tests can assert what the EXPERIENCE holds rather
+    // than only what the editor is showing.
+    hooks.__editorStore = store;
     hooks.__editorTransients = transients;
   });
 

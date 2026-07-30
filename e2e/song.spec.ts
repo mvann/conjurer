@@ -188,4 +188,32 @@ test.describe("song, timeline, transport", () => {
     await expect(page.getByRole("button", { name: "Add Song" })).toBeVisible();
     await expect(page.getByLabel("Play", { exact: true })).toBeDisabled();
   });
+
+  test("the chosen song reaches the experience, not just the editor", async ({
+    page,
+  }) => {
+    // Regression guard. The song is part of the experience: Store.serialize
+    // writes it from audioStore.selectedSong. A song that only ever reaches
+    // React state is a song that never gets saved — "add a song, press save,
+    // open the experience again, and no song is there".
+    await loadSeededSong(page);
+
+    const storeSong = () =>
+      page.evaluate(() => {
+        const store = (window as unknown as Record<string, any>).__editorStore;
+        return store?.audioStore?.selectedSong ?? null;
+      });
+
+    await expect
+      .poll(async () => (await storeSong())?.filename ?? "", {
+        timeout: 10_000,
+      })
+      .toContain("shiny_2");
+
+    // Removing it must clear the experience too, not leave a stale reference.
+    await page.getByRole("button", { name: "Remove song" }).click();
+    await expect
+      .poll(async () => (await storeSong())?.id ?? 0, { timeout: 10_000 })
+      .toBe(-1);
+  });
 });
