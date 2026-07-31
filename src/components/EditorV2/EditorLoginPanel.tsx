@@ -104,27 +104,28 @@ export const EditorLoginPanel = observer(function EditorLoginPanel() {
             <div className={styles.panelEmpty}>No users yet</div>
           )}
 
-          <ul className={styles.songList}>
+          <ul className={styles.userList}>
             {users?.map((user) => (
               <li key={user.id}>
                 <button
-                  className={styles.songItem}
+                  className={styles.userItem}
                   onClick={() => pick(user)}
                   aria-label={`Log in as ${user.username}`}
                 >
                   <FaUser size={10} />
-                  <span className={styles.songName}>{user.username}</span>
+                  <span className={styles.userName}>{user.username}</span>
                 </button>
               </li>
             ))}
           </ul>
 
           <div className={styles.panelSectionLabel}>New user</div>
-          <div className={styles.uploadField}>
+          <div className={styles.newUserRow}>
             <input
               className={styles.uploadInput}
               value={newUsername}
               aria-label="New user name"
+              placeholder="name"
               onChange={(event) => setNewUsername(sanitize(event.target.value))}
               onKeyDown={(event) => {
                 if (event.key !== "Enter" || createDisabled) return;
@@ -139,7 +140,7 @@ export const EditorLoginPanel = observer(function EditorLoginPanel() {
               }}
             />
             <button
-              className={styles.effectPickerItem}
+              className={styles.createUserButton}
               disabled={createDisabled || createUser.isPending}
               onClick={async () => {
                 const created = await createUser.mutateAsync({

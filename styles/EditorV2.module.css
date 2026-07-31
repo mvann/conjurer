@@ -2772,25 +2772,103 @@
 .loginButton {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  gap: 7px;
   margin-left: auto;
-  padding: 4px 10px;
-  border: 1px solid rgba(232, 236, 244, 0.16);
-  border-radius: 4px;
-  background: rgba(232, 236, 244, 0.04);
+  padding: 4px 2px;
+  border: none;
+  background: none;
   color: rgba(232, 236, 244, 0.72);
   font-family: var(--font-mystical), serif;
-  font-size: 12px;
+  font-size: 13px;
   letter-spacing: 0.04em;
   cursor: pointer;
-  transition:
-    color 0.16s ease,
-    border-color 0.16s ease,
-    background 0.16s ease;
+  transition: color 0.16s ease;
 }
 
 .loginButton:hover {
   color: rgba(232, 236, 244, 0.96);
-  border-color: rgba(232, 236, 244, 0.3);
-  background: rgba(232, 236, 244, 0.08);
+}
+
+/* A user in the log in list: a row, unlike .songItem, which stacks a song
+   name over its artist. The icon sits beside the name, not above it. */
+.userItem {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 9px;
+  width: 100%;
+  padding: 8px 8px 8px 12px;
+  background: none;
+  border: none;
+  border-radius: 6px;
+  color: rgba(232, 236, 244, 0.6);
+  font-family: inherit;
+  text-align: left;
+  cursor: pointer;
+  transition:
+    color 0.18s ease,
+    background 0.18s ease;
+}
+
+.userItem:hover {
+  color: rgba(232, 236, 244, 0.96);
+  background: rgba(232, 236, 244, 0.05);
+}
+
+.userName {
+  color: #e8ecf4;
+  font-size: 16px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The user list: same reset as the song list. */
+.userList {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+/* New user: the name field and its Create button on one line, so the button
+   reads as the action on that field rather than a separate item below it. */
+.newUserRow {
+  display: flex;
+  align-items: flex-end;
+  gap: 10px;
+  padding: 0 12px;
+  margin-top: 6px;
+}
+
+.newUserRow .uploadInput {
+  flex: 1;
+  min-width: 0;
+}
+
+.createUserButton {
+  flex: none;
+  padding: 6px 12px;
+  border: 1px solid rgba(232, 236, 244, 0.2);
+  border-radius: 4px;
+  background: none;
+  color: rgba(232, 236, 244, 0.8);
+  font-family: var(--font-mystical), serif;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease,
+    opacity 0.16s ease;
+}
+
+.createUserButton:hover:not(:disabled) {
+  color: #eceef4;
+  border-color: rgba(232, 236, 244, 0.4);
+}
+
+.createUserButton:disabled {
+  opacity: 0.35;
+  cursor: default;
 }
