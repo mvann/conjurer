@@ -2765,3 +2765,32 @@
   box-sizing: border-box;
   overflow: hidden;
 }
+
+/* ---- Log in: the header control, sized to sit beside the app name without
+   competing with it. Matches the chrome's quiet button treatment rather than
+   the shared Chakra ghost button, which clashes with everything else here. ---- */
+.loginButton {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid rgba(232, 236, 244, 0.16);
+  border-radius: 4px;
+  background: rgba(232, 236, 244, 0.04);
+  color: rgba(232, 236, 244, 0.72);
+  font-family: var(--font-mystical), serif;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease,
+    background 0.16s ease;
+}
+
+.loginButton:hover {
+  color: rgba(232, 236, 244, 0.96);
+  border-color: rgba(232, 236, 244, 0.3);
+  background: rgba(232, 236, 244, 0.08);
+}

@@ -1,12 +1,32 @@
 import { expect, Page } from "@playwright/test";
 
 // Navigate to the spell crafter with a clean slate (no saves/autosaves).
+//
+// Clearing localStorage also clears who was signed in, and an experience is a
+// row with an owner — so the editor asks who you are before anything else.
+// Every test therefore starts by logging in, exactly as a person would.
 export const gotoEditorClean = async (page: Page) => {
   await page.goto("/editor");
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.locator("h1", { hasText: "Conjurer" })).toBeVisible();
+  await logIn(page);
   await expect(page.locator("[class*=docsStrip]")).toBeVisible();
+};
+
+// Pick the seeded user from the log in panel, which opens itself when nobody
+// is signed in. Tolerant of already being signed in.
+export const logIn = async (page: Page, username = "mvann") => {
+  const button = page.locator("[data-doc=login]");
+  await expect(button).toBeVisible();
+  if ((await button.textContent())?.trim() === username) return;
+  // The panel opens on its own once the store reports nobody signed in, so
+  // waiting for the entry is the whole interaction.
+  await page
+    .locator("[data-doc=login-panel]")
+    .getByLabel(`Log in as ${username}`)
+    .click({ timeout: 20_000 });
+  await expect(button).toHaveText(username);
 };
 
 // The patterns panel's aside (the songs panel renders earlier in the DOM).

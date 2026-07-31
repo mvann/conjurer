@@ -23,6 +23,10 @@ import {
   removePatternBlock,
   applySongDuration,
 } from "@/src/components/EditorV2/blockStack";
+import {
+  EditorLoginButton,
+  EditorLoginPanel,
+} from "@/src/components/EditorV2/EditorLoginPanel";
 import styles from "@/styles/EditorV2.module.css";
 import { CanopyPane } from "@/src/components/EditorV2/CanopyPane";
 import {
@@ -739,7 +743,10 @@ export const EditorV2Page = observer(function EditorV2Page() {
         >
           Save
         </button>
+        <EditorLoginButton />
       </header>
+
+      <EditorLoginPanel />
 
       <div className={styles.contentRow}>
         <PatternsPanel
