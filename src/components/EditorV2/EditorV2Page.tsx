@@ -3,7 +3,22 @@ import { observer } from "mobx-react-lite";
 import { runInAction } from "mobx";
 import { useRouter } from "next/router";
 import { useStore } from "@/src/types/StoreContext";
-import { loadExperienceIntoStore } from "@/src/components/EditorV2/editorExperience";
+import {
+  captureDraft,
+  DEFAULT_EXPERIENCE_NAME,
+  draftIsAhead,
+  loadExperienceIntoStore,
+  readDraft,
+  readLaneOrder,
+  restoreDraft,
+  saveStoreToExperience,
+  writeLaneOrder,
+  type Draft,
+} from "@/src/components/EditorV2/editorExperience";
+import {
+  migrateLegacySave,
+  type LegacySave,
+} from "@/src/components/EditorV2/migrateLegacySave";
 import {
   armLane,
   disarmLane,
@@ -22,6 +37,7 @@ import {
   removeEffectFromBlock,
   removePatternBlock,
   applySongDuration,
+  entriesFromStore,
 } from "@/src/components/EditorV2/blockStack";
 import {
   EditorLoginButton,
@@ -54,14 +70,9 @@ import { CanopyControls } from "@/src/components/EditorV2/CanopyControls";
 import {
   duplicateStackEntry,
   EDITOR_DIRTY_EVENT,
-  loadAutosave,
-  loadSave,
   restoreEntries,
-  seedDemoExperience,
   SerializedEditorState,
   serializeEditorState,
-  writeAutosave,
-  writeSave,
 } from "@/src/components/EditorV2/experiencePersistence";
 import { IS_DEMO } from "@/src/utils/demo";
 import demoExperience from "@/src/components/EditorV2/demoExperience.json";
@@ -95,6 +106,10 @@ export const EditorV2Page = observer(function EditorV2Page() {
     // itself, through the transport seam that demo mode can swap.
     store.initializeClientSide().then(async () => {
       await loadExperienceIntoStore(store, experienceName);
+      // Only now does the store know which experience this is. Anything that
+      // keys off its name — the draft, the lane order — has to wait for this,
+      // not merely for initializeClientSide, which resolves earlier.
+      setExperienceLoaded(true);
       // Whatever the experience carries is the song; mirror it into the
       // editor's own state so the transport and the song panel show it.
       const loaded = store.audioStore.selectedSong;
@@ -121,8 +136,12 @@ export const EditorV2Page = observer(function EditorV2Page() {
   // Detected onset times (fractions of the song), for snap-to-transient
   // editing.
   const [transients, setTransients] = useState<number[] | null>(null);
-  const [autosavePrompt, setAutosavePrompt] =
-    useState<SerializedEditorState | null>(null);
+  const [autosavePrompt, setAutosavePrompt] = useState<Draft | null>(null);
+  // True once the experience itself is in the store, which is later than the
+  // store reporting itself initialised.
+  const [experienceLoaded, setExperienceLoaded] = useState(false);
+  // Why the last save did not happen, shown beside the Save button.
+  const [saveNotice, setSaveNotice] = useState<string | null>(null);
   // True when the latest autosave is ahead of the last save; the Save
   // button glows only then.
   const [isDirty, setIsDirty] = useState(false);
@@ -293,7 +312,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
     // Edits made right after an undo therefore capture normally: there
     // is no suppression window to swallow them.
     setIsDirty(true);
-    writeAutosave(snapshot);
+    captureDraft(store);
   };
 
   useEffect(() => {
@@ -319,13 +338,10 @@ export const EditorV2Page = observer(function EditorV2Page() {
     scheduleHistoryCapture();
     if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
     autosaveTimer.current = setTimeout(() => {
-      writeAutosave(
-        serializeEditorState(
-          latest.current.entries,
-          latest.current.song,
-          latest.current.laneOrder,
-        ),
-      );
+      // Unsaved work is a DRAFT of the experience, local to this browser until
+      // an explicit Save (decision 17). Upstream has no autosave concept, and
+      // quietly writing a shared row would violate its UX and its permissions.
+      captureDraft(store);
     }, AUTOSAVE_DEBOUNCE_MS);
   };
 
@@ -510,6 +526,10 @@ export const EditorV2Page = observer(function EditorV2Page() {
 
   const reorderLanes = (nextOrder: string[]) => {
     setLaneOrder(nextOrder);
+    // Lane order is view state and lives beside upstream's own lane state
+    // rather than in the experience (decision 21), so it is written where it
+    // changes — the draft carries the experience, not the view.
+    writeLaneOrder(store.experienceName || DEFAULT_EXPERIENCE_NAME, nextOrder);
     scheduleAutosave();
   };
 
@@ -614,26 +634,43 @@ export const EditorV2Page = observer(function EditorV2Page() {
     // REPLACES store.layers wholesale, so restoring first would leave every
     // entry pointing at a block that is no longer in any layer — the editor
     // would look right and save nothing.
-    if (store.initializationState !== "initialized" || didRestore.current)
-      return;
-    // The static demo ships a starter experience for first-time visitors.
-    if (IS_DEMO)
-      seedDemoExperience(demoExperience as unknown as SerializedEditorState);
-    const saved = loadSave();
-    if (saved) {
-      setEntries(restoreSnapshot(saved));
-      applySong(saved.song);
-      setLaneOrder(saved.laneOrder ?? []);
+    if (!experienceLoaded || didRestore.current) return;
+    const experienceName = store.experienceName || DEFAULT_EXPERIENCE_NAME;
+
+    // The static demo ships a starter experience for first-time visitors. It
+    // was authored in the old save format, so it arrives through the same
+    // migration any of the owner's own old saves would (decision 22).
+    if (IS_DEMO && store.layers.every((layer) => !layer.getAllBlocks().length)) {
+      store.deserialize(
+        migrateLegacySave(demoExperience as unknown as LegacySave, {
+          name: experienceName,
+          store,
+        }),
+      );
     }
-    const autosave = loadAutosave();
-    if (autosave && autosave.savedAt > (saved?.savedAt ?? 0)) {
-      setAutosavePrompt(autosave);
+
+    // The row is already in the store; the stack is a view over it.
+    setEntries(entriesFromStore(store));
+    const loaded = store.audioStore.selectedSong;
+    if (loaded && loaded.id !== NO_SONG.id) setSong(loaded);
+    setLaneOrder(readLaneOrder(experienceName));
+
+    // Unsaved work from a previous visit, offered rather than applied.
+    const draft = readDraft(experienceName);
+    if (draftIsAhead(draft)) {
+      setAutosavePrompt(draft);
       setIsDirty(true);
     }
+
     // Seed the undo history with the opening state, so the very first
     // change can be undone back to it.
     history.current = {
-      stack: [saved ?? serializeEditorState([], null)],
+      stack: [
+        serializeEditorState(
+          entriesFromStore(store),
+          store.audioStore.selectedSong,
+        ),
+      ],
       index: 0,
     };
     // Test hook: e2e reads the live history through this.
@@ -641,7 +678,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
       history.current;
     didRestore.current = true;
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [store.initializationState]);
+  }, [experienceLoaded]);
 
   useEffect(() => {
     const onDirty = () => scheduleAutosave();
@@ -653,25 +690,55 @@ export const EditorV2Page = observer(function EditorV2Page() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const save = () => {
-    writeSave(
-      serializeEditorState(
-        latest.current.entries,
-        latest.current.song,
-        latest.current.laneOrder,
-      ),
+  const save = async () => {
+    // Saving writes a ROW, which has an owner; the log in panel guarantees one
+    // by opening itself when nobody is signed in.
+    if (!store.userStore.me) {
+      runInAction(() => (store.uiStore.showingUserPickerModal = true));
+      return;
+    }
+    // An experience references a song, and the server refuses without one
+    // ("Please select a song before saving this experience"). Say so here
+    // rather than letting the save fail silently and leave Save glowing with
+    // no explanation.
+    if (store.audioStore.selectedSong.id === NO_SONG.id) {
+      setSaveNotice("Select a song before saving");
+      return;
+    }
+    writeLaneOrder(
+      store.experienceName || DEFAULT_EXPERIENCE_NAME,
+      latest.current.laneOrder,
     );
-    setIsDirty(false);
+    try {
+      await saveStoreToExperience(store);
+      setIsDirty(false);
+      setSaveNotice(null);
+    } catch (error) {
+      // A rejected save leaves the draft in place, so nothing is lost and Save
+      // keeps glowing; the reason is worth showing rather than swallowing.
+      setSaveNotice(
+        error instanceof Error ? error.message : "Could not save",
+      );
+    }
   };
 
   const openAutosave = () => {
     if (!autosavePrompt) return;
-    setEntries(restoreSnapshot(autosavePrompt));
-    applySong(autosavePrompt.song);
-    setLaneOrder(autosavePrompt.laneOrder ?? []);
+    restoreDraft(store, autosavePrompt);
+    setEntries(entriesFromStore(store));
+    const restored = store.audioStore.selectedSong;
+    setSong(restored && restored.id !== NO_SONG.id ? restored : null);
     setAutosavePrompt(null);
-    // The restored autosave is the new baseline for undo.
-    history.current = { stack: [autosavePrompt], index: 0 };
+    // The restored draft is the new baseline for undo.
+    history.current = {
+      stack: [
+        serializeEditorState(
+          entriesFromStore(store),
+          store.audioStore.selectedSong,
+        ),
+      ],
+      index: 0,
+    };
   };
 
   // Keyed by membership AND effect-chain structure so expand/collapse
@@ -743,6 +810,11 @@ export const EditorV2Page = observer(function EditorV2Page() {
         >
           Save
         </button>
+        {saveNotice && (
+          <span className={styles.saveNotice} data-doc="save-notice">
+            {saveNotice}
+          </span>
+        )}
         <EditorLoginButton />
       </header>
 

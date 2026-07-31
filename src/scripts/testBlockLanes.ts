@@ -68,6 +68,9 @@ const makeBlock = (
     startTime: 0,
     duration: SONG,
     parentBlock: null,
+    // Arming persists which lanes are open, keyed by experience and block, so
+    // the block has to carry its store the way a real one does.
+    store: { experienceName: "test" },
   });
   // Mirrors upstream's setParamLanes closely enough to hold blockLanes to its
   // real contract: arming both records the lane AND seeds a full-span region
@@ -151,6 +154,7 @@ console.log("block lane read model\n");
 {
   const effect = observable({
     id: "fx-9",
+    store: { experienceName: "test" },
     pattern: { params: { u_hue: { value: 0 } } },
     parameterVariations: {
       u_hue: [new PeriodicVariation(SONG, "sine", 0.2, 10, 0, 0.5)],

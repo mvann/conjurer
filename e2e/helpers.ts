@@ -5,8 +5,16 @@ import { expect, Page } from "@playwright/test";
 // Clearing localStorage also clears who was signed in, and an experience is a
 // row with an owner — so the editor asks who you are before anything else.
 // Every test therefore starts by logging in, exactly as a person would.
+let experienceSeq = 0;
+
 export const gotoEditorClean = async (page: Page) => {
-  await page.goto("/editor");
+  // Each test gets its own experience. Saving now writes a real row, so tests
+  // that share a name would inherit each other's songs and patterns — and a
+  // row outlives the run, so the second run would start dirty. The name rides
+  // in the query string, which survives the reloads these tests do.
+  experienceSeq += 1;
+  const name = `e2e-${Date.now().toString(36)}-${experienceSeq}`;
+  await page.goto(`/editor?experience=${name}`);
   await page.evaluate(() => localStorage.clear());
   await page.reload();
   await expect(page.locator("h1", { hasText: "Conjurer" })).toBeVisible();

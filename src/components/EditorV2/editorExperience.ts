@@ -212,7 +212,11 @@ export const saveStoreToExperience = async (store: Store) => {
     });
 
   const serialized = store.serialize() as Experience;
-  const { id } = await saveExperience(serialized, store.usingLocalData);
+  const { id } = await saveExperience(
+    serialized,
+    store.usingLocalData,
+    store.userStore.username,
+  );
 
   runInAction(() => {
     if (id !== undefined) store.experienceId = id;

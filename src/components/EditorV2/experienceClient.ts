@@ -76,6 +76,7 @@ export const fetchExperience = async (
 export const saveExperience = async (
   serialized: Experience,
   usingLocalData: boolean,
+  username?: string,
 ): Promise<{ id: number | undefined }> => {
   if (IS_DEMO) {
     const rows = readDemoRows();
@@ -90,7 +91,11 @@ export const saveExperience = async (
     return { id: rows[serialized.name].id };
   }
 
-  await trpcClient.experience.saveExperience.mutate({
+  // saveExperience is a userProcedure: the server resolves the author from a
+  // `username` in the input, so it is not optional. It returns the row's id,
+  // which first saves need in order to update rather than collide on the
+  // unique name next time.
+  const savedId = await trpcClient.experience.saveExperience.mutate({
     id: serialized.id,
     name: serialized.name,
     song: { id: serialized.song?.id ?? NO_SONG.id },
@@ -99,12 +104,10 @@ export const saveExperience = async (
     version: serialized.version ?? EXPERIENCE_VERSION,
     thumbnailURL: serialized.thumbnailURL ?? "",
     usingLocalData,
+    username: username ?? serialized.user?.username ?? "",
   } as Parameters<typeof trpcClient.experience.saveExperience.mutate>[0]);
 
-  // The row's id is assigned server side on first save; re-read it so
-  // subsequent saves update rather than collide on the unique name.
-  const saved = await fetchExperience(serialized.name, usingLocalData);
-  return { id: saved?.id };
+  return { id: typeof savedId === "number" ? savedId : serialized.id };
 };
 
 /** Everything available to open. */

@@ -2872,3 +2872,13 @@
   opacity: 0.35;
   cursor: default;
 }
+
+/* Why a save did not happen. Sits beside Save rather than as a modal: it is a
+   correction, not an interruption. */
+.saveNotice {
+  margin-left: 10px;
+  color: rgba(255, 186, 186, 0.86);
+  font-family: var(--font-mystical), serif;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+}

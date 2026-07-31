@@ -28,6 +28,7 @@
 import { computed, IComputedValue, observable, runInAction } from "mobx";
 import type { Block } from "@/src/types/Block";
 import type { Store } from "@/src/types/Store";
+import { saveBlockLanes } from "@/src/utils/laneStatePersistence";
 import { AutomationCurve } from "@/src/components/EditorV2/automation";
 import {
   curveToVariations,
@@ -236,16 +237,42 @@ export const laneKeysOf = (block: Block): string[] => {
 
 /**
  * Whether a lane is a lone constant — the fingerprint that means "this is the
- * manual value, not automation" (decision 7). Their load pipeline bakes
- * scalars to curves, so the shape to recognise is a single region whose
- * value never moves.
+ * manual value, not automation" (decision 7).
+ *
+ * Decision 7 names three shapes, and they need different tests. The load
+ * pipeline bakes scalars to curves, so a number lane is constant when its
+ * domain does not move. A colour region is always linear4 from->to, so it is
+ * constant when the ends match. A lone palette region holds one palette for
+ * the whole block and is therefore always constant — asking it for a domain
+ * gives [0, 1], which its own source calls "currently meaningless", and taking
+ * that at face value made every palette parameter look automated and grow a
+ * lane nobody asked for.
  */
-export const isConstantLane = (
-  regions: { type: string; computeDomain?: () => [number, number] }[],
-): boolean => {
+export const isConstantLane = (regions: unknown[]): boolean => {
   if (regions.length !== 1) return false;
-  const [region] = regions;
-  const domain = region.computeDomain?.();
+  const [region] = regions as [
+    {
+      type?: string;
+      from?: { x: number; y: number; z: number; w: number };
+      to?: { x: number; y: number; z: number; w: number };
+      computeDomain?: () => [number, number];
+    },
+  ];
+
+  if (region?.type === "palette") return true;
+
+  if (region?.type === "linear4") {
+    const { from, to } = region;
+    if (!from || !to) return true;
+    return (
+      Math.abs(from.x - to.x) < 1e-9 &&
+      Math.abs(from.y - to.y) < 1e-9 &&
+      Math.abs(from.z - to.z) < 1e-9 &&
+      Math.abs(from.w - to.w) < 1e-9
+    );
+  }
+
+  const domain = region?.computeDomain?.();
   if (!domain) return false;
   return Math.abs(domain[1] - domain[0]) < 1e-9;
 };
@@ -296,6 +323,17 @@ export const writeLaneCurve = (
 };
 
 /**
+ * Which lanes are open is editor state, not experience data, so it does not go
+ * in the blob — it goes where upstream already puts it, keyed by experience and
+ * block (decision 9). Upstream's own toggle persists as a side effect of
+ * arming; arming here does not go through that path, so the write is explicit.
+ * Without it an armed but still-empty lane vanishes on reload, since nothing
+ * else records that the author asked for it.
+ */
+const persistLanes = (owner: Block) =>
+  saveBlockLanes(owner.store.experienceName, owner.id, [...owner.lanedParams]);
+
+/**
  * Arm a lane (decision 8): the gesture that expresses "automate this".
  *
  * Deliberately does NOT seed a region, which is where upstream's
@@ -314,6 +352,7 @@ export const armLane = (block: Block, laneKey: string) => {
   const resolved = resolveLaneOwner(block, laneKey);
   if (!resolved) return;
   runInAction(() => resolved.owner.lanedParams.add(resolved.uniform));
+  persistLanes(resolved.owner);
 };
 
 /** Disarm a lane. A constant lane returns to being the manual value. */
@@ -321,4 +360,5 @@ export const disarmLane = (block: Block, laneKey: string) => {
   const resolved = resolveLaneOwner(block, laneKey);
   if (!resolved) return;
   runInAction(() => resolved.owner.lanedParams.delete(resolved.uniform));
+  persistLanes(resolved.owner);
 };

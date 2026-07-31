@@ -2,6 +2,7 @@ import { expect, test } from "@playwright/test";
 import {
   gotoEditorClean,
   insertPattern,
+  loadSeededSong,
   openPatternPanel,
   patternsEmptyHint,
 } from "./helpers";
@@ -15,6 +16,10 @@ test.describe("persistence and docs", () => {
     const saveButton = page.getByRole("button", { name: "Save", exact: true });
     await expect(saveButton).not.toHaveClass(/saveButtonDirty/);
 
+    // An experience references a song, and the server refuses to save one
+    // without it, so the flow starts by choosing a song exactly as a person
+    // would.
+    await loadSeededSong(page);
     await openPatternPanel(page);
     await insertPattern(page, "Plasma");
     // A change makes Save glow and writes an autosave (debounced).
