@@ -6,6 +6,10 @@ import styles from "@/styles/EditorV2.module.css";
 import { useStore } from "@/src/types/StoreContext";
 import type { DisplayMode } from "@/src/types/UIStore";
 import { DEFAULT_EXPERIENCE_NAME } from "@/src/components/EditorV2/editorExperience";
+import {
+  getOrientation,
+  setOrientation,
+} from "@/src/components/EditorV2/orientation";
 
 // The settings pane (decision 27): a gear left of the roles dropdown opening a
 // full-height pane from the RIGHT, in the same gesture family as the songs
@@ -144,7 +148,9 @@ export const GearPane = observer(function GearPane({
               ? "Open experience"
               : sub === "new"
                 ? "New experience"
-                : "Save as"}
+                : sub === "saveAs"
+                  ? "Save as"
+                  : ""}
           </div>
 
           {sub === "open" ? (
@@ -221,7 +227,23 @@ export const GearPane = observer(function GearPane({
 
           <div className={styles.gearRule} />
 
-          {/* view */}
+          {/* view — App orientation leads it, matching their View menu order */}
+          <div className={styles.gearGroupRow}>
+            <span className={styles.gearItemNote}>App orientation</span>
+            <div className={styles.gearChoices}>
+              {(["vertical", "horizontal"] as const).map((value) => (
+                <button
+                  key={value}
+                  className={`${styles.gearChoice} ${
+                    getOrientation() === value ? styles.gearChoiceActive : ""
+                  }`}
+                  onClick={() => setOrientation(value)}
+                >
+                  {value === "vertical" ? "Vertical" : "Horizontal"}
+                </button>
+              ))}
+            </div>
+          </div>
           <div className={styles.gearGroupRow}>
             <span className={styles.gearItemNote}>Render size</span>
             <div className={styles.gearChoices}>

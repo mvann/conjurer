@@ -2923,7 +2923,10 @@
   border-right: none;
   border-left: 1px solid rgba(232, 236, 244, 0.16);
   box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5);
-  transform: translateX(140%);
+  /* Parked clear of the viewport: its open position is inset by the pane's
+     width, so translating by its own width alone would leave that inset
+     showing along the right edge. */
+  transform: translateX(calc(100% + min(320px, 90vw)));
   z-index: 51;
 }
 
@@ -3039,4 +3042,36 @@
 .gearButtonDirty {
   color: #f6e7bd;
   filter: drop-shadow(0 0 6px rgba(246, 231, 189, 0.55));
+}
+
+/* ---- Horizontal orientation (decision 32): the canopy docks LEFT as a
+   full-height column, with the timeline and every automation lane on the
+   RIGHT. Widescreen support is the point — the lane hierarchy multiplies rows,
+   and this turns most of the screen over to them while keeping the canopy
+   permanently in view.
+
+   Done as a grid over the SAME three siblings the vertical layout stacks, so
+   neither layout owns a different DOM. ---- */
+.mainColumnHorizontal {
+  display: grid;
+  grid-template-columns: minmax(320px, 40%) 1fr;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+}
+
+.mainColumnHorizontal .canopyPane {
+  grid-column: 1;
+  grid-row: 1 / span 2;
+  min-height: 0;
+}
+
+.mainColumnHorizontal .timelineArea {
+  grid-column: 2;
+  grid-row: 1;
+}
+
+.mainColumnHorizontal .automationPane {
+  grid-column: 2;
+  grid-row: 2;
+  min-height: 0;
 }

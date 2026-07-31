@@ -44,6 +44,10 @@ import {
   EditorLoginPanel,
 } from "@/src/components/EditorV2/EditorLoginPanel";
 import { GearButton, GearPane } from "@/src/components/EditorV2/GearPane";
+import {
+  getOrientation,
+  initializeOrientation,
+} from "@/src/components/EditorV2/orientation";
 import { listExperiences } from "@/src/components/EditorV2/experienceClient";
 import styles from "@/styles/EditorV2.module.css";
 import { CanopyPane } from "@/src/components/EditorV2/CanopyPane";
@@ -106,6 +110,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
     // role; it is called WITHOUT a name so it does not reach for tRPC, which
     // the static demo has no backend for. Spell Crafter loads the experience
     // itself, through the transport seam that demo mode can swap.
+    initializeOrientation();
     store.initializeClientSide().then(async () => {
       await loadExperienceIntoStore(store, experienceName);
       // Only now does the store know which experience this is. Anything that
@@ -145,6 +150,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
   // Why the last save did not happen, shown beside the gear.
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [gearOpen, setGearOpen] = useState(false);
+  const orientation = getOrientation();
   // Names available to Open, fetched when the pane opens.
   const [experienceNames, setExperienceNames] = useState<string[]>([]);
 
@@ -866,7 +872,12 @@ export const EditorV2Page = observer(function EditorV2Page() {
           onAssignParam={assignLane}
           onCancelAssign={() => setAssigningLane(false)}
         />
-        <div className={styles.mainColumn}>
+        <div
+          className={`${styles.mainColumn} ${
+            orientation === "horizontal" ? styles.mainColumnHorizontal : ""
+          }`}
+          data-orientation={orientation}
+        >
           <section className={styles.canopyPane} data-doc="canopy">
             <div className={styles.paneLabel}>
               {selectedResolved && selectedEntry
