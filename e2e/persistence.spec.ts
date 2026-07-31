@@ -5,6 +5,7 @@ import {
   loadSeededSong,
   openPatternPanel,
   patternsEmptyHint,
+  saveFromGear,
 } from "./helpers";
 
 test.describe("persistence and docs", () => {
@@ -13,8 +14,10 @@ test.describe("persistence and docs", () => {
   test("autosave prompt lifecycle: change, reload, open, save, reload", async ({
     page,
   }) => {
-    const saveButton = page.getByRole("button", { name: "Save", exact: true });
-    await expect(saveButton).not.toHaveClass(/saveButtonDirty/);
+    // Save lives in the settings pane now, and the gear carries the
+    // unsaved-work glow that the top-bar Save button used to.
+    const gear = page.locator("[data-doc=gear]");
+    await expect(gear).not.toHaveClass(/gearButtonDirty/);
 
     // An experience references a song, and the server refuses to save one
     // without it, so the flow starts by choosing a song exactly as a person
@@ -22,8 +25,8 @@ test.describe("persistence and docs", () => {
     await loadSeededSong(page);
     await openPatternPanel(page);
     await insertPattern(page, "Plasma");
-    // A change makes Save glow and writes an autosave (debounced).
-    await expect(saveButton).toHaveClass(/saveButtonDirty/);
+    // A change makes the gear glow and writes a draft (debounced).
+    await expect(gear).toHaveClass(/gearButtonDirty/);
     await page.waitForTimeout(1_200);
 
     await page.reload();
@@ -35,8 +38,8 @@ test.describe("persistence and docs", () => {
     );
     await page.keyboard.press("Escape");
 
-    await saveButton.click();
-    await expect(saveButton).not.toHaveClass(/saveButtonDirty/);
+    await saveFromGear(page);
+    await expect(gear).not.toHaveClass(/gearButtonDirty/);
     await page.reload();
     await expect(page.locator("[class*=autosaveOverlay]")).toHaveCount(0);
     await openPatternPanel(page);

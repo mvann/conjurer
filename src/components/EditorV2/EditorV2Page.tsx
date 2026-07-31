@@ -43,6 +43,8 @@ import {
   EditorLoginButton,
   EditorLoginPanel,
 } from "@/src/components/EditorV2/EditorLoginPanel";
+import { GearButton, GearPane } from "@/src/components/EditorV2/GearPane";
+import { listExperiences } from "@/src/components/EditorV2/experienceClient";
 import styles from "@/styles/EditorV2.module.css";
 import { CanopyPane } from "@/src/components/EditorV2/CanopyPane";
 import {
@@ -140,8 +142,37 @@ export const EditorV2Page = observer(function EditorV2Page() {
   // True once the experience itself is in the store, which is later than the
   // store reporting itself initialised.
   const [experienceLoaded, setExperienceLoaded] = useState(false);
-  // Why the last save did not happen, shown beside the Save button.
+  // Why the last save did not happen, shown beside the gear.
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
+  const [gearOpen, setGearOpen] = useState(false);
+  // Names available to Open, fetched when the pane opens.
+  const [experienceNames, setExperienceNames] = useState<string[]>([]);
+
+  const openGear = () => {
+    setGearOpen(true);
+    void listExperiences(store.usingLocalData)
+      .then((rows) => setExperienceNames(rows.map((row) => row.name)))
+      .catch(() => setExperienceNames([]));
+  };
+
+  // Open (or start) an experience by name. A full reload is the honest move:
+  // every pane, the transport, and the undo history are seeded from the
+  // experience at mount, so re-entering through the URL is what makes them all
+  // agree rather than re-deriving each by hand.
+  const openExperience = (name: string) => {
+    if (typeof window === "undefined") return;
+    window.location.href = `/editor?experience=${encodeURIComponent(name)}`;
+  };
+
+  // Save as: name it, save it, then continue editing under the new name.
+  const saveAs = async (name: string) => {
+    runInAction(() => {
+      store.experienceName = name;
+      store.experienceId = undefined;
+    });
+    await save();
+    openExperience(name);
+  };
   // True when the latest autosave is ahead of the last save; the Save
   // button glows only then.
   const [isDirty, setIsDirty] = useState(false);
@@ -801,15 +832,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
       <header className={styles.header}>
         <h1 className={styles.title}>Conjurer</h1>
         <span className={styles.subtitle}>Spell Crafter</span>
-        <button
-          className={`${styles.saveButton} ${
-            isDirty ? styles.saveButtonDirty : ""
-          }`}
-          data-doc="save"
-          onClick={save}
-        >
-          Save
-        </button>
+        <GearButton isDirty={isDirty} onOpen={openGear} />
         {saveNotice && (
           <span className={styles.saveNotice} data-doc="save-notice">
             {saveNotice}
@@ -819,6 +842,15 @@ export const EditorV2Page = observer(function EditorV2Page() {
       </header>
 
       <EditorLoginPanel />
+      <GearPane
+        isOpen={gearOpen}
+        onClose={() => setGearOpen(false)}
+        onSave={save}
+        onNewExperience={openExperience}
+        onOpenExperience={openExperience}
+        onSaveAs={saveAs}
+        experienceNames={experienceNames}
+      />
 
       <div className={styles.contentRow}>
         <PatternsPanel

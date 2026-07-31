@@ -2882,3 +2882,161 @@
   font-size: 12px;
   letter-spacing: 0.04em;
 }
+
+/* ---- The settings pane: same anatomy as the songs panel, anchored right.
+   Its slide-out sits further right so it appears to emerge from BEHIND the
+   pane's left edge, the way New Song does. ---- */
+/* Parked panels must not eat clicks: the sub-panel is anchored inside the
+   pane's width, so when closed its exposed edge still overlaps the screen —
+   the same hazard .sidePanelWide guards against for the parked song list. */
+.gearPane,
+.gearSubPanel {
+  pointer-events: none;
+}
+
+.gearPaneOpen,
+.gearSubPanelOpen {
+  pointer-events: auto;
+}
+
+.gearPane {
+  left: auto;
+  right: 0;
+  width: min(320px, 90vw);
+  border-right: none;
+  border-left: 1px solid rgba(232, 236, 244, 0.16);
+  box-shadow:
+    inset 1px 0 0 rgba(232, 236, 244, 0.06),
+    -8px 0 40px rgba(0, 0, 0, 0.5);
+  transform: translateX(100%);
+  z-index: 52;
+}
+
+.gearPaneOpen {
+  transform: translateX(0);
+}
+
+.gearSubPanel {
+  left: auto;
+  right: min(320px, 90vw);
+  width: min(300px, 86vw);
+  border-right: none;
+  border-left: 1px solid rgba(232, 236, 244, 0.16);
+  box-shadow: -8px 0 40px rgba(0, 0, 0, 0.5);
+  transform: translateX(140%);
+  z-index: 51;
+}
+
+.gearSubPanelOpen {
+  transform: translateX(0);
+}
+
+.gearItem {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 14px;
+  border: none;
+  background: none;
+  color: rgba(232, 236, 244, 0.82);
+  font-family: var(--font-mystical), serif;
+  font-size: 14px;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    background 0.16s ease;
+}
+
+.gearItem:hover {
+  color: #eceef4;
+  background: rgba(232, 236, 244, 0.05);
+}
+
+.gearItemNote {
+  color: rgba(232, 236, 244, 0.4);
+  font-size: 11px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.gearItemChecked {
+  color: #eceef4;
+}
+
+.gearCheck {
+  color: rgba(232, 236, 244, 0.7);
+  font-size: 12px;
+}
+
+/* Unnamed hairline between groups: the sections are the main app's, the
+   labels deliberately are not. */
+.gearRule {
+  height: 1px;
+  margin: 6px 14px;
+  background: rgba(232, 236, 244, 0.1);
+}
+
+.gearGroupRow {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px 14px;
+}
+
+.gearChoices {
+  display: flex;
+  gap: 6px;
+}
+
+.gearChoice {
+  flex: 1;
+  padding: 4px 6px;
+  border: 1px solid rgba(232, 236, 244, 0.16);
+  border-radius: 4px;
+  background: none;
+  color: rgba(232, 236, 244, 0.6);
+  font-family: var(--font-mystical), serif;
+  font-size: 11px;
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    border-color 0.16s ease;
+}
+
+.gearChoice:hover {
+  color: #eceef4;
+}
+
+.gearChoiceActive {
+  color: #eceef4;
+  border-color: rgba(232, 236, 244, 0.45);
+}
+
+/* The gear itself carries the unsaved-work glow now that Save lives inside
+   the pane rather than in the top bar. */
+.gearButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 6px;
+  border: none;
+  background: none;
+  color: rgba(232, 236, 244, 0.6);
+  cursor: pointer;
+  transition:
+    color 0.16s ease,
+    filter 0.16s ease;
+}
+
+.gearButton:hover {
+  color: rgba(232, 236, 244, 0.95);
+}
+
+.gearButtonDirty {
+  color: #f6e7bd;
+  filter: drop-shadow(0 0 6px rgba(246, 231, 189, 0.55));
+}

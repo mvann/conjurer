@@ -5,6 +5,25 @@ import { expect, Page } from "@playwright/test";
 // Clearing localStorage also clears who was signed in, and an experience is a
 // row with an owner — so the editor asks who you are before anything else.
 // Every test therefore starts by logging in, exactly as a person would.
+// mid-flight lands later clicks on stale coordinates.
+export const settleBox = async (page: Page, selector: string) => {
+  const locator = page.locator(selector).first();
+  let prev = await locator.boundingBox();
+  for (let i = 0; i < 30; i++) {
+    await page.waitForTimeout(100);
+    const next = await locator.boundingBox();
+    if (
+      prev &&
+      next &&
+      Math.abs(next.x - prev.x) < 0.5 &&
+      Math.abs(next.y - prev.y) < 0.5 &&
+      Math.abs(next.width - prev.width) < 0.5
+    )
+      return;
+    prev = next;
+  }
+};
+
 let experienceSeq = 0;
 
 export const gotoEditorClean = async (page: Page) => {
@@ -28,13 +47,23 @@ export const logIn = async (page: Page, username = "mvann") => {
   const button = page.locator("[data-doc=login]");
   await expect(button).toBeVisible();
   if ((await button.textContent())?.trim() === username) return;
-  // The panel opens on its own once the store reports nobody signed in, so
-  // waiting for the entry is the whole interaction.
-  await page
+  // The panel opens on its own once the store reports nobody signed in. It
+  // slides in, so wait for it to stop moving before clicking — the same
+  // treatment the automation editor needs while the dock is still animating.
+  const entry = page
     .locator("[data-doc=login-panel]")
-    .getByLabel(`Log in as ${username}`)
-    .click({ timeout: 20_000 });
+    .getByLabel(`Log in as ${username}`);
+  await expect(entry).toBeVisible({ timeout: 20_000 });
+  await settleBox(page, "[data-doc=login-panel]");
+  await entry.click({ timeout: 20_000 });
   await expect(button).toHaveText(username);
+};
+
+// Save through the settings pane, which is where Save lives now.
+export const saveFromGear = async (page: Page) => {
+  await page.locator("[data-doc=gear]").click();
+  await expect(page.locator("[data-doc=gear-pane]")).toBeVisible();
+  await page.getByRole("button", { name: "Save", exact: true }).click();
 };
 
 // The patterns panel's aside (the songs panel renders earlier in the DOM).
@@ -73,24 +102,6 @@ export const closePanel = async (page: Page) => {
 
 // Waits for an element's box to hold still. The dock closes with a
 // width transition that slides the whole main column; geometry measured
-// mid-flight lands later clicks on stale coordinates.
-export const settleBox = async (page: Page, selector: string) => {
-  const locator = page.locator(selector).first();
-  let prev = await locator.boundingBox();
-  for (let i = 0; i < 30; i++) {
-    await page.waitForTimeout(100);
-    const next = await locator.boundingBox();
-    if (
-      prev &&
-      next &&
-      Math.abs(next.x - prev.x) < 0.5 &&
-      Math.abs(next.y - prev.y) < 0.5 &&
-      Math.abs(next.width - prev.width) < 0.5
-    )
-      return;
-    prev = next;
-  }
-};
 
 // Right-clicks a param row and adds an automation lane for it.
 export const addLaneOnParam = async (page: Page, paramName: string) => {
