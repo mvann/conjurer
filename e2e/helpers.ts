@@ -73,7 +73,7 @@ export const patternsAside = (page: Page) =>
 export const openPatternPanel = async (page: Page) => {
   await page.getByLabel("Open pattern library").click();
   await expect(
-    page.locator("[class*=panelSectionLabel]", { hasText: "Patterns" }),
+    page.locator("[class*=panelSectionLabel]", { hasText: "Layers" }),
   ).toBeVisible();
 };
 

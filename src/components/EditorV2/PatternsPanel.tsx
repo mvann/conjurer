@@ -31,6 +31,7 @@ import {
 import { EDITOR_DIRTY_EVENT } from "@/src/components/EditorV2/experiencePersistence";
 import { effectLibrary } from "@/src/components/EditorV2/patternLibrary";
 import type { Block } from "@/src/types/Block";
+import type { Layer } from "@/src/types/Layer";
 import {
   armLane,
   disarmLane,
@@ -98,7 +99,15 @@ export type StackEntry = {
 
 type Props = {
   entries: StackEntry[];
-  onAdd: (factory: () => Pattern) => void;
+  // The layers the stack is grouped into, in the experience's own order.
+  layers: Layer[];
+  onAdd: (factory: () => Pattern, layerId: string) => void;
+  onAddLayer: () => void;
+  onRemoveLayer: (layerId: string) => void;
+  onRenameLayer: (layerId: string, name: string) => void;
+  onMoveLayer: (layerId: string, toIndex: number) => void;
+  onToggleLayerVisible: (layerId: string) => void;
+  onToggleLayerCollapsed: (layerId: string) => void;
   onUpdate: (id: string, update: Partial<StackEntry>) => void;
   onRemove: (id: string) => void;
   onDuplicate: (id: string) => void;
@@ -128,7 +137,14 @@ type PanelContextMenu = {
 
 export const PatternsPanel = observer(function PatternsPanel({
   entries,
+  layers,
   onAdd,
+  onAddLayer,
+  onRemoveLayer,
+  onRenameLayer,
+  onMoveLayer,
+  onToggleLayerVisible,
+  onToggleLayerCollapsed,
   onUpdate,
   onRemove,
   onDuplicate,
@@ -149,6 +165,11 @@ export const PatternsPanel = observer(function PatternsPanel({
   const [contextMenu, setContextMenu] = useState<PanelContextMenu | null>(null);
   // The entry whose inline effect picker is open, if any.
   const [effectPickerFor, setEffectPickerFor] = useState<string | null>(null);
+  // Which layer the Add Pattern column is adding to, and which layer name is
+  // being typed. Layer reorder is click-and-hold, so it rides HTML drag.
+  const [pickingLayer, setPickingLayer] = useState<string | null>(null);
+  const [renamingLayer, setRenamingLayer] = useState<string | null>(null);
+  const [draggingLayer, setDraggingLayer] = useState<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
   // Composite params (palette, color) render expanded by default; this set
   // tracks the ones collapsed, keyed by `entryId:uniform`. UI-only state.
@@ -414,6 +435,173 @@ export const PatternsPanel = observer(function PatternsPanel({
     setContextMenu(null);
   };
 
+  // One pattern row, with its params, effects and menus. Extracted so the
+  // layer list can wrap it: layers group the rows, they do not replace them.
+  const renderEntry = (entry: StackEntry) => (
+              <li
+                key={entry.id}
+                className={entry.visible ? "" : styles.patternHidden}
+              >
+                <div
+                  className={styles.patternRow}
+                  data-doc="pattern-row"
+                  onContextMenu={(event) => {
+                    event.preventDefault();
+                    setContextMenu({
+                      entryId: entry.id,
+                      uniform: null,
+                      x: event.clientX,
+                      y: event.clientY,
+                    });
+                  }}
+                >
+                  <button
+                    data-doc="pattern-expand"
+                    className={styles.rowButton}
+                    onClick={() =>
+                      onUpdate(entry.id, { expanded: !entry.expanded })
+                    }
+                    aria-label={
+                      entry.expanded
+                        ? "Collapse parameters"
+                        : "Expand parameters"
+                    }
+                  >
+                    {entry.expanded ? <FaCaretDown /> : <FaCaretRight />}
+                  </button>
+                  <span className={styles.patternName}>
+                    {formatDisplayName(entry.pattern.name)}
+                  </span>
+                  <button
+                    data-doc="pattern-visibility"
+                    className={`${styles.rowButton} ${eyeBarClass(entry)}`}
+                    onClick={() => {
+                      // In assign mode the eye is a lane target, not a
+                      // toggle: visibility automates like any param.
+                      if (assigning) {
+                        onAssignParam(entry.id, VISIBILITY_PARAM);
+                        return;
+                      }
+                      // Toggling by hand takes over from an active
+                      // visibility curve, like editing any automated
+                      // parameter.
+                      deactivateLane(entry, VISIBILITY_PARAM)();
+                      onUpdate(entry.id, { visible: !entry.visible });
+                    }}
+                    onContextMenu={(event) => {
+                      event.preventDefault();
+                      // Keep the row's own menu (Duplicate) from
+                      // replacing the eye's lane menu as this bubbles.
+                      event.stopPropagation();
+                      setContextMenu({
+                        entryId: entry.id,
+                        uniform: VISIBILITY_PARAM,
+                        x: event.clientX,
+                        y: event.clientY,
+                      });
+                    }}
+                    aria-label={
+                      entry.visible ? "Hide pattern" : "Show pattern"
+                    }
+                  >
+                    {entry.visible ? <FaEye /> : <FaEyeSlash />}
+                  </button>
+                  <button
+                    data-doc="pattern-remove"
+                    className={`${styles.rowButton} ${styles.trashButton}`}
+                    onClick={() => onRemove(entry.id)}
+                    aria-label="Remove pattern"
+                  >
+                    <FaTrashAlt />
+                  </button>
+                </div>
+                {entry.expanded && (
+                  <>
+                    <ul className={styles.paramList}>
+                      {renderParamRows(entry, entry.pattern, (u) => u)}
+                    </ul>
+                    {entry.effects.map((effect, effectIndex) => (
+                      <div
+                        key={effect.id}
+                        className={styles.effectBlock}
+                        data-doc="effect-row"
+                      >
+                        <div className={styles.effectHeader}>
+                          <span className={styles.effectName}>
+                            {formatDisplayName(effect.pattern.name)}
+                          </span>
+                          <button
+                            className={styles.rowButton}
+                            disabled={effectIndex === 0}
+                            onClick={() =>
+                              onMoveEffect(entry.id, effect.id, -1)
+                            }
+                            aria-label="Move effect up"
+                          >
+                            <FaArrowUp size={10} />
+                          </button>
+                          <button
+                            className={styles.rowButton}
+                            disabled={
+                              effectIndex === entry.effects.length - 1
+                            }
+                            onClick={() =>
+                              onMoveEffect(entry.id, effect.id, 1)
+                            }
+                            aria-label="Move effect down"
+                          >
+                            <FaArrowDown size={10} />
+                          </button>
+                          <button
+                            className={`${styles.rowButton} ${styles.trashButton}`}
+                            onClick={() =>
+                              onRemoveEffect(entry.id, effect.id)
+                            }
+                            aria-label="Remove effect"
+                          >
+                            <FaTrashAlt size={11} />
+                          </button>
+                        </div>
+                        <ul className={styles.paramList}>
+                          {renderParamRows(entry, effect.pattern, (u) =>
+                            effectLaneKey(effect.id, u),
+                          )}
+                        </ul>
+                      </div>
+                    ))}
+                    <button
+                      data-doc="add-effect"
+                      className={styles.addEffect}
+                      onClick={() =>
+                        setEffectPickerFor(
+                          effectPickerFor === entry.id ? null : entry.id,
+                        )
+                      }
+                    >
+                      <FaPlus size={9} /> Add Effect
+                    </button>
+                    {effectPickerFor === entry.id && (
+                      <ul className={styles.effectPicker}>
+                        {effectLibrary.map(({ name, factory }) => (
+                          <li key={name}>
+                            <button
+                              className={styles.effectPickerItem}
+                              onClick={() => {
+                                onAddEffect(entry.id, factory);
+                                setEffectPickerFor(null);
+                              }}
+                            >
+                              {formatDisplayName(name)}
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </>
+                )}
+              </li>
+  );
+
   // The dock sits in normal flow beside the main column, so the info
   // strip below never needs to shrink for it (the songs panel, still an
   // overlay, keeps publishing its inset).
@@ -453,192 +641,126 @@ export const PatternsPanel = observer(function PatternsPanel({
         )}
         <div className={styles.panelTrack}>
           <div className={styles.panelColumn}>
-            <div className={styles.panelSectionLabel}>Patterns</div>
+            <div className={styles.panelSectionLabel}>Layers</div>
 
-            {entries.length === 0 && (
+            {entries.length === 0 && layers.length <= 1 && (
               <div className={styles.panelEmpty}>No patterns yet</div>
             )}
 
-            <ul className={styles.patternStack}>
-              {entries.map((entry) => (
-                <li
-                  key={entry.id}
-                  className={entry.visible ? "" : styles.patternHidden}
+            {layers.map((layer, layerIndex) => {
+              const layerEntries = entries.filter(
+                (entry) => entry.block.layer === layer,
+              );
+              return (
+                <div
+                  key={layer.id}
+                  className={styles.layerGroup}
+                  data-doc="layer"
+                  draggable
+                  onDragStart={() => setDraggingLayer(layer.id)}
+                  onDragOver={(event) => event.preventDefault()}
+                  onDrop={() => {
+                    if (draggingLayer && draggingLayer !== layer.id)
+                      onMoveLayer(draggingLayer, layerIndex);
+                    setDraggingLayer(null);
+                  }}
                 >
-                  <div
-                    className={styles.patternRow}
-                    data-doc="pattern-row"
-                    onContextMenu={(event) => {
-                      event.preventDefault();
-                      setContextMenu({
-                        entryId: entry.id,
-                        uniform: null,
-                        x: event.clientX,
-                        y: event.clientY,
-                      });
-                    }}
-                  >
+                  <div className={styles.layerRow}>
                     <button
-                      data-doc="pattern-expand"
-                      className={styles.rowButton}
-                      onClick={() =>
-                        onUpdate(entry.id, { expanded: !entry.expanded })
-                      }
+                      className={styles.caretButton}
                       aria-label={
-                        entry.expanded
-                          ? "Collapse parameters"
-                          : "Expand parameters"
+                        layer.collapsed ? "Expand layer" : "Collapse layer"
                       }
+                      onClick={() => onToggleLayerCollapsed(layer.id)}
                     >
-                      {entry.expanded ? <FaCaretDown /> : <FaCaretRight />}
-                    </button>
-                    <span className={styles.patternName}>
-                      {formatDisplayName(entry.pattern.name)}
-                    </span>
-                    <button
-                      data-doc="pattern-visibility"
-                      className={`${styles.rowButton} ${eyeBarClass(entry)}`}
-                      onClick={() => {
-                        // In assign mode the eye is a lane target, not a
-                        // toggle: visibility automates like any param.
-                        if (assigning) {
-                          onAssignParam(entry.id, VISIBILITY_PARAM);
-                          return;
-                        }
-                        // Toggling by hand takes over from an active
-                        // visibility curve, like editing any automated
-                        // parameter.
-                        deactivateLane(entry, VISIBILITY_PARAM)();
-                        onUpdate(entry.id, { visible: !entry.visible });
-                      }}
-                      onContextMenu={(event) => {
-                        event.preventDefault();
-                        // Keep the row's own menu (Duplicate) from
-                        // replacing the eye's lane menu as this bubbles.
-                        event.stopPropagation();
-                        setContextMenu({
-                          entryId: entry.id,
-                          uniform: VISIBILITY_PARAM,
-                          x: event.clientX,
-                          y: event.clientY,
-                        });
-                      }}
-                      aria-label={
-                        entry.visible ? "Hide pattern" : "Show pattern"
-                      }
-                    >
-                      {entry.visible ? <FaEye /> : <FaEyeSlash />}
-                    </button>
-                    <button
-                      data-doc="pattern-remove"
-                      className={`${styles.rowButton} ${styles.trashButton}`}
-                      onClick={() => onRemove(entry.id)}
-                      aria-label="Remove pattern"
-                    >
-                      <FaTrashAlt />
-                    </button>
-                  </div>
-                  {entry.expanded && (
-                    <>
-                      <ul className={styles.paramList}>
-                        {renderParamRows(entry, entry.pattern, (u) => u)}
-                      </ul>
-                      {entry.effects.map((effect, effectIndex) => (
-                        <div
-                          key={effect.id}
-                          className={styles.effectBlock}
-                          data-doc="effect-row"
-                        >
-                          <div className={styles.effectHeader}>
-                            <span className={styles.effectName}>
-                              {formatDisplayName(effect.pattern.name)}
-                            </span>
-                            <button
-                              className={styles.rowButton}
-                              disabled={effectIndex === 0}
-                              onClick={() =>
-                                onMoveEffect(entry.id, effect.id, -1)
-                              }
-                              aria-label="Move effect up"
-                            >
-                              <FaArrowUp size={10} />
-                            </button>
-                            <button
-                              className={styles.rowButton}
-                              disabled={
-                                effectIndex === entry.effects.length - 1
-                              }
-                              onClick={() =>
-                                onMoveEffect(entry.id, effect.id, 1)
-                              }
-                              aria-label="Move effect down"
-                            >
-                              <FaArrowDown size={10} />
-                            </button>
-                            <button
-                              className={`${styles.rowButton} ${styles.trashButton}`}
-                              onClick={() =>
-                                onRemoveEffect(entry.id, effect.id)
-                              }
-                              aria-label="Remove effect"
-                            >
-                              <FaTrashAlt size={11} />
-                            </button>
-                          </div>
-                          <ul className={styles.paramList}>
-                            {renderParamRows(entry, effect.pattern, (u) =>
-                              effectLaneKey(effect.id, u),
-                            )}
-                          </ul>
-                        </div>
-                      ))}
-                      <button
-                        data-doc="add-effect"
-                        className={styles.addEffect}
-                        onClick={() =>
-                          setEffectPickerFor(
-                            effectPickerFor === entry.id ? null : entry.id,
-                          )
-                        }
-                      >
-                        <FaPlus size={9} /> Add Effect
-                      </button>
-                      {effectPickerFor === entry.id && (
-                        <ul className={styles.effectPicker}>
-                          {effectLibrary.map(({ name, factory }) => (
-                            <li key={name}>
-                              <button
-                                className={styles.effectPickerItem}
-                                onClick={() => {
-                                  onAddEffect(entry.id, factory);
-                                  setEffectPickerFor(null);
-                                }}
-                              >
-                                {formatDisplayName(name)}
-                              </button>
-                            </li>
-                          ))}
-                        </ul>
+                      {layer.collapsed ? (
+                        <FaCaretRight size={12} />
+                      ) : (
+                        <FaCaretDown size={12} />
                       )}
+                    </button>
+
+                    {renamingLayer === layer.id ? (
+                      <input
+                        className={styles.layerNameInput}
+                        autoFocus
+                        defaultValue={layer.name}
+                        aria-label="Layer name"
+                        onBlur={(event) => {
+                          onRenameLayer(layer.id, event.target.value);
+                          setRenamingLayer(null);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key === "Enter")
+                            (event.target as HTMLInputElement).blur();
+                          if (event.key === "Escape") setRenamingLayer(null);
+                        }}
+                      />
+                    ) : (
+                      <span
+                        className={styles.layerName}
+                        onDoubleClick={() => setRenamingLayer(layer.id)}
+                      >
+                        {layer.name || `Layer ${layerIndex + 1}`}
+                      </span>
+                    )}
+
+                    <button
+                      className={styles.layerEye}
+                      aria-label={layer.visible ? "Hide layer" : "Show layer"}
+                      onClick={() => onToggleLayerVisible(layer.id)}
+                    >
+                      {layer.visible ? (
+                        <FaEye size={11} />
+                      ) : (
+                        <FaEyeSlash size={11} />
+                      )}
+                    </button>
+                    {layers.length > 1 && (
+                      <button
+                        className={styles.layerTrash}
+                        aria-label="Remove layer"
+                        onClick={() => onRemoveLayer(layer.id)}
+                      >
+                        <FaTrashAlt size={10} />
+                      </button>
+                    )}
+                  </div>
+
+                  {!layer.collapsed && (
+                    <>
+                      <ul className={styles.patternStack}>
+                        {layerEntries.map(renderEntry)}
+                      </ul>
+                      <button
+                        data-doc="add-pattern"
+                        className={styles.addPattern}
+                        onClick={() => {
+                          setPickingLayer(layer.id);
+                          setIsPicking(!isPicking);
+                        }}
+                      >
+                        <FaPlus size={11} /> Add Pattern
+                      </button>
                     </>
                   )}
-                </li>
-              ))}
-            </ul>
+                </div>
+              );
+            })}
 
             <button
-              data-doc="add-pattern"
-              className={styles.addPattern}
-              onClick={() => setIsPicking(!isPicking)}
+              data-doc="add-layer"
+              className={styles.addLayer}
+              onClick={onAddLayer}
             >
-              <FaPlus size={11} /> Add Pattern
+              <FaPlus size={11} /> Add Layer
             </button>
           </div>
 
           <AddPatternPane
             isOpen={isPicking}
             onInsert={(factory) => {
-              onAdd(factory);
+              onAdd(factory, pickingLayer ?? layers[0]?.id ?? "");
               setIsPicking(false);
             }}
             onClose={() => setIsPicking(false)}

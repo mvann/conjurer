@@ -36,8 +36,12 @@ import {
   moveEffectInBlock,
   removeEffectFromBlock,
   removePatternBlock,
+  addLayer,
   applySongDuration,
   entriesFromStore,
+  moveLayer,
+  removeLayer,
+  renameLayer,
 } from "@/src/components/EditorV2/blockStack";
 import {
   EditorLoginButton,
@@ -382,10 +386,60 @@ export const EditorV2Page = observer(function EditorV2Page() {
     }, AUTOSAVE_DEBOUNCE_MS);
   };
 
-  const addPattern = (factory: () => Pattern) => {
+  const layerById = (layerId: string) =>
+    store.layers.find((layer) => layer.id === layerId);
+
+  // ---- Layers (decision 28). The operations live in blockStack; these wire
+  // them to the panel and keep the derived entry list in step. ----
+
+  const addLayerToStack = () => {
+    addLayer(store);
+    scheduleAutosave();
+  };
+
+  const removeLayerFromStack = (layerId: string) => {
+    const layer = layerById(layerId);
+    if (!layer || !removeLayer(store, layer)) return;
+    setEntries(entriesFromStore(store));
+    scheduleAutosave();
+  };
+
+  const renameLayerInStack = (layerId: string, name: string) => {
+    const layer = layerById(layerId);
+    if (!layer) return;
+    renameLayer(layer, name);
+    scheduleAutosave();
+  };
+
+  const moveLayerInStack = (layerId: string, toIndex: number) => {
+    const layer = layerById(layerId);
+    if (!layer) return;
+    moveLayer(store, layer, toIndex);
+    setEntries(entriesFromStore(store));
+    scheduleAutosave();
+  };
+
+  // Layer visibility is a runtime toggle on the layer, not automation
+  // (decision 5). Collapsed is editor-only and never serialized.
+  const toggleLayerVisible = (layerId: string) => {
+    const layer = layerById(layerId);
+    if (!layer) return;
+    runInAction(() => (layer.visible = !layer.visible));
+    scheduleAutosave();
+  };
+
+  const toggleLayerCollapsed = (layerId: string) => {
+    const layer = layerById(layerId);
+    if (!layer) return;
+    runInAction(() => (layer.collapsed = !layer.collapsed));
+  };
+
+  const addPattern = (factory: () => Pattern, layerId?: string) => {
     // A new pattern is a block spanning the whole song (decision 24), so the
     // stack still behaves like an always-on pile of patterns.
-    const block = addPatternBlock(store, ensureFirstLayer(store), factory);
+    const target =
+      (layerId ? layerById(layerId) : undefined) ?? ensureFirstLayer(store);
+    const block = addPatternBlock(store, target, factory);
     setEntries((current) => [
       ...current,
       {
@@ -861,7 +915,14 @@ export const EditorV2Page = observer(function EditorV2Page() {
       <div className={styles.contentRow}>
         <PatternsPanel
           entries={entries}
+          layers={store.layers}
           onAdd={addPattern}
+          onAddLayer={addLayerToStack}
+          onRemoveLayer={removeLayerFromStack}
+          onRenameLayer={renameLayerInStack}
+          onMoveLayer={moveLayerInStack}
+          onToggleLayerVisible={toggleLayerVisible}
+          onToggleLayerCollapsed={toggleLayerCollapsed}
           onUpdate={updateEntry}
           onRemove={removeEntry}
           onDuplicate={duplicateEntry}

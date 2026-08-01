@@ -3075,3 +3075,102 @@
   grid-row: 2;
   min-height: 0;
 }
+
+/* ---- Layers (decision 28). A layer is a header row over the pattern rows it
+   holds: the same caret a pattern row uses to show its params, the name, the
+   eye, and a trash that only appears while more than one layer exists. The
+   pattern rows beneath are unchanged — layers group them, they do not replace
+   them. ---- */
+.layerGroup {
+  margin-bottom: 2px;
+}
+
+.layerRow {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 8px 5px 6px;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.07);
+}
+
+.caretButton {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px;
+  border: none;
+  background: none;
+  color: rgba(232, 236, 244, 0.5);
+  cursor: pointer;
+}
+
+.caretButton:hover {
+  color: rgba(232, 236, 244, 0.9);
+}
+
+.layerName {
+  flex: 1;
+  min-width: 0;
+  color: rgba(232, 236, 244, 0.78);
+  font-family: var(--font-mystical), serif;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: default;
+  user-select: none;
+}
+
+.layerNameInput {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.35);
+  color: #eceef4;
+  font-family: var(--font-mystical), serif;
+  font-size: 12px;
+  letter-spacing: 0.1em;
+  padding: 1px 2px;
+  outline: none;
+}
+
+/* The eye and trash sit at the row's right, aligned across layers. */
+.layerEye,
+.layerTrash {
+  display: inline-flex;
+  align-items: center;
+  padding: 3px;
+  border: none;
+  background: none;
+  color: rgba(232, 236, 244, 0.45);
+  cursor: pointer;
+  transition: color 0.16s ease;
+}
+
+.layerEye:hover,
+.layerTrash:hover {
+  color: rgba(232, 236, 244, 0.95);
+}
+
+.addLayer {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  margin-top: 6px;
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  color: rgba(232, 236, 244, 0.6);
+  font-family: var(--font-mystical), serif;
+  font-size: 13px;
+  letter-spacing: 0.06em;
+  cursor: pointer;
+  transition: color 0.16s ease;
+}
+
+.addLayer:hover {
+  color: #eceef4;
+}
