@@ -113,6 +113,10 @@ type Props = {
   transients: number[] | null;
   onCurveChange: (curve: AutomationCurve) => void;
   onClose: () => void;
+  // The block this lane belongs to, as fractions of the song. The view still
+  // spans the whole song; everything outside this range is darkened and inert
+  // (decision 11).
+  blockRange?: { start: number; end: number } | null;
 };
 
 // The expanded automation lane over the canopy space. Shows the manual
@@ -129,6 +133,7 @@ export const AutomationEditorView = observer(function AutomationEditorView({
   transients,
   onCurveChange,
   onClose,
+  blockRange,
 }: Props) {
   const keyframes = curve?.keyframes ?? [];
   const segments = curve ? getSegments(curve) : [];
@@ -778,6 +783,10 @@ export const AutomationEditorView = observer(function AutomationEditorView({
     const time = snapTime(
       xFracToTime((event.clientX - rect.left) / rect.width),
     );
+    // Outside the block, nothing happens — "double clicking or dragging
+    // outside the block, I think it just shouldn't do anything".
+    if (blockRange && (time < blockRange.start || time > blockRange.end))
+      return;
     addKeyframe(time, clampToBounds(clientYToValue(event.clientY)));
   };
 
@@ -975,9 +984,16 @@ export const AutomationEditorView = observer(function AutomationEditorView({
       const time = snapTime(
         xFracToTime((moveEvent.clientX - rect.left) / rect.width),
       );
+      // A highlight started inside the block stops at its edges rather than
+      // running past them: "if I start a highlight within the block, and then
+      // I drag to the end, it should just stop at the end of the block".
+      const clamp = (value: number) =>
+        blockRange
+          ? Math.min(Math.max(value, blockRange.start), blockRange.end)
+          : value;
       setTimeSelection({
-        t0: Math.min(startTime, time),
-        t1: Math.max(startTime, time),
+        t0: clamp(Math.min(startTime, time)),
+        t1: clamp(Math.max(startTime, time)),
       });
     };
     const onUp = () => {
@@ -1184,6 +1200,27 @@ export const AutomationEditorView = observer(function AutomationEditorView({
           setSegmentMenu({ index: null, x: event.clientX, y: event.clientY });
         }}
       >
+        {/* Outside the block, darkened. The view still spans the whole song —
+            the block's live window is what stands out (decision 11). Purely
+            visual: the guards that make the dim inert live on the handlers. */}
+        {blockRange && (
+          <>
+            {blockRange.start > 0 && (
+              <div
+                className={styles.editorDimZone}
+                data-doc="dim-before"
+                style={{ left: 0, width: `${timeToX(blockRange.start)}%` }}
+              />
+            )}
+            {blockRange.end < 1 && (
+              <div
+                className={styles.editorDimZone}
+                data-doc="dim-after"
+                style={{ left: `${timeToX(blockRange.end)}%`, right: 0 }}
+              />
+            )}
+          </>
+        )}
         {backdrop.waveform && (
           <canvas
             ref={waveformCanvasRef}

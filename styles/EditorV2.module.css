@@ -3263,3 +3263,15 @@
   left: auto;
   right: -3px;
 }
+
+/* Outside the block: darkened, and inert. Sits above the backdrop layers but
+   below the curve and its handles, so the shape stays fully legible where it
+   plays and merely recedes where it does not. */
+.editorDimZone {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  background: rgba(4, 5, 9, 0.55);
+  pointer-events: none;
+  z-index: 2;
+}
