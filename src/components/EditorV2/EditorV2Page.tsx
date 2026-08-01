@@ -87,6 +87,7 @@ import {
 import { IS_DEMO } from "@/src/utils/demo";
 import demoExperience from "@/src/components/EditorV2/demoExperience.json";
 import { Pattern } from "@/src/types/Pattern";
+import type { Block } from "@/src/types/Block";
 import { NO_SONG, Song } from "@/src/types/Song";
 import { formatDisplayName } from "@/src/components/EditorV2/formatDisplayName";
 import { BpmAnalysis } from "@/src/components/EditorV2/bpm";
@@ -432,6 +433,22 @@ export const EditorV2Page = observer(function EditorV2Page() {
     const layer = layerById(layerId);
     if (!layer) return;
     runInAction(() => (layer.collapsed = !layer.collapsed));
+  };
+
+  // Block timing (decisions 10 and 16). Regions are deliberately untouched: a
+  // trimmed block leaves them overhanging and unplayed, an extended one holds
+  // its last value, and a wave keeps its size — which is exactly what upstream
+  // does, so a block resized here behaves the same in their editor.
+  const changeBlockTiming = (
+    block: Block,
+    startTime: number,
+    duration: number,
+  ) => {
+    runInAction(() => {
+      block.startTime = Math.max(0, startTime);
+      block.duration = Math.max(0.05, duration);
+    });
+    scheduleAutosave();
   };
 
   const addPattern = (factory: () => Pattern, layerId?: string) => {
@@ -1026,6 +1043,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
           <AutomationPane
             entries={entries}
             layers={store.layers}
+            onBlockTimingChange={changeBlockTiming}
             selectedLane={selectedLane}
             onSelectLane={toggleLane}
             onStartAssign={() => setAssigningLane(true)}

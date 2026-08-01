@@ -3208,9 +3208,13 @@
 
 .laneBlockHeader {
   display: flex;
-  align-items: center;
-  min-height: 20px;
-  padding: 3px 0 3px 20px;
+  align-items: stretch;
+  height: 22px;
+}
+
+.laneBlockHeader .laneLabel {
+  padding-left: 20px;
+  border-right: 1px solid rgba(232, 236, 244, 0.1);
 }
 
 .laneBlockName {
@@ -3218,4 +3222,44 @@
   font-family: var(--font-mystical), serif;
   font-size: 12px;
   letter-spacing: 0.06em;
+}
+
+/* The block as a time-range bar in its header lane (decision 10). Grab the bar
+   to move it; grab an edge to resize with the other edge held. */
+/* The block header's plot area. Geometrically identical to .laneArea — it must
+   be, or the bar stops lining up with the lanes under it — but a class of its
+   own, so "the lane's plot area" stays an unambiguous thing to point at. */
+.blockLaneArea {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.blockBar {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  border-radius: 3px;
+  background: rgba(232, 236, 244, 0.1);
+  border: 1px solid rgba(232, 236, 244, 0.22);
+  cursor: grab;
+}
+
+.blockBar:active {
+  cursor: grabbing;
+}
+
+.blockEdge {
+  position: absolute;
+  top: -1px;
+  bottom: -1px;
+  left: -3px;
+  width: 8px;
+  cursor: ew-resize;
+}
+
+.blockEdgeRight {
+  left: auto;
+  right: -3px;
 }

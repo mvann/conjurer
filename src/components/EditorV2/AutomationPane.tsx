@@ -23,6 +23,8 @@ import {
 } from "@/src/components/EditorV2/ValueEditors";
 import { isVector4 } from "@/src/utils/object";
 import type { Layer } from "@/src/types/Layer";
+import type { Block } from "@/src/types/Block";
+import { getLaneSongDuration } from "@/src/components/EditorV2/blockLanes";
 import {
   laneCurve,
   laneKeysOf,
@@ -52,6 +54,11 @@ type Props = {
   // The layers, in the experience's order, so the lane groups match the layer
   // list on the left (decision 28).
   layers: Layer[];
+  onBlockTimingChange: (
+    block: Block,
+    startTime: number,
+    duration: number,
+  ) => void;
   selectedLane: { entryId: string; uniform: string } | null;
   onSelectLane: (lane: { entryId: string; uniform: string }) => void;
   // Starts assign mode: the pattern editor opens and the next parameter
@@ -377,6 +384,7 @@ export function ManualValueLine({
 export const AutomationPane = observer(function AutomationPane({
   entries,
   layers,
+  onBlockTimingChange,
   selectedLane,
   onSelectLane,
   onStartAssign,
@@ -434,6 +442,98 @@ export const AutomationPane = observer(function AutomationPane({
       ];
     }),
   );
+
+  // The block's time range, drawn in the header lane's plot area (decision 10).
+  //
+  // Grabbing the BAR moves the block, and its keyframes travel with it for
+  // free: region times are block-local, so shifting startTime shifts every
+  // keyframe's song position without touching a single region.
+  //
+  // The edges resize with the un-grabbed edge held: dragging the LEFT edge
+  // earlier moves the start AND grows the duration; dragging the RIGHT edge
+  // only grows the duration. Regions are deliberately left alone (decision 16,
+  // matching upstream) — a trimmed block leaves them overhanging and unplayed,
+  // an extended one holds its last value, and a wave keeps its size rather
+  // than oscillating on into the new space.
+  const BlockBar = ({
+    block,
+    timeView,
+    onChange,
+  }: {
+    block: Block;
+    timeView: { left: number; width: number };
+    onChange: (block: Block, startTime: number, duration: number) => void;
+  }) => {
+    const songDuration = getLaneSongDuration();
+    if (!(songDuration > 0)) return null;
+    const startFrac = block.startTime / songDuration;
+    const endFrac = (block.startTime + block.duration) / songDuration;
+    const toPct = (frac: number) =>
+      ((frac - timeView.left) / timeView.width) * 100;
+
+    const drag =
+      (mode: "move" | "left" | "right") =>
+      (event: React.PointerEvent<HTMLDivElement>) => {
+        event.preventDefault();
+        event.stopPropagation();
+        const area = (event.currentTarget as HTMLElement).closest(
+          `.${styles.blockLaneArea}`,
+        ) as HTMLElement | null;
+        const areaWidth = area?.getBoundingClientRect().width ?? 1;
+        const startX = event.clientX;
+        const originStart = block.startTime;
+        const originDuration = block.duration;
+        // Pixels to seconds, through the visible window rather than the whole
+        // song: the lanes draw the viewport, not the timeline entire.
+        const perPixel = (timeView.width * songDuration) / areaWidth;
+
+        const onMove = (moveEvent: PointerEvent) => {
+          const delta = (moveEvent.clientX - startX) * perPixel;
+          if (mode === "move") {
+            const next = Math.max(0, originStart + delta);
+            onChange(block, next, originDuration);
+          } else if (mode === "left") {
+            // The right edge holds: an earlier start is a longer block.
+            const next = Math.min(
+              Math.max(0, originStart + delta),
+              originStart + originDuration - 0.05,
+            );
+            onChange(block, next, originStart + originDuration - next);
+          } else {
+            onChange(block, originStart, Math.max(0.05, originDuration + delta));
+          }
+        };
+        const onUp = () => {
+          window.removeEventListener("pointermove", onMove);
+          window.removeEventListener("pointerup", onUp);
+        };
+        window.addEventListener("pointermove", onMove);
+        window.addEventListener("pointerup", onUp);
+      };
+
+    return (
+      <div
+        className={styles.blockBar}
+        data-doc="block-bar"
+        style={{
+          left: `${toPct(startFrac)}%`,
+          width: `${toPct(endFrac) - toPct(startFrac)}%`,
+        }}
+        onPointerDown={drag("move")}
+      >
+        <div
+          className={styles.blockEdge}
+          data-doc="block-edge-left"
+          onPointerDown={drag("left")}
+        />
+        <div
+          className={`${styles.blockEdge} ${styles.blockEdgeRight}`}
+          data-doc="block-edge-right"
+          onPointerDown={drag("right")}
+        />
+      </div>
+    );
+  };
 
   // One parameter lane. Extracted so the layer and block headers can group
   // them (decision 3): the rows themselves are unchanged.
@@ -659,9 +759,20 @@ export const AutomationPane = observer(function AutomationPane({
                       to group and label, and it is where block timing will be
                       grabbed (decisions 3 and 4). */}
                   <div className={styles.laneBlockHeader} data-doc="lane-block">
-                    <span className={styles.laneBlockName}>
-                      {formatDisplayName(entry.pattern.name)}
-                    </span>
+                    {/* The label keeps the left column, as every lane does, so
+                        the bar beside it starts where every plot area does. */}
+                    <div className={styles.laneLabel}>
+                      <span className={styles.laneBlockName}>
+                        {formatDisplayName(entry.pattern.name)}
+                      </span>
+                    </div>
+                    <div className={styles.blockLaneArea}>
+                      <BlockBar
+                        block={entry.block}
+                        timeView={timeView}
+                        onChange={onBlockTimingChange}
+                      />
+                    </div>
                   </div>
                   {lanes
                     .filter((lane) => lane.entryId === entry.id)
