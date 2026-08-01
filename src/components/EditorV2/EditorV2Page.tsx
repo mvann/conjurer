@@ -1025,6 +1025,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
 
           <AutomationPane
             entries={entries}
+            layers={store.layers}
             selectedLane={selectedLane}
             onSelectLane={toggleLane}
             onStartAssign={() => setAssigningLane(true)}

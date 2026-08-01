@@ -22,6 +22,7 @@ import {
   rgbaToCss,
 } from "@/src/components/EditorV2/ValueEditors";
 import { isVector4 } from "@/src/utils/object";
+import type { Layer } from "@/src/types/Layer";
 import {
   laneCurve,
   laneKeysOf,
@@ -48,6 +49,9 @@ const clampHeight = (height: number) =>
 
 type Props = {
   entries: StackEntry[];
+  // The layers, in the experience's order, so the lane groups match the layer
+  // list on the left (decision 28).
+  layers: Layer[];
   selectedLane: { entryId: string; uniform: string } | null;
   onSelectLane: (lane: { entryId: string; uniform: string }) => void;
   // Starts assign mode: the pattern editor opens and the next parameter
@@ -372,6 +376,7 @@ export function ManualValueLine({
 // dragging its top edge.
 export const AutomationPane = observer(function AutomationPane({
   entries,
+  layers,
   selectedLane,
   onSelectLane,
   onStartAssign,
@@ -410,10 +415,15 @@ export const AutomationPane = observer(function AutomationPane({
           key: `${entry.id}-${uniform}`,
           entryId: entry.id,
           uniform,
+          // The block's own header lane carries the pattern name now, so a
+          // parameter lane no longer repeats it — "on the left of it, it'll say
+          // nebula for that pattern, then underneath that will be all of the
+          // parameters for that block". An effect's params still name their
+          // effect, since that is what distinguishes them within the block.
           patternName:
             "effectName" in resolved && resolved.effectName
-              ? `${formatDisplayName(entry.pattern.name)} · ${resolved.effectName}`
-              : formatDisplayName(entry.pattern.name),
+              ? resolved.effectName
+              : "",
           paramName: resolved.paramName,
           param: resolved.param,
           curve:
@@ -423,6 +433,111 @@ export const AutomationPane = observer(function AutomationPane({
         },
       ];
     }),
+  );
+
+  // One parameter lane. Extracted so the layer and block headers can group
+  // them (decision 3): the rows themselves are unchanged.
+  const renderLane = (lane: (typeof lanes)[number]) => (
+        <div
+          key={lane.key}
+          className={`${styles.laneRow} ${
+            selectedLane?.entryId === lane.entryId &&
+            selectedLane?.uniform === lane.uniform
+              ? styles.laneRowSelected
+              : ""
+          } ${draggingKey === orderKey(lane) ? styles.laneRowDragging : ""}`}
+          data-doc="automation-lane"
+          data-lane-key={orderKey(lane)}
+          onClick={() => {
+            // A completed label drag must not also expand the editor.
+            if (dragJustEnded.current) {
+              dragJustEnded.current = false;
+              return;
+            }
+            onSelectLane({ entryId: lane.entryId, uniform: lane.uniform });
+          }}
+        >
+          <div className={styles.laneLabel}>
+            <div
+              className={styles.laneLabelText}
+              onPointerDown={onLabelPointerDown(orderKey(lane))}
+            >
+              <span className={styles.laneLabelPattern}>
+                {lane.patternName}
+              </span>
+              <span className={styles.laneLabelParam}>{lane.paramName}</span>
+            </div>
+            <div className={styles.laneControls}>
+              {(() => {
+                // An empty lane is inert, not suspended: it shows an
+                // open eye, disabled. Only a curve with keyframes
+                // toggles.
+                const suspended =
+                  !!lane.curve &&
+                  lane.curve.keyframes.length > 0 &&
+                  !isCurveActive(lane.curve);
+                return (
+                  <button
+                    className={`${styles.laneControlButton} ${
+                      suspended ? styles.laneControlSuspended : ""
+                    }`}
+                    data-doc="lane-visibility"
+                    disabled={
+                      !lane.curve || lane.curve.keyframes.length === 0
+                    }
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onToggleLaneActive(lane.entryId, lane.uniform);
+                    }}
+                    aria-label={suspended ? "Enable lane" : "Disable lane"}
+                  >
+                    {suspended ? (
+                      <FaEyeSlash size={11} />
+                    ) : (
+                      <FaEye size={11} />
+                    )}
+                  </button>
+                );
+              })()}
+              <button
+                className={styles.laneControlButton}
+                data-doc="lane-delete"
+                onClick={(event) => {
+                  event.stopPropagation();
+                  onDeleteLane(lane.entryId, lane.uniform);
+                }}
+                aria-label="Delete lane"
+              >
+                <FaTrashAlt size={10} />
+              </button>
+            </div>
+          </div>
+          <div className={styles.laneArea}>
+            {isVector4(lane.param.value) || isPalette(lane.param.value) ? (
+              lane.curve && lane.curve.keyframes.length > 0 ? (
+                <LaneValueSwatches curve={lane.curve} timeView={timeView} />
+              ) : null
+            ) : lane.curve && lane.curve.keyframes.length > 0 ? (
+              <>
+                <LaneCurve
+                  curve={lane.curve}
+                  param={lane.param}
+                  timeView={timeView}
+                />
+                {!isCurveActive(lane.curve) && (
+                  <ManualValueLine
+                    param={lane.param}
+                    curve={lane.curve}
+                    dashed
+                  />
+                )}
+              </>
+            ) : (
+              <ManualValueLine param={lane.param} />
+            )}
+            <LaneTimeDot curve={lane.curve} param={lane.param} />
+          </div>
+        </div>
   );
 
   // Sort by the persisted order; lanes not yet listed keep their natural
@@ -524,108 +639,38 @@ export const AutomationPane = observer(function AutomationPane({
         Automation
       </div>
       <div className={styles.lanes} ref={lanesRef}>
-        {lanes.map((lane) => (
-          <div
-            key={lane.key}
-            className={`${styles.laneRow} ${
-              selectedLane?.entryId === lane.entryId &&
-              selectedLane?.uniform === lane.uniform
-                ? styles.laneRowSelected
-                : ""
-            } ${draggingKey === orderKey(lane) ? styles.laneRowDragging : ""}`}
-            data-doc="automation-lane"
-            data-lane-key={orderKey(lane)}
-            onClick={() => {
-              // A completed label drag must not also expand the editor.
-              if (dragJustEnded.current) {
-                dragJustEnded.current = false;
-                return;
-              }
-              onSelectLane({ entryId: lane.entryId, uniform: lane.uniform });
-            }}
-          >
-            <div className={styles.laneLabel}>
-              <div
-                className={styles.laneLabelText}
-                onPointerDown={onLabelPointerDown(orderKey(lane))}
-              >
-                <span className={styles.laneLabelPattern}>
-                  {lane.patternName}
+        {layers.map((layer, layerIndex) => {
+          const layerEntries = entries.filter(
+            (entry) => entry.block.layer === layer,
+          );
+          return (
+            <div key={layer.id} className={styles.laneLayerGroup}>
+              {/* The layer's own lane: a header like a parameter's name lane,
+                  ordered to match the layer list on the left. */}
+              <div className={styles.laneLayerHeader} data-doc="lane-layer">
+                <span className={styles.laneLayerName}>
+                  {layer.name || `Layer ${layerIndex + 1}`}
                 </span>
-                <span className={styles.laneLabelParam}>{lane.paramName}</span>
               </div>
-              <div className={styles.laneControls}>
-                {(() => {
-                  // An empty lane is inert, not suspended: it shows an
-                  // open eye, disabled. Only a curve with keyframes
-                  // toggles.
-                  const suspended =
-                    !!lane.curve &&
-                    lane.curve.keyframes.length > 0 &&
-                    !isCurveActive(lane.curve);
-                  return (
-                    <button
-                      className={`${styles.laneControlButton} ${
-                        suspended ? styles.laneControlSuspended : ""
-                      }`}
-                      data-doc="lane-visibility"
-                      disabled={
-                        !lane.curve || lane.curve.keyframes.length === 0
-                      }
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        onToggleLaneActive(lane.entryId, lane.uniform);
-                      }}
-                      aria-label={suspended ? "Enable lane" : "Disable lane"}
-                    >
-                      {suspended ? (
-                        <FaEyeSlash size={11} />
-                      ) : (
-                        <FaEye size={11} />
-                      )}
-                    </button>
-                  );
-                })()}
-                <button
-                  className={styles.laneControlButton}
-                  data-doc="lane-delete"
-                  onClick={(event) => {
-                    event.stopPropagation();
-                    onDeleteLane(lane.entryId, lane.uniform);
-                  }}
-                  aria-label="Delete lane"
-                >
-                  <FaTrashAlt size={10} />
-                </button>
-              </div>
+
+              {layerEntries.map((entry) => (
+                <div key={entry.id} className={styles.laneBlockGroup}>
+                  {/* The block's own lane. It carries no curve yet — its job is
+                      to group and label, and it is where block timing will be
+                      grabbed (decisions 3 and 4). */}
+                  <div className={styles.laneBlockHeader} data-doc="lane-block">
+                    <span className={styles.laneBlockName}>
+                      {formatDisplayName(entry.pattern.name)}
+                    </span>
+                  </div>
+                  {lanes
+                    .filter((lane) => lane.entryId === entry.id)
+                    .map(renderLane)}
+                </div>
+              ))}
             </div>
-            <div className={styles.laneArea}>
-              {isVector4(lane.param.value) || isPalette(lane.param.value) ? (
-                lane.curve && lane.curve.keyframes.length > 0 ? (
-                  <LaneValueSwatches curve={lane.curve} timeView={timeView} />
-                ) : null
-              ) : lane.curve && lane.curve.keyframes.length > 0 ? (
-                <>
-                  <LaneCurve
-                    curve={lane.curve}
-                    param={lane.param}
-                    timeView={timeView}
-                  />
-                  {!isCurveActive(lane.curve) && (
-                    <ManualValueLine
-                      param={lane.param}
-                      curve={lane.curve}
-                      dashed
-                    />
-                  )}
-                </>
-              ) : (
-                <ManualValueLine param={lane.param} />
-              )}
-              <LaneTimeDot curve={lane.curve} param={lane.param} />
-            </div>
-          </div>
-        ))}
+          );
+        })}
         {/* The final lane is the way in: click, then pick a parameter
             in the pattern editor. Styled exactly like Add Pattern. */}
         <button

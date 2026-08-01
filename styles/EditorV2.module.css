@@ -3174,3 +3174,48 @@
 .addLayer:hover {
   color: #eceef4;
 }
+
+/* ---- Lane hierarchy (decisions 3, 4, 28): layer lane, then each block's own
+   header lane, then that block's parameter lanes beneath it. The two header
+   rows carry no curve — they group and label, and the block's row is where its
+   timing will be grabbed. ---- */
+.laneLayerGroup {
+  margin-bottom: 2px;
+}
+
+.laneLayerHeader {
+  display: flex;
+  align-items: center;
+  padding: 4px 0 4px 10px;
+  border-bottom: 1px solid rgba(232, 236, 244, 0.08);
+}
+
+.laneLayerName {
+  color: rgba(232, 236, 244, 0.55);
+  font-family: var(--font-mystical), serif;
+  font-size: 11px;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+}
+
+/* Deliberately NOT indented. A lane's plot area has to start at the same x as
+   the expanded editor's, or the song-start line and every keyframe stop lining
+   up with the timeline above them — the invariant the preview's whole value
+   rests on. Indent the header TEXT instead of the rows. */
+.laneBlockGroup {
+  margin-left: 0;
+}
+
+.laneBlockHeader {
+  display: flex;
+  align-items: center;
+  min-height: 20px;
+  padding: 3px 0 3px 20px;
+}
+
+.laneBlockName {
+  color: rgba(232, 236, 244, 0.72);
+  font-family: var(--font-mystical), serif;
+  font-size: 12px;
+  letter-spacing: 0.06em;
+}
