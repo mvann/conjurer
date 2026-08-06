@@ -26,8 +26,10 @@ import type { Layer } from "@/src/types/Layer";
 import type { Block } from "@/src/types/Block";
 import { getLaneSongDuration } from "@/src/components/EditorV2/blockLanes";
 import {
+  captureBlockLanes,
   laneCurve,
   laneKeysOf,
+  type CapturedLanes,
 } from "@/src/components/EditorV2/blockLanes";
 import { isPalette } from "@/src/params/palette/Palette";
 import {
@@ -58,6 +60,10 @@ type Props = {
     block: Block,
     startTime: number,
     duration: number,
+    // Present only for a LEFT-edge resize: the block's lanes as they were when
+    // the drag began, to be replayed against the new frame so the automation
+    // holds still in song time. See BlockBar.
+    rebaseFrom?: CapturedLanes,
   ) => void;
   selectedLane: { entryId: string; uniform: string } | null;
   onSelectLane: (lane: { entryId: string; uniform: string }) => void;
@@ -451,10 +457,27 @@ export const AutomationPane = observer(function AutomationPane({
   //
   // The edges resize with the un-grabbed edge held: dragging the LEFT edge
   // earlier moves the start AND grows the duration; dragging the RIGHT edge
-  // only grows the duration. Regions are deliberately left alone (decision 16,
-  // matching upstream) — a trimmed block leaves them overhanging and unplayed,
-  // an extended one holds its last value, and a wave keeps its size rather
-  // than oscillating on into the new space.
+  // only grows the duration.
+  //
+  // The RIGHT edge leaves regions alone (decision 16, matching upstream) — a
+  // trimmed block leaves them overhanging and unplayed, an extended one holds
+  // its last value, and a wave keeps its size rather than oscillating on into
+  // the new space.
+  //
+  // The LEFT edge does NOT, and this is a deliberate departure from upstream.
+  // Because region time is block-local, leaving regions alone would slide the
+  // whole automation along with the edge — spending the gesture on something
+  // moving the block already does. The owner's ruling: the left edge extends or
+  // trims the FRONT of the automation exactly as the right edge does the back,
+  // so the automation holds still in song time and only the block's frame
+  // moves. That means rewriting region times, which the capture-and-replay
+  // below does through the projection rather than by shifting each variation
+  // type by hand.
+  //
+  // Captured ONCE, at pointer-down: every frame re-projects from the same
+  // original, so dragging the edge in and back out inside one gesture loses
+  // nothing. Only a completed trim is destructive — the format has no way to
+  // hold automation that starts before the block does — and undo covers that.
   const BlockBar = ({
     block,
     timeView,
@@ -462,7 +485,12 @@ export const AutomationPane = observer(function AutomationPane({
   }: {
     block: Block;
     timeView: { left: number; width: number };
-    onChange: (block: Block, startTime: number, duration: number) => void;
+    onChange: (
+      block: Block,
+      startTime: number,
+      duration: number,
+      rebaseFrom?: CapturedLanes,
+    ) => void;
   }) => {
     const songDuration = getLaneSongDuration();
     if (!(songDuration > 0)) return null;
@@ -483,6 +511,10 @@ export const AutomationPane = observer(function AutomationPane({
         const startX = event.clientX;
         const originStart = block.startTime;
         const originDuration = block.duration;
+        // The lanes as they are now, so a left-edge drag can replay them
+        // against each new frame instead of compounding one rewrite onto the
+        // last. Nothing else needs them.
+        const captured = mode === "left" ? captureBlockLanes(block) : undefined;
         // Pixels to seconds, through the visible window rather than the whole
         // song: the lanes draw the viewport, not the timeline entire.
         const perPixel = (timeView.width * songDuration) / areaWidth;
@@ -498,7 +530,7 @@ export const AutomationPane = observer(function AutomationPane({
               Math.max(0, originStart + delta),
               originStart + originDuration - 0.05,
             );
-            onChange(block, next, originStart + originDuration - next);
+            onChange(block, next, originStart + originDuration - next, captured);
           } else {
             onChange(block, originStart, Math.max(0.05, originDuration + delta));
           }
