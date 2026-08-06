@@ -276,23 +276,60 @@ themselves, and unreliably during a long debugging run, where a design decision
 arrives disguised as a failing test. When a fix requires choosing what something
 should DO rather than why it broke, that is a fork — grep first.
 
-### Where the next increment picks up
-
-1. **Retire `experiencePersistence.ts`.** Switch to the blob and the draft
-   (decision 17). The e2e tests bind to behaviour rather than to localStorage
-   keys, so they should survive the mechanism change.
-2. **The left pane becomes the layer list** (decisions 1–2, 28) with Add Layer,
-   per-layer Add Pattern, rename, reorder, and collapse via the pattern row's
-   caret gesture. `blockStack.ts` already has the operations.
-3. **Undo** over `store.layers` snapshots, `lanedParams` included.
-4. The gear pane (27), the chrome, and the color lane's presentation.
-
 One deliberate divergence to keep in mind: `easing` IS written as its own
 region even though upstream bakes it on load. Folding it away at write time
 destroyed the named easing the moment the author picked it. See the commit.
 
-After that: the layer list in the left pane (decisions 1–2, 28), the gear pane
-(27), and the chrome.
+### Two corrections the owner made after review
+
+Both are cases where the build had followed the plan and the plan was thinner
+than the transcript. Both are logged here because the *reason* generalizes.
+
+- **The block's left edge.** Decision 16 said regions are untouched on resize,
+  matching upstream. That is right for the right edge and for moving, and wrong
+  for the left edge: because region time is block-local, leaving regions alone
+  slides every keyframe with the edge — spending the gesture on something the
+  move gesture already does. The owner's ruling: *"you could always just move
+  the block to move the start forward. And this way, it's like you have more
+  functionality total if moving the left side, like, extends the front of the
+  automation just like how moving the right side moves the back."* So the left
+  edge rebases: capture the lanes as curves (song fractions, basis-independent),
+  set the new frame, replay. Trimming CLIPS at the new edge with a boundary
+  keyframe rather than letting `curveToVariations` clamp, which would drag the
+  outside keyframe onto the edge and steepen everything after it.
+- **Horizontal orientation.** It is not a rearrangement. *"The expanded editor
+  stays where it is in vertical view and the canopy viewer goes into a new pane
+  that's to the left of the vertical view stack."* The stack keeps its order and
+  the canopy leaves it — which is exactly why the editor "just stays up": it
+  inherits the vacated slot, so there is nothing to close back to. Hence no X
+  (@@L11357), no Escape, no toggle-shut on a repeat lane click, and "No
+  automation selected" when nothing is picked (@@L14616).
+
+The generalizable lesson, on top of the one below: a decision recorded in the
+plan can be a faithful summary of the transcript and still be wrong, because the
+owner ruled on the case in front of him and the plan generalized it further than
+he did. When a decision reads as symmetric ("regions are untouched on resize"),
+check whether he actually spoke to both sides.
+
+### Where the next increment picks up
+
+1. **Opacity as a pseudo-param** (decision 25) — tri-state auto/manual/lane at
+   the top of every pattern's list, with right-click → "Reset to auto".
+2. **The color lane's presentation** against the spec settled below: centred
+   chip, gradient chip twice as wide, time selection working on color lanes.
+3. **Undo** over `store.layers` snapshots, `lanedParams` included.
+4. Info Strip copy still uses the old pattern-stack vocabulary; effect opacity
+   exclusion; demo seed data; the `untitled`-name save guard.
+
+### A note on the pixel tests
+
+`e2e/canopy.spec.ts` used to compare screenshots byte for byte. PNG is
+compressed, so one altered pixel rewrites everything after it — 107 pixels
+differing by a single channel step moved 8,132 bytes against a 100-byte
+"nothing moved" threshold. That is the GPU's own noise floor, so the static
+assertions were intermittently false for reasons unrelated to the app. They
+decode and count visibly-changed pixels now. If a pixel test starts flapping,
+check the metric before the app.
 
 ## The color / palette lane — resolved
 
