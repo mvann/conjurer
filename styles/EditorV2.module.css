@@ -626,6 +626,17 @@
   pointer-events: none;
 }
 
+/* Automation past the block's end. The regions are really there — a right-trim
+   leaves them overhanging rather than rewriting them — but nothing evaluates
+   them out there, so they read as authored-but-inert rather than as playing.
+   non-scaling-stroke on .curvePath keeps the dashes even under the viewBox's
+   non-uniform scaling. */
+.curvePathOutside {
+  stroke-dasharray: 3 4;
+  opacity: 0.55;
+  filter: none;
+}
+
 /* Wide invisible stroke over each segment for grabbing; drag bends it. */
 .curveHit {
   fill: none;

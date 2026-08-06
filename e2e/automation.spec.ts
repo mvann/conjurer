@@ -425,9 +425,13 @@ const makeOneSegment = async (page: any) => {
   return box;
 };
 
+// The solid in-block path. `curvePathOutside` contains `curvePath` as a
+// substring, so a bare substring match picks up the dotted overhang too.
 const pathCommands = async (page: any) => {
   const d = (await page
-    .locator("[class*=automationEditor__] [class*=curvePath]")
+    .locator(
+      "[class*=automationEditor__] [class*=curvePath]:not([class*=curvePathOutside])",
+    )
     .getAttribute("d"))!;
   return [...d.matchAll(/[ML] ([-\d.]+) ([-\d.]+)/g)].map((m) => ({
     x: parseFloat(m[1]),
@@ -1070,11 +1074,12 @@ test.describe("automation is clipped to its block", () => {
     await page.mouse.up();
     await page.waitForTimeout(300);
 
-    // The expanded editor's path now begins at the block's edge, and its last
-    // point is the block's other edge rather than the view's.
+    // The expanded editor's path now begins at the block's edge. Its far end
+    // is NOT asserted here: moving the left edge slides the automation with it
+    // (regions are block-local and untouched), so the last keyframe can end up
+    // past the block's end. That overhang case is the next test's subject.
     const after = await pathCommands(page);
     expect(after[0].x).toBeGreaterThan(before[0].x + 10);
-    expect(after[after.length - 1].x).toBeLessThanOrEqual(100.5);
 
     // The dimmed zone marks the same boundary the curve now starts at.
     const dim = page.locator("[class*=editorDimZone]").first();
@@ -1101,5 +1106,91 @@ test.describe("automation is clipped to its block", () => {
       .boundingBox())!;
     const barStartPct = ((barBox.x - area.x) / area.width) * 100;
     expect(Math.abs(previewStart - barStartPct)).toBeLessThan(2);
+  });
+
+  test("keyframes past the block end draw dotted, with no backwards hold", async ({
+    page,
+  }) => {
+    await openTimeFactorLane(page);
+    const lineArea = (await page
+      .locator("[class*=editorLineArea]")
+      .boundingBox())!;
+    for (const [fx, fy] of [
+      [0.25, 0.75],
+      [0.55, 0.25],
+      [0.85, 0.6],
+    ])
+      await page.mouse.dblclick(
+        lineArea.x + lineArea.width * fx,
+        lineArea.y + lineArea.height * fy,
+      );
+    await expect(page.locator("[class*=keyframeDot]")).toHaveCount(3);
+
+    // Trim the block's RIGHT edge inward. Trimming does not rewrite regions,
+    // so the later keyframes are now outside the block.
+    const edge = page.locator("[data-doc=block-edge-right]").first();
+    const edgeBox = (await edge.boundingBox())!;
+    const area = (await page
+      .locator("[class*=blockLaneArea]")
+      .first()
+      .boundingBox())!;
+    await page.mouse.move(
+      edgeBox.x + edgeBox.width / 2,
+      edgeBox.y + edgeBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.waitForTimeout(50);
+    await page.mouse.move(
+      area.x + area.width * 0.6,
+      edgeBox.y + edgeBox.height / 2,
+      { steps: 12 },
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    // The path must never turn back on itself: every x is >= the one before.
+    // A hold drawn to the block's end from a keyframe beyond it is exactly
+    // that backwards step.
+    const commands = await pathCommands(page);
+    for (let i = 1; i < commands.length; i++)
+      expect(commands[i].x).toBeGreaterThanOrEqual(commands[i - 1].x - 0.01);
+
+    // The part beyond the block is drawn, but dotted.
+    const dotted = page.locator(
+      "[class*=automationEditor__] [class*=curvePathOutside]",
+    );
+    await expect(dotted).toHaveCount(1);
+    expect(
+      await dotted.evaluate((el) => getComputedStyle(el).strokeDasharray),
+    ).not.toBe("none");
+
+    // And the preview says the same thing.
+    await expect(
+      page.locator("[class*=laneCurveSvg] [class*=curvePathOutside]"),
+    ).toHaveCount(1);
+  });
+
+  test("a last keyframe inside the block still holds out to the block end", async ({
+    page,
+  }) => {
+    await openTimeFactorLane(page);
+    const lineArea = (await page
+      .locator("[class*=editorLineArea]")
+      .boundingBox())!;
+    await page.mouse.dblclick(
+      lineArea.x + lineArea.width * 0.3,
+      lineArea.y + lineArea.height * 0.6,
+    );
+    await expect(page.locator("[class*=keyframeDot]")).toHaveCount(1);
+
+    // Block still spans the song, so the hold runs to its end and nothing is
+    // outside it.
+    const commands = await pathCommands(page);
+    const dot = (await page.locator("[class*=keyframeDot]").boundingBox())!;
+    const dotPct = ((dot.x - lineArea.x) / lineArea.width) * 100;
+    expect(commands[commands.length - 1].x).toBeGreaterThan(dotPct);
+    await expect(
+      page.locator("[class*=automationEditor__] [class*=curvePathOutside]"),
+    ).toHaveCount(0);
   });
 });

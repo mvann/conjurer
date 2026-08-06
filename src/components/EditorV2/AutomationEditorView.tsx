@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
 import { FaEye, FaEyeSlash } from "react-icons/fa";
 import { MdOpacity } from "react-icons/md";
 import styles from "@/styles/EditorV2.module.css";
@@ -140,6 +140,8 @@ export const AutomationEditorView = observer(function AutomationEditorView({
 }: Props) {
   const keyframes = curve?.keyframes ?? [];
   const segments = curve ? getSegments(curve) : [];
+  // Unique per mounted editor, so two lanes' clip paths never collide.
+  const clipId = useId().replace(/:/g, "");
   // A deactivated lane: the curve is drawn dimmed, a bright dashed line
   // marks the manual value that is actually driving the parameter,
   // and any curve edit reactivates.
@@ -1116,6 +1118,15 @@ export const AutomationEditorView = observer(function AutomationEditorView({
       .join(" ");
   };
 
+  // Where the block ends, in the path's own coordinates — the boundary the
+  // solid and dotted halves are split at. Null when there is nothing past it
+  // to draw, which is the ordinary case.
+  const blockOverhangX =
+    blockRange && keyframes.length > 0 &&
+    keyframes[keyframes.length - 1].time > blockRange.end
+      ? timeToX(blockRange.end)
+      : null;
+
   const buildFullPath = () => {
     if (keyframes.length === 0) return "";
     const first = keyframes[0];
@@ -1143,10 +1154,19 @@ export const AutomationEditorView = observer(function AutomationEditorView({
       );
       parts.push(segmentPathFrom(i));
     }
-    parts.push(
-      `L ${timeToX(last.time)} ${valueToTopPct(last.value)}`,
-      `L ${blockRange ? timeToX(blockRange.end) : 100} ${valueToTopPct(last.value)}`,
-    );
+    parts.push(`L ${timeToX(last.time)} ${valueToTopPct(last.value)}`);
+    // The hold after the last keyframe exists only if that keyframe is INSIDE
+    // the block, and it stops at the block's end. When the last keyframe sits
+    // past the end — which is what a right-trim leaves behind, since trimming
+    // does not rewrite regions — there is no hold to draw at all. Drawing one
+    // to the block's end would run backwards, leftward from the keyframe.
+    const holdEnd = blockRange
+      ? last.time < blockRange.end
+        ? timeToX(blockRange.end)
+        : null
+      : 100;
+    if (holdEnd !== null)
+      parts.push(`L ${holdEnd} ${valueToTopPct(last.value)}`);
     return parts.join(" ");
   };
 
@@ -1433,7 +1453,35 @@ export const AutomationEditorView = observer(function AutomationEditorView({
             viewBox="0 0 100 100"
             preserveAspectRatio="none"
           >
-            <path className={styles.curvePath} d={buildFullPath()} />
+            {/* Anything past the block's end is drawn dotted: it is real
+                authored automation, but nothing evaluates it out there. The
+                split is done with clip rects rather than by cutting the path
+                data, so a segment straddling the boundary breaks at exactly
+                the right pixel without having to be subdivided. */}
+            {blockOverhangX !== null && (
+              <defs>
+                <clipPath id={`${clipId}-in`}>
+                  <rect x="-500" y="-500" width={500 + blockOverhangX} height="1100" />
+                </clipPath>
+                <clipPath id={`${clipId}-out`}>
+                  <rect x={blockOverhangX} y="-500" width="1000" height="1100" />
+                </clipPath>
+              </defs>
+            )}
+            <path
+              className={styles.curvePath}
+              d={buildFullPath()}
+              clipPath={
+                blockOverhangX !== null ? `url(#${clipId}-in)` : undefined
+              }
+            />
+            {blockOverhangX !== null && (
+              <path
+                className={`${styles.curvePath} ${styles.curvePathOutside}`}
+                d={buildFullPath()}
+                clipPath={`url(#${clipId}-out)`}
+              />
+            )}
             {selectedSegment !== null && keyframes[selectedSegment + 1] && (
               <path
                 className={styles.segmentHighlight}

@@ -1,5 +1,5 @@
 import { observer } from "mobx-react-lite";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState } from "react";
 import { FaEye, FaEyeSlash, FaPlus, FaTrashAlt } from "react-icons/fa";
 import styles from "@/styles/EditorV2.module.css";
 import {
@@ -175,6 +175,7 @@ function LaneCurve({
   // with no block behind it.
   blockRange: { start: number; end: number } | null;
 }) {
+  const clipId = useId().replace(/:/g, "");
   const view = laneViewRange(curve, param);
   const viewMax = view.center + view.span / 2;
   const top = (v: number) => ((viewMax - v) / view.span) * 100;
@@ -197,10 +198,21 @@ function LaneCurve({
         `L ${x(a.time + (b.time - a.time) * point.t)} ${top(point.value)}`,
       );
   }
-  parts.push(
-    `L ${x(last.time)} ${top(last.value)}`,
-    `L ${blockRange ? x(blockRange.end) : 100} ${top(last.value)}`,
-  );
+  parts.push(`L ${x(last.time)} ${top(last.value)}`);
+  // The hold past the last keyframe exists only while that keyframe is inside
+  // the block, and stops at the block's end. A keyframe beyond the end (what a
+  // right-trim leaves) gets no hold: drawing one to the block's end would run
+  // backwards. Mirrors buildFullPath in the expanded editor.
+  const holdEnd = blockRange
+    ? last.time < blockRange.end
+      ? x(blockRange.end)
+      : null
+    : 100;
+  if (holdEnd !== null) parts.push(`L ${holdEnd} ${top(last.value)}`);
+
+  // Anything past the block's end draws dotted, the same as in the editor.
+  const overhangX =
+    blockRange && last.time > blockRange.end ? x(blockRange.end) : null;
 
   return (
     <>
@@ -211,7 +223,28 @@ function LaneCurve({
         viewBox="0 0 100 100"
         preserveAspectRatio="none"
       >
-        <path className={styles.curvePath} d={parts.join(" ")} />
+        {overhangX !== null && (
+          <defs>
+            <clipPath id={`${clipId}-in`}>
+              <rect x="-500" y="-500" width={500 + overhangX} height="1100" />
+            </clipPath>
+            <clipPath id={`${clipId}-out`}>
+              <rect x={overhangX} y="-500" width="1000" height="1100" />
+            </clipPath>
+          </defs>
+        )}
+        <path
+          className={styles.curvePath}
+          d={parts.join(" ")}
+          clipPath={overhangX !== null ? `url(#${clipId}-in)` : undefined}
+        />
+        {overhangX !== null && (
+          <path
+            className={`${styles.curvePath} ${styles.curvePathOutside}`}
+            d={parts.join(" ")}
+            clipPath={`url(#${clipId}-out)`}
+          />
+        )}
       </svg>
       {/* Scale-model keyframe dots (positioned divs, not svg circles:
           the stretched viewBox would deform them). */}
