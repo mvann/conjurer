@@ -29,13 +29,7 @@ import { computed, IComputedValue, observable, runInAction } from "mobx";
 import type { Block } from "@/src/types/Block";
 import type { Store } from "@/src/types/Store";
 import { saveBlockLanes } from "@/src/utils/laneStatePersistence";
-import {
-  AutomationCurve,
-  AutomationKeyframe,
-  getSegments,
-  insertBoundary,
-  payloadAtTime,
-} from "@/src/components/EditorV2/automation";
+import { AutomationCurve } from "@/src/components/EditorV2/automation";
 import {
   curveToVariations,
   variationsToCurve,
@@ -326,107 +320,6 @@ export const writeLaneCurve = (
   runInAction(() => {
     owner.parameterVariations[uniform] = regions;
   });
-};
-
-// ------------------------------------------------------- rebasing on a frame
-
-/** Every lane of a block and its effect chain, read out as curves. */
-export type CapturedLanes = {
-  laneKey: string;
-  curve: AutomationCurve | null;
-}[];
-
-/**
- * Read every lane of a block out as a curve, BEFORE its time frame moves.
- *
- * Curves are in song fractions, which do not move when the block's origin
- * does — that basis-independence is the whole trick. Capture once at the start
- * of a gesture and the original is available to re-project on every frame,
- * so a drag can be walked back and forth without accumulating fitting error.
- */
-export const captureBlockLanes = (block: Block): CapturedLanes =>
-  laneKeysOf(block).map((laneKey) => ({
-    laneKey,
-    curve: laneCurve(block, laneKey),
-  }));
-
-const FRACTION_EPS = 1e-9;
-
-/**
- * The curve with everything before `at` cut away — the shape from `at` onward
- * left exactly as it was.
- *
- * This is what makes a front trim honest. `curveToVariations` CLAMPS times
- * into the block, so handing it a curve that starts outside would drag the
- * outside keyframe onto the new edge and steepen everything after it: a ramp
- * trimmed halfway would still read 0.1 at its new start instead of the value it
- * actually held there. Cutting first, with a boundary keyframe carrying the
- * evaluated value, leaves the surviving span untouched.
- */
-const clipCurveFront = (
-  curve: AutomationCurve,
-  at: number,
-): AutomationCurve => {
-  const { keyframes } = curve;
-  if (keyframes.length === 0) return curve;
-  // The front only grew — there is nothing on the far side of the cut.
-  if (keyframes[0].time >= at - FRACTION_EPS) return curve;
-
-  // Past the last keyframe the curve is a horizontal extension, and
-  // insertBoundary only splits BETWEEN keyframes, so that case collapses to
-  // the single value it holds.
-  const last = keyframes[keyframes.length - 1];
-  const payload = payloadAtTime(curve, at);
-  const carry = (keyframe: AutomationKeyframe): AutomationKeyframe =>
-    payload ? { ...keyframe, ...payload } : keyframe;
-
-  if (last.time <= at + FRACTION_EPS)
-    return { ...curve, keyframes: [carry({ ...last, time: at })], segments: [] };
-
-  const work = insertBoundary(curve, at);
-  const segments = getSegments(work);
-  const first = work.keyframes.findIndex(
-    (keyframe) => keyframe.time >= at - FRACTION_EPS,
-  );
-  return {
-    ...curve,
-    // A value lane's leadIn is the period before its first keyframe; the cut
-    // becomes the new first keyframe, so there is no lead-in left to hold.
-    leadIn: undefined,
-    keyframes: work.keyframes
-      .slice(first)
-      .map((keyframe, index) => (index === 0 ? carry(keyframe) : keyframe)),
-    segments: segments.slice(first),
-  };
-};
-
-/**
- * Write captured lanes back against the block's CURRENT frame, holding the
- * automation still in SONG time.
- *
- * Rather than shifting each variation type by hand — a curve's node times and
- * handle widths, a wave's period, a triangle's seconds-valued phase — this
- * replays the captured fractions through the same projection the round-trip
- * tests already cover. Growing the frame at the front lets the first region's
- * opening value hold across the new space, with no invented flat region;
- * shrinking it cuts the front away at the new edge.
- *
- * Only the FRONT is clipped. The right edge is held throughout a left-edge
- * drag, so anything overhanging the back was already overhanging before the
- * gesture began and is none of this function's business.
- *
- * Lanes that read as empty are skipped rather than written: writing null would
- * reset them to the manual value, which is a different gesture entirely.
- */
-export const rebaseBlockLanes = (
-  block: Block,
-  captured: CapturedLanes,
-  store: Store,
-) => {
-  const { blockStartTime, songDuration } = regionContextFor(block);
-  const front = songDuration > 0 ? blockStartTime / songDuration : 0;
-  for (const { laneKey, curve } of captured)
-    if (curve) writeLaneCurve(block, laneKey, clipCurveFront(curve, front), store);
 };
 
 /**

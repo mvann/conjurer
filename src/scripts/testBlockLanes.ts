@@ -15,10 +15,10 @@
  *   resolves to nothing rather than throwing.
  * - laneKeysOf treats a lone constant region as the manual value, not a lane
  *   (decision 7), unless it has been explicitly armed (decisions 8 and 9).
- * - A LEFT-edge block resize holds the automation still in SONG time. Region
- *   times are block-local, so the naive thing — leaving them alone — slides
- *   every keyframe along with the edge. That failure is invisible in the data
- *   and only shows up as automation that drifts off its music.
+ * - A block's automation BEGINS WHERE THE BLOCK DOES, and moving the block's
+ *   left edge moves the start of the curve with it. This holds for free as long
+ *   as resizing leaves region data alone, which is also what keeps a block
+ *   resized here identical in upstream's editor.
  */
 import { observable, runInAction } from "mobx";
 import { CurveVariation, makeCurveNode } from "@/src/types/Variations/CurveVariation";
@@ -29,8 +29,6 @@ import {
   laneCurve,
   laneKeysOf,
   writeLaneCurve,
-  captureBlockLanes,
-  rebaseBlockLanes,
   resolveLaneOwner,
   effectLaneKey,
   setLaneSongDuration,
@@ -304,105 +302,65 @@ console.log("block lane read model\n");
   console.log("  a song-length change re-derives lanes");
 }
 
-// ---- the left edge moves the block's frame, not its automation
+// ---- a block's automation begins where the block does
 {
-  // A block sitting from 30s to 90s of a 120s song, carrying a ramp that fills
-  // it: 0.1 at song 30 (fraction 0.25) rising to 0.9 at song 90 (fraction
-  // 0.75).
-  const makeRamped = () => {
-    const block = makeBlock(
-      { u_intensity: { value: 0.5 } },
-      {
-        u_intensity: [
-          new CurveVariation(60, [
-            makeCurveNode(0, 0.1),
-            makeCurveNode(60, 0.9),
-          ]),
-        ],
-      },
-    );
-    runInAction(() => {
-      block.startTime = 30;
-      block.duration = 60;
-    });
-    return block;
+  // The invariant, in the owner's words: "the curve should start at the start
+  // of the block. So moving the left side of the block should move the start of
+  // the curve." It holds for free — region time is block-local, so region 0
+  // begins at the block's origin no matter where that origin is — and the way
+  // to keep it holding is to leave regions ALONE when the frame moves.
+  //
+  // This test exists because the branch once did the opposite: it rewrote
+  // region times on a left-edge resize so the automation held still in song
+  // time. That was built to spec, tried, and reversed. The version that
+  // survives is upstream's, so a block resized here behaves the same in their
+  // editor.
+  const block = makeBlock(
+    { u_intensity: { value: 0.5 } },
+    {
+      u_intensity: [
+        new CurveVariation(60, [makeCurveNode(0, 0.1), makeCurveNode(60, 0.9)]),
+      ],
+    },
+  );
+  runInAction(() => {
+    block.startTime = 30;
+    block.duration = 60;
+  });
+
+  const regionsBefore = block.parameterVariations.u_intensity;
+  const startsAtBlock = () => {
+    const curve = laneCurve(block, "u_intensity");
+    return curve ? curve.keyframes[0].time * SONG - block.startTime : NaN;
   };
+  check(
+    Math.abs(startsAtBlock()) < 1e-6,
+    `the curve must begin at the block's start, off by ${startsAtBlock()}s`,
+  );
 
-  const at = (curve: { keyframes: { time: number; value: number }[] } | null, time: number) =>
-    curve?.keyframes.find((keyframe) => Math.abs(keyframe.time - time) < 1e-6);
+  // Drag the left edge earlier: the right edge is held, so the block grows.
+  runInAction(() => {
+    block.startTime = 10;
+    block.duration = 80;
+  });
+  check(
+    Math.abs(startsAtBlock()) < 1e-6,
+    `the curve's start must follow the left edge, off by ${startsAtBlock()}s`,
+  );
+  check(
+    block.parameterVariations.u_intensity === regionsBefore,
+    "resizing must not rewrite region data — untouched regions are what make the slide free, and what keeps the block identical in upstream's editor",
+  );
 
-  // Growing the front. The block starts 20s earlier and is 20s longer; the
-  // ramp must still run from song 30 to song 90, with its opening value simply
-  // holding across the new space.
-  {
-    const block = makeRamped();
-    const captured = captureBlockLanes(block);
-    runInAction(() => {
-      block.startTime = 10;
-      block.duration = 80;
-    });
-    rebaseBlockLanes(block, captured, stubStore);
-    const curve = laneCurve(block, "u_intensity");
-    check(
-      !!at(curve, 0.25) && Math.abs(at(curve, 0.25)!.value - 0.1) < 1e-6,
-      `growing the left edge must leave the ramp's start at song 30, got ${JSON.stringify(curve?.keyframes)}`,
-    );
-    check(
-      !!at(curve, 0.75) && Math.abs(at(curve, 0.75)!.value - 0.9) < 1e-6,
-      `growing the left edge must leave the ramp's end at song 90, got ${JSON.stringify(curve?.keyframes)}`,
-    );
-    console.log("  growing the left edge holds the automation still in song time");
-  }
-
-  // Trimming the front. The block now starts at song 50, a third of the way
-  // along the ramp, so the surviving span must start at the value the ramp
-  // actually held there — 0.1 + (20/60) * 0.8 — and NOT at 0.1 dragged onto
-  // the new edge, which is what clamping alone would produce.
-  {
-    const block = makeRamped();
-    const captured = captureBlockLanes(block);
-    runInAction(() => {
-      block.startTime = 50;
-      block.duration = 40;
-    });
-    rebaseBlockLanes(block, captured, stubStore);
-    const curve = laneCurve(block, "u_intensity");
-    const cut = at(curve, 50 / 120);
-    const expected = 0.1 + (20 / 60) * 0.8;
-    check(
-      !!cut && Math.abs(cut.value - expected) < 1e-3,
-      `trimming the left edge must cut the ramp at the value it held there (${expected.toFixed(4)}), got ${cut?.value}`,
-    );
-    check(
-      !!at(curve, 0.75) && Math.abs(at(curve, 0.75)!.value - 0.9) < 1e-6,
-      `trimming the left edge must not disturb the held right edge, got ${JSON.stringify(curve?.keyframes)}`,
-    );
-    console.log("  trimming the left edge cuts the front without steepening what is left");
-  }
-
-  // Walking the edge out and back inside one gesture replays the same capture
-  // every time, so it must land exactly where it started.
-  {
-    const block = makeRamped();
-    const before = JSON.stringify(laneCurve(block, "u_intensity"));
-    const captured = captureBlockLanes(block);
-    for (const [startTime, duration] of [
-      [10, 80],
-      [55, 35],
-      [30, 60],
-    ]) {
-      runInAction(() => {
-        block.startTime = startTime;
-        block.duration = duration;
-      });
-      rebaseBlockLanes(block, captured, stubStore);
-    }
-    check(
-      JSON.stringify(laneCurve(block, "u_intensity")) === before,
-      "dragging the left edge out and back within one gesture must be lossless",
-    );
-    console.log("  a left-edge drag walked back to where it began is lossless");
-  }
+  // The curve slid whole: it keeps its length, so it now ends 20s short of the
+  // block's right edge and the last value holds across the rest.
+  const curve = laneCurve(block, "u_intensity");
+  const endsAt = curve!.keyframes[curve!.keyframes.length - 1].time * SONG;
+  check(
+    Math.abs(endsAt - 70) < 1e-6,
+    `the curve must keep its length rather than stretching, ends at ${endsAt}s (expected 70)`,
+  );
+  console.log("  a block's automation starts where the block starts, and slides with it");
 }
 
 console.log("");

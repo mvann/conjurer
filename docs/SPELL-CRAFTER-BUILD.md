@@ -285,18 +285,23 @@ destroyed the named easing the moment the author picked it. See the commit.
 Both are cases where the build had followed the plan and the plan was thinner
 than the transcript. Both are logged here because the *reason* generalizes.
 
-- **The block's left edge.** Decision 16 said regions are untouched on resize,
-  matching upstream. That is right for the right edge and for moving, and wrong
-  for the left edge: because region time is block-local, leaving regions alone
-  slides every keyframe with the edge — spending the gesture on something the
-  move gesture already does. The owner's ruling: *"you could always just move
-  the block to move the start forward. And this way, it's like you have more
-  functionality total if moving the left side, like, extends the front of the
-  automation just like how moving the right side moves the back."* So the left
-  edge rebases: capture the lanes as curves (song fractions, basis-independent),
-  set the new frame, replay. Trimming CLIPS at the new edge with a boundary
-  keyframe rather than letting `curveToVariations` clamp, which would drag the
-  outside keyframe onto the edge and steepen everything after it.
+- **The block's left edge — raised, changed, and changed back.** Decision 16
+  said regions are untouched on resize, matching upstream. The owner first ruled
+  that wrong for the left edge, on the grounds that sliding the automation
+  spends the gesture on something the move gesture already does: *"you could
+  always just move the block to move the start forward. And this way, it's like
+  you have more functionality total if moving the left side, like, extends the
+  front of the automation just like how moving the right side moves the back."*
+  That was built — capture the lanes as curves, set the new frame, replay, with
+  a real front clip so trimming did not steepen what survived — and then
+  reversed after he used it: *"I think that the curve probably should start at
+  the start of the block. So moving the left side of the block should move the
+  start of the curve... makes it closer to the upstream behaviour and in line
+  with the data model."* So decision 16 stands as originally written, and the
+  invariant it protects is now stated positively and tested: **a block's
+  automation begins where the block does.** The whole curve slides, keeping its
+  shape and its length; growing the block leaves the tail holding, shrinking it
+  leaves regions overhanging and unplayed. Do not rebuild the rebase.
 - **Horizontal orientation.** It is not a rearrangement. *"The expanded editor
   stays where it is in vertical view and the canopy viewer goes into a new pane
   that's to the left of the vertical view stack."* The stack keeps its order and
@@ -305,11 +310,14 @@ than the transcript. Both are logged here because the *reason* generalizes.
   (@@L11357), no Escape, no toggle-shut on a repeat lane click, and "No
   automation selected" when nothing is picked (@@L14616).
 
-The generalizable lesson, on top of the one below: a decision recorded in the
-plan can be a faithful summary of the transcript and still be wrong, because the
-owner ruled on the case in front of him and the plan generalized it further than
-he did. When a decision reads as symmetric ("regions are untouched on resize"),
-check whether he actually spoke to both sides.
+The generalizable lesson is not the one it first looked like. The left-edge
+episode reads at first as "the plan generalized past the transcript" — but the
+plan had it right, and it was the fresh ruling that did not survive contact with
+the running app. So: when a change would make Spell Crafter diverge from
+upstream's own behaviour on the shared data model, that cost is worth saying out
+loud BEFORE building, because it is the thing that decided the reversal. The
+horizontal-mode correction below is the other kind, where the transcript really
+did hold detail the plan had compressed away.
 
 ### Where the next increment picks up
 

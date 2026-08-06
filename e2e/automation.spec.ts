@@ -676,14 +676,36 @@ test.describe("segment types", () => {
       expect(Math.abs(y - 10) < 0.01 || Math.abs(y - 90) < 0.01).toBe(true);
 
     // Dragging a keyframe flips it between the two states.
-    const onDot = page.locator("[class*=keyframeDot]").first();
+    //
+    // Let the view settle first. The drag converts pointer distance into value
+    // through the CURRENT view span, so starting it while the range is still
+    // animating scales the delta wrong and the drag can land short of the
+    // halfway point that flips the state.
+    await settleBox(page, "[class*=editorLineArea]");
+    //
+    // Pick the On dot by WHERE IT IS, not by DOM position. The assertion above
+    // sorts for a reason — dot order in the DOM is not keyframe order in time —
+    // so `.first()` was landing on the Off dot often enough to make this test
+    // flap, dragging a keyframe that was already at 90% further down and then
+    // failing because nothing had changed.
+    const onDot = page.locator('[class*=keyframeDot][style*="top: 10%"]');
+    await expect(onDot).toHaveCount(1);
     const dotBox = (await onDot.boundingBox())!;
-    await page.mouse.move(dotBox.x + 4, dotBox.y + 4);
+    await page.mouse.move(dotBox.x + dotBox.width / 2, dotBox.y + dotBox.height / 2);
     await page.mouse.down();
-    await page.mouse.move(dotBox.x + 4, dotBox.y + box.height * 0.6, {
-      steps: 5,
-    });
+    // The drag handler is installed by the pointerdown's React update, so a
+    // move dispatched in the same tick lands before anything is listening.
+    // Give it a frame, then move in enough steps that the handler sees motion
+    // rather than one teleport.
+    await page.waitForTimeout(50);
+    await page.mouse.move(
+      dotBox.x + dotBox.width / 2,
+      dotBox.y + box.height * 0.6,
+      { steps: 10 },
+    );
+    await page.waitForTimeout(50);
     await page.mouse.up();
+    await expect(onDot).toHaveCount(0);
     const topsAfter = await page
       .locator("[class*=keyframeDot]")
       .evaluateAll((dots) => dots.map((dot) => (dot as HTMLElement).style.top));

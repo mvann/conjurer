@@ -24,11 +24,9 @@ import {
   disarmLane,
   laneCurve,
   laneKeysOf,
-  rebaseBlockLanes,
   resumeLane,
   suspendLane,
   writeLaneCurve,
-  type CapturedLanes,
 } from "@/src/components/EditorV2/blockLanes";
 import {
   addEffectToBlock,
@@ -438,28 +436,19 @@ export const EditorV2Page = observer(function EditorV2Page() {
     runInAction(() => (layer.collapsed = !layer.collapsed));
   };
 
-  // Block timing (decisions 10 and 16).
-  //
-  // Moving the block, and resizing its RIGHT edge, leave regions untouched: a
+  // Block timing (decisions 10 and 16). Regions are deliberately untouched: a
   // trimmed block leaves them overhanging and unplayed, an extended one holds
   // its last value, and a wave keeps its size — which is exactly what upstream
-  // does, so a block resized that way behaves the same in their editor.
-  //
-  // A LEFT-edge resize arrives with the lanes captured before the drag began,
-  // and replaying them against the new frame holds the automation still in song
-  // time — the front of the automation grows or trims, rather than the whole
-  // thing sliding. See BlockBar for why.
+  // does, so a block resized here behaves the same in their editor.
   const changeBlockTiming = (
     block: Block,
     startTime: number,
     duration: number,
-    rebaseFrom?: CapturedLanes,
   ) => {
     runInAction(() => {
       block.startTime = Math.max(0, startTime);
       block.duration = Math.max(0.05, duration);
     });
-    if (rebaseFrom) rebaseBlockLanes(block, rebaseFrom, store);
     scheduleAutosave();
   };
 
