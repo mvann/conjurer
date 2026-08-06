@@ -2991,16 +2991,19 @@
   padding: 8px 14px;
 }
 
+/* Option rows (App orientation, Render size, Display mode) are just words.
+   No boxes: a chip's border and fill are chrome that competes with the plain
+   text items around them in the same pane. The selected one reads the way the
+   snap menu's does — a static glow plus an underline, since among short labels
+   the glow alone is too subtle to find at a glance. */
 .gearChoices {
   display: flex;
-  gap: 6px;
+  gap: 14px;
 }
 
 .gearChoice {
-  flex: 1;
-  padding: 4px 6px;
-  border: 1px solid rgba(232, 236, 244, 0.16);
-  border-radius: 4px;
+  padding: 4px 0;
+  border: none;
   background: none;
   color: rgba(232, 236, 244, 0.6);
   font-family: var(--font-mystical), serif;
@@ -3008,7 +3011,7 @@
   cursor: pointer;
   transition:
     color 0.16s ease,
-    border-color 0.16s ease;
+    filter 0.16s ease;
 }
 
 .gearChoice:hover {
@@ -3016,8 +3019,13 @@
 }
 
 .gearChoiceActive {
-  color: #eceef4;
-  border-color: rgba(232, 236, 244, 0.45);
+  color: #ffffff;
+  filter: drop-shadow(0 0 3px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 10px rgba(170, 190, 235, 0.6));
+  text-decoration: underline;
+  text-underline-offset: 4px;
+  text-decoration-thickness: 1px;
+  text-decoration-color: rgba(232, 236, 244, 0.75);
 }
 
 /* The gear itself carries the unsaved-work glow now that Save lives inside
