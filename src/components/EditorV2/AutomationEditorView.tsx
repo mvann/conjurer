@@ -1120,9 +1120,19 @@ export const AutomationEditorView = observer(function AutomationEditorView({
     if (keyframes.length === 0) return "";
     const first = keyframes[0];
     const last = keyframes[keyframes.length - 1];
-    // The curve exists only from the song's start: the left extension
-    // begins at the start line, not the view edge.
-    const parts = [`M ${timeToX(0)} ${valueToTopPct(first.value)}`];
+    // The curve exists only where the BLOCK does. Outside it the block is not
+    // in `LayerV2.activeBlocks` at all, so no BlockStackNode is mounted and
+    // `updateParameters` is never called — there is no value out there to draw.
+    // Falling back to the song's start keeps the old behaviour for a lane with
+    // no block behind it (visibility).
+    //
+    // The holds INSIDE the block are real and stay: a Curve region returns its
+    // first node's value before that node and its last node's value after, and
+    // an under-filling region tiling holds the last value to the block's end.
+    // So both ends clamp rather than disappear.
+    const parts = [
+      `M ${timeToX(blockRange ? blockRange.start : 0)} ${valueToTopPct(first.value)}`,
+    ];
     for (let i = 0; i < keyframes.length - 1; i++) {
       // Route through the starting keyframe explicitly: a segment whose
       // shape does not end on its endpoint (a wave with fractional
@@ -1135,7 +1145,7 @@ export const AutomationEditorView = observer(function AutomationEditorView({
     }
     parts.push(
       `L ${timeToX(last.time)} ${valueToTopPct(last.value)}`,
-      `L 100 ${valueToTopPct(last.value)}`,
+      `L ${blockRange ? timeToX(blockRange.end) : 100} ${valueToTopPct(last.value)}`,
     );
     return parts.join(" ");
   };

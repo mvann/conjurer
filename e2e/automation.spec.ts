@@ -1014,3 +1014,92 @@ test.describe("segment types", () => {
     await expect(page.locator("[class*=automationEditor__]")).toHaveCount(0);
   });
 });
+
+// A block's automation is drawn only where the block exists.
+//
+// Outside its span the block is not in LayerV2.activeBlocks, so no
+// BlockStackNode is mounted for it and updateParameters is never called —
+// there is no value out there. Drawing the curve's horizontal extensions
+// across the rest of the song claimed automation that nothing evaluates.
+test.describe("automation is clipped to its block", () => {
+  test.beforeEach(async ({ page }) => gotoEditorClean(page));
+
+  test("the curve starts at the block, in the editor and the preview", async ({
+    page,
+  }) => {
+    await openTimeFactorLane(page);
+
+    // Two keyframes, so there is a real curve to clip.
+    const lineArea0 = (await page
+      .locator("[class*=editorLineArea]")
+      .boundingBox())!;
+    await page.mouse.dblclick(
+      lineArea0.x + lineArea0.width * 0.45,
+      lineArea0.y + lineArea0.height * 0.7,
+    );
+    await page.mouse.dblclick(
+      lineArea0.x + lineArea0.width * 0.75,
+      lineArea0.y + lineArea0.height * 0.3,
+    );
+    await expect(page.locator("[class*=keyframeDot]")).toHaveCount(2);
+
+    // A block spanning the whole song draws from the song's start line, which
+    // sits a little in from the view's left edge (the editor deliberately
+    // shows a margin of pre-song time).
+    const before = await pathCommands(page);
+    expect(before[0].x).toBeLessThan(15);
+
+    // Drag the block's left edge in, so it no longer starts at the song start.
+    const edge = page.locator("[data-doc=block-edge-left]").first();
+    const edgeBox = (await edge.boundingBox())!;
+    const area = (await page
+      .locator("[class*=blockLaneArea]")
+      .first()
+      .boundingBox())!;
+    await page.mouse.move(
+      edgeBox.x + edgeBox.width / 2,
+      edgeBox.y + edgeBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.waitForTimeout(50);
+    await page.mouse.move(
+      edgeBox.x + area.width * 0.3,
+      edgeBox.y + edgeBox.height / 2,
+      { steps: 12 },
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    // The expanded editor's path now begins at the block's edge, and its last
+    // point is the block's other edge rather than the view's.
+    const after = await pathCommands(page);
+    expect(after[0].x).toBeGreaterThan(before[0].x + 10);
+    expect(after[after.length - 1].x).toBeLessThanOrEqual(100.5);
+
+    // The dimmed zone marks the same boundary the curve now starts at.
+    const dim = page.locator("[class*=editorDimZone]").first();
+    const dimBox = (await dim.boundingBox())!;
+    const lineArea = (await page
+      .locator("[class*=editorLineArea]")
+      .boundingBox())!;
+    const dimEndPct =
+      ((dimBox.x + dimBox.width - lineArea.x) / lineArea.width) * 100;
+    expect(Math.abs(dimEndPct - after[0].x)).toBeLessThan(2);
+
+    // And the lane preview beneath agrees. It cannot be compared to the editor
+    // in percentages — the editor's plot area also covers a margin of pre-song
+    // time, so the same moment sits at a different percentage in each — so it
+    // is checked against the block bar drawn in its OWN coordinate space.
+    const previewD = (await page
+      .locator("[class*=laneCurveSvg] path")
+      .first()
+      .getAttribute("d"))!;
+    const previewStart = parseFloat(previewD.match(/M ([-\d.]+)/)![1]);
+    const barBox = (await page
+      .locator("[data-doc=block-bar]")
+      .first()
+      .boundingBox())!;
+    const barStartPct = ((barBox.x - area.x) / area.width) * 100;
+    expect(Math.abs(previewStart - barStartPct)).toBeLessThan(2);
+  });
+});

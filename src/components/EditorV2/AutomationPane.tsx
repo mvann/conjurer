@@ -164,10 +164,16 @@ function LaneCurve({
   curve,
   param,
   timeView,
+  blockRange,
 }: {
   curve: AutomationCurve;
   param: PatternParam;
   timeView: { left: number; width: number };
+  // The block's span as fractions of the song. The curve is drawn only inside
+  // it: outside, the block is not in LayerV2.activeBlocks, so nothing is
+  // evaluating its parameters and there is no value to show. Null for a lane
+  // with no block behind it.
+  blockRange: { start: number; end: number } | null;
 }) {
   const view = laneViewRange(curve, param);
   const viewMax = view.center + view.span / 2;
@@ -178,7 +184,7 @@ function LaneCurve({
   const segments = getSegments(curve);
   const first = keyframes[0];
   const last = keyframes[keyframes.length - 1];
-  const parts = [`M 0 ${top(first.value)}`];
+  const parts = [`M ${blockRange ? x(blockRange.start) : 0} ${top(first.value)}`];
   for (let i = 0; i < keyframes.length - 1; i++) {
     const a = keyframes[i];
     const b = keyframes[i + 1];
@@ -193,7 +199,7 @@ function LaneCurve({
   }
   parts.push(
     `L ${x(last.time)} ${top(last.value)}`,
-    `L 100 ${top(last.value)}`,
+    `L ${blockRange ? x(blockRange.end) : 100} ${top(last.value)}`,
   );
 
   return (
@@ -418,11 +424,23 @@ export const AutomationPane = observer(function AutomationPane({
     ].flatMap((uniform: string) => {
       const resolved = resolveLane(entry, uniform);
       if (!resolved) return [];
+      // The block's span, for clipping the curve to it. An effect's params run
+      // over the parent block's timeline, and `entry.block` IS that parent, so
+      // one range covers every lane of the entry.
+      const songDuration = getLaneSongDuration();
+      const blockRange =
+        songDuration > 0
+          ? {
+              start: entry.block.startTime / songDuration,
+              end: (entry.block.startTime + entry.block.duration) / songDuration,
+            }
+          : null;
       return [
         {
           key: `${entry.id}-${uniform}`,
           entryId: entry.id,
           uniform,
+          blockRange,
           // The block's own header lane carries the pattern name now, so a
           // parameter lane no longer repeats it — "on the left of it, it'll say
           // nebula for that pattern, then underneath that will be all of the
@@ -629,6 +647,7 @@ export const AutomationPane = observer(function AutomationPane({
                   curve={lane.curve}
                   param={lane.param}
                   timeView={timeView}
+                  blockRange={lane.blockRange}
                 />
                 {!isCurveActive(lane.curve) && (
                   <ManualValueLine

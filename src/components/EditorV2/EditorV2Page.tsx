@@ -22,6 +22,7 @@ import {
 import {
   armLane,
   disarmLane,
+  getLaneSongDuration,
   laneCurve,
   laneKeysOf,
   resumeLane,
@@ -1040,9 +1041,16 @@ export const EditorV2Page = observer(function EditorV2Page() {
                   scheduleAutosave();
                 }}
                 blockRange={(() => {
-                  // The block's window, as fractions of the song, for the
-                  // dimmed zones outside it.
-                  const total = transportTime.durationSeconds || 0;
+                  // The block's window, as fractions of the song: the dimmed
+                  // zones outside it, and the bounds the curve is drawn
+                  // between.
+                  //
+                  // Read through getLaneSongDuration, the same basis the lane
+                  // previews project against — NOT the transport's duration.
+                  // The two disagree when no song is loaded, and the editor
+                  // then drew a curve the preview beneath it had already
+                  // clipped.
+                  const total = getLaneSongDuration();
                   if (!(total > 0)) return null;
                   const block = selectedEntry.block;
                   const frame = block.parentBlock ?? block;
