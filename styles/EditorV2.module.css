@@ -3052,28 +3052,62 @@
 
    Done as a grid over the SAME three siblings the vertical layout stacks, so
    neither layout owns a different DOM. ---- */
+/* Horizontal orientation (decision 32). The vertical stack is NOT rearranged:
+   the canopy VIEWER lifts out of it into a full-height pane on the left, and
+   everything else carries on stacked to the right in the order it already had.
+   The slot the canopy left behind is the expanded editor's for good — which is
+   what "it just always stays up" means. */
 .mainColumnHorizontal {
   display: grid;
-  grid-template-columns: minmax(320px, 40%) 1fr;
-  grid-template-rows: auto minmax(0, 1fr);
+  grid-template-columns: minmax(320px, 40%) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1fr) auto auto;
   min-height: 0;
 }
 
-.mainColumnHorizontal .canopyPane {
+.canopyViewerPane {
+  position: relative;
   grid-column: 1;
-  grid-row: 1 / span 2;
+  grid-row: 1 / span 3;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid rgba(232, 236, 244, 0.08);
+  /* The same wash the canopy pane carries in vertical mode, so lifting the
+     viewer out does not change how it sits on the page. */
+  background: radial-gradient(
+    120% 90% at 50% 0%,
+    rgba(150, 165, 205, 0.05),
+    rgba(150, 165, 205, 0) 55%
+  );
+}
+
+.mainColumnHorizontal .canopyPane {
+  grid-column: 2;
+  grid-row: 1;
   min-height: 0;
 }
 
 .mainColumnHorizontal .timelineArea {
   grid-column: 2;
-  grid-row: 1;
+  grid-row: 2;
 }
 
 .mainColumnHorizontal .automationPane {
   grid-column: 2;
-  grid-row: 2;
+  grid-row: 3;
   min-height: 0;
+}
+
+/* The resting state of the permanent editor pane, before a lane is picked. */
+.editorEmpty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: rgba(232, 236, 244, 0.32);
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  pointer-events: none;
 }
 
 /* ---- Layers (decision 28). A layer is a header row over the pattern rows it

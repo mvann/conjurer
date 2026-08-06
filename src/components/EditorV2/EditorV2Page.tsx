@@ -158,6 +158,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
   const [saveNotice, setSaveNotice] = useState<string | null>(null);
   const [gearOpen, setGearOpen] = useState(false);
   const orientation = getOrientation();
+  const isHorizontal = orientation === "horizontal";
   // Names available to Open, fetched when the pane opens.
   const [experienceNames, setExperienceNames] = useState<string[]>([]);
 
@@ -728,20 +729,26 @@ export const EditorV2Page = observer(function EditorV2Page() {
   }, [selectedLane, selectedResolved]);
 
   // Escape closes the automation editor view. The docs overlay's Escape is
-  // captured before this and stops propagation.
+  // captured before this and stops propagation. In horizontal orientation the
+  // editor is a permanent pane, so there is nothing for Escape to close.
   useEffect(() => {
-    if (!selectedLane) return;
+    if (!selectedLane || isHorizontal) return;
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === "Escape") setSelectedLane(null);
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-  }, [selectedLane]);
+  }, [selectedLane, isHorizontal]);
 
+  // Clicking the selected lane again closes the editor — but not in horizontal
+  // orientation, where the editor is a permanent pane and closing it would
+  // leave a hole. There, a repeat click is simply a no-op.
   const toggleLane = (lane: { entryId: string; uniform: string }) =>
     setSelectedLane((current) =>
       current?.entryId === lane.entryId && current?.uniform === lane.uniform
-        ? null
+        ? isHorizontal
+          ? current
+          : null
         : lane,
     );
 
@@ -967,7 +974,29 @@ export const EditorV2Page = observer(function EditorV2Page() {
           }`}
           data-orientation={orientation}
         >
-          <section className={styles.canopyPane} data-doc="canopy">
+          {/* Horizontal orientation (decision 32) does not rearrange the app —
+              it lifts the canopy VIEWER out of the stack into its own full-height
+              pane on the left, and the vertical stack carries on unchanged to the
+              right of it. The slot the canopy vacated belongs permanently to the
+              expanded editor, which is why that editor "just stays up" in this
+              mode: there is nothing behind it to go back to. */}
+          {isHorizontal && (
+            <section className={styles.canopyViewerPane} data-doc="canopy">
+              <div className={styles.paneLabel}>Canopy</div>
+              <CanopyPane patterns={visiblePatterns} dust={dust} />
+              <CanopyControls
+                volume={volume}
+                onVolumeChange={setVolume}
+                dust={dust}
+                onDustChange={setDust}
+              />
+            </section>
+          )}
+
+          <section
+            className={styles.canopyPane}
+            data-doc={isHorizontal ? "editor-pane" : "canopy"}
+          >
             <div className={styles.paneLabel}>
               {selectedResolved && selectedEntry
                 ? `Automation · ${formatDisplayName(selectedEntry.pattern.name)}${
@@ -976,9 +1005,18 @@ export const EditorV2Page = observer(function EditorV2Page() {
                       ? ` · ${selectedResolved.effectName}`
                       : ""
                   } · ${selectedResolved.paramName}`
-                : "Canopy"}
+                : isHorizontal
+                  ? "Automation"
+                  : "Canopy"}
             </div>
-            <CanopyPane patterns={visiblePatterns} dust={dust} />
+            {!isHorizontal && (
+              <CanopyPane patterns={visiblePatterns} dust={dust} />
+            )}
+            {isHorizontal && !(selectedResolved && selectedLane) && (
+              <div className={styles.editorEmpty} data-doc="editor-empty">
+                No automation selected
+              </div>
+            )}
             {selectedResolved && selectedLane && selectedEntry && (
               <AutomationEditorView
                 key={`${selectedLane.entryId}:${selectedLane.uniform}`}
@@ -1020,7 +1058,9 @@ export const EditorV2Page = observer(function EditorV2Page() {
                     end: (frame.startTime + frame.duration) / total,
                   };
                 })()}
-                onClose={() => setSelectedLane(null)}
+                onClose={
+                  isHorizontal ? undefined : () => setSelectedLane(null)
+                }
               />
             )}
             {autosavePrompt && (
@@ -1045,7 +1085,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
                 </div>
               </div>
             )}
-            {!selectedResolved && (
+            {!isHorizontal && !selectedResolved && (
               <CanopyControls
                 volume={volume}
                 onVolumeChange={setVolume}

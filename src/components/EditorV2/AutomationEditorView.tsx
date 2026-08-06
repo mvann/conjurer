@@ -112,7 +112,10 @@ type Props = {
   // Detected onset times as fractions of the song, sorted ascending.
   transients: number[] | null;
   onCurveChange: (curve: AutomationCurve) => void;
-  onClose: () => void;
+  // Omitted in horizontal orientation, where the editor is a permanent pane
+  // rather than something opened over the canopy — there is nothing to close it
+  // back to, so it has no close button.
+  onClose?: () => void;
   // The block this lane belongs to, as fractions of the song. The view still
   // spans the whole song; everything outside this range is darkened and inert
   // (decision 11).
@@ -1830,13 +1833,15 @@ export const AutomationEditorView = observer(function AutomationEditorView({
         </button>
       )}
 
-      <button
-        className={styles.automationEditorClose}
-        onClick={onClose}
-        aria-label="Close automation editor"
-      >
-        ✕
-      </button>
+      {onClose && (
+        <button
+          className={styles.automationEditorClose}
+          onClick={onClose}
+          aria-label="Close automation editor"
+        >
+          ✕
+        </button>
+      )}
 
       <div
         ref={backdropMenuRef}
