@@ -740,7 +740,7 @@ export const PatternsPanel = observer(function PatternsPanel({
                           setIsPicking(!isPicking);
                         }}
                       >
-                        <FaPlus size={11} /> Add Pattern
+                        <FaPlus size={9} /> Add Pattern
                       </button>
                     </>
                   )}

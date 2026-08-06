@@ -1896,28 +1896,37 @@
 
 /* ---- Add-pattern flow ---- */
 
-/* Boxless silver CTA with Beckon's breathing glow. */
+/* Each "add" action lines up with the names of the thing it adds, the way Add
+   Effect lines up with the effect names above it, and wears their treatment
+   minus the small caps. That makes the indent alone carry the nesting:
+   Add Layer sits at the layer names, Add Pattern one step in at the pattern
+   names, Add Effect one step further at the effect names.
+
+   Add Pattern used to be the loudest thing in the panel — 16px semibold with a
+   breathing glow — while Add Layer, which is the broader action, was the
+   quietest. Their weights are the other way round now. */
 .addPattern {
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 8px;
+  gap: 6px;
   background: none;
   border: none;
-  padding: 8px 0;
+  /* Lines the plus up with the pattern names above it. */
+  padding: 2px 0 8px 30px;
   margin-top: 2px;
-  color: #e8ecf4;
+  color: #aab1c4;
   font-family: inherit;
-  font-size: 16px;
-  font-weight: 600;
+  font-size: 13px;
   letter-spacing: 0.4px;
   cursor: pointer;
-  transition: color 0.2s ease;
-  animation: cta-breathe 2.8s ease-in-out infinite;
+  transition:
+    color 0.18s ease,
+    filter 0.18s ease;
 }
 
 .addPattern:hover {
   color: #ffffff;
+  filter: drop-shadow(0 0 6px rgba(232, 236, 244, 0.7));
 }
 
 @keyframes cta-breathe {
@@ -2773,7 +2782,6 @@
   display: inline-flex;
   align-items: center;
   gap: 7px;
-  margin-left: auto;
   padding: 4px 2px;
   border: none;
   background: none;
@@ -3033,6 +3041,9 @@
 .gearButton {
   display: inline-flex;
   align-items: center;
+  /* Pushes itself and the login button that follows to the right end of the
+     header; the login button used to carry this. */
+  margin-left: auto;
   padding: 4px 6px;
   border: none;
   background: none;
@@ -3047,9 +3058,13 @@
   color: rgba(232, 236, 244, 0.95);
 }
 
+/* Unsaved work. This used to shift the icon to gold, which read as a
+   different material rather than a state; the gear stays silver and says it
+   by brightening and glowing instead. */
 .gearButtonDirty {
-  color: #f6e7bd;
-  filter: drop-shadow(0 0 6px rgba(246, 231, 189, 0.55));
+  color: #ffffff;
+  filter: drop-shadow(0 0 4px rgba(225, 233, 250, 0.95))
+    drop-shadow(0 0 11px rgba(170, 190, 235, 0.6));
 }
 
 /* ---- Horizontal orientation (decision 32): the canopy docks LEFT as a
@@ -3196,25 +3211,30 @@
   color: rgba(232, 236, 244, 0.95);
 }
 
+/* The broadest action in the panel, so the strongest of the three — and the
+   shallowest, lined up with the layer names it sits under. */
 .addLayer {
   display: flex;
   align-items: center;
   gap: 6px;
   width: 100%;
   margin-top: 6px;
-  padding: 8px 12px;
+  padding: 8px 0 8px 26px;
   border: none;
   background: none;
-  color: rgba(232, 236, 244, 0.6);
+  color: rgba(232, 236, 244, 0.82);
   font-family: var(--font-mystical), serif;
   font-size: 13px;
   letter-spacing: 0.06em;
   cursor: pointer;
-  transition: color 0.16s ease;
+  transition:
+    color 0.16s ease,
+    filter 0.16s ease;
 }
 
 .addLayer:hover {
-  color: #eceef4;
+  color: #ffffff;
+  filter: drop-shadow(0 0 6px rgba(232, 236, 244, 0.7));
 }
 
 /* ---- Lane hierarchy (decisions 3, 4, 28): layer lane, then each block's own

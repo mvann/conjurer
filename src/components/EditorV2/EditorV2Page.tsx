@@ -916,12 +916,16 @@ export const EditorV2Page = observer(function EditorV2Page() {
       <header className={styles.header}>
         <h1 className={styles.title}>Conjurer</h1>
         <span className={styles.subtitle}>Spell Crafter</span>
-        <GearButton isDirty={isDirty} onOpen={openGear} />
         {saveNotice && (
           <span className={styles.saveNotice} data-doc="save-notice">
             {saveNotice}
           </span>
         )}
+        {/* Settings sits with the account controls on the right, left of the
+            name — the arrangement nearly every app uses, and the one the main
+            Conjurer header already implies by putting its menus left and its
+            identity right. */}
+        <GearButton isDirty={isDirty} onOpen={openGear} />
         <EditorLoginButton />
       </header>
 
