@@ -1,4 +1,5 @@
 import { expect, test, Page } from "@playwright/test";
+import Jimp from "jimp";
 import {
   gotoEditorClean,
   insertPattern,
@@ -34,12 +35,47 @@ const canopyClip = async (page: Page) => {
 const shoot = async (page: Page) =>
   page.screenshot({ clip: await canopyClip(page) });
 
-const diffBytes = (a: Buffer, b: Buffer) => {
-  let diff = Math.abs(a.length - b.length);
-  const length = Math.min(a.length, b.length);
-  for (let i = 0; i < length; i++) if (a[i] !== b[i]) diff++;
-  return diff;
+// How many PIXELS actually changed, ignoring differences too small to see.
+//
+// This used to compare the two PNGs byte for byte, which is not the same
+// question and gave a badly false answer. PNG is compressed, so one altered
+// pixel near the top rewrites everything after it: a measured 107 pixels
+// differing by a single channel step — a delta of 1 out of 255, invisible —
+// moved 8,132 bytes and blew straight past a 100-byte "nothing moved"
+// threshold. The GPU produces that much wobble between two identical frames on
+// its own, which is why the static assertions here failed intermittently for
+// reasons that had nothing to do with the app.
+//
+// Decoding first and thresholding per channel asks the question the tests
+// actually mean: did anything visibly move?
+const CHANNEL_TOLERANCE = 8;
+
+const diffPixels = async (a: Buffer, b: Buffer) => {
+  const [left, right] = await Promise.all([Jimp.read(a), Jimp.read(b)]);
+  if (
+    left.bitmap.width !== right.bitmap.width ||
+    left.bitmap.height !== right.bitmap.height
+  )
+    return left.bitmap.width * left.bitmap.height;
+  let changed = 0;
+  for (let i = 0; i < left.bitmap.data.length; i += 4)
+    for (let channel = 0; channel < 3; channel++)
+      if (
+        Math.abs(left.bitmap.data[i + channel] - right.bitmap.data[i + channel]) >
+        CHANNEL_TOLERANCE
+      ) {
+        changed++;
+        break;
+      }
+  return changed;
 };
+
+// A frame that has settled: a handful of stray pixels is compositor noise, not
+// motion.
+const STATIC = 40;
+// A frame that visibly moved. The clip is 500x350 at most, so a real repaint
+// touches thousands of pixels; anything at this scale is unambiguous.
+const MOVED = 500;
 
 const setParam = async (page: Page, label: string, value: number) => {
   const row = page.locator("[data-doc=param-row]").filter({ hasText: label });
@@ -73,7 +109,7 @@ test.describe("canopy pixel smoke", () => {
     const still1 = await shoot(page);
     await page.waitForTimeout(1_000);
     const still2 = await shoot(page);
-    expect(diffBytes(still1, still2)).toBeLessThan(100);
+    expect(await diffPixels(still1, still2)).toBeLessThan(STATIC);
 
     // An edit repaints: Warp dramatically changes Nebula's shape.
     await openPatternPanel(page);
@@ -81,7 +117,7 @@ test.describe("canopy pixel smoke", () => {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(400);
     const warped = await shoot(page);
-    expect(diffBytes(still2, warped)).toBeGreaterThan(2_000);
+    expect(await diffPixels(still2, warped)).toBeGreaterThan(MOVED);
   });
 
   test("automation drives the shader as the transport moves", async ({
@@ -122,7 +158,7 @@ test.describe("canopy pixel smoke", () => {
     await page.mouse.click(box.x + box.width * 0.7, box.y + box.height / 2);
     await page.waitForTimeout(500);
     const late = await shoot(page);
-    expect(diffBytes(early, late)).toBeGreaterThan(2_000);
+    expect(await diffPixels(early, late)).toBeGreaterThan(MOVED);
   });
 
   test("backdrop dropdown: canopy by default, off is solid, waveform draws", async ({
@@ -155,14 +191,14 @@ test.describe("canopy pixel smoke", () => {
     const canopy1 = await shoot(page);
     await page.waitForTimeout(900);
     const canopy2 = await shoot(page);
-    expect(diffBytes(canopy1, canopy2)).toBeGreaterThan(2_000);
+    expect(await diffPixels(canopy1, canopy2)).toBeGreaterThan(MOVED);
 
     // Canopy off leaves the solid backdrop: nothing moves.
     await toggleLayer("Canopy");
     const solid1 = await shoot(page);
     await page.waitForTimeout(900);
     const solid2 = await shoot(page);
-    expect(diffBytes(solid1, solid2)).toBeLessThan(100);
+    expect(await diffPixels(solid1, solid2)).toBeLessThan(STATIC);
 
     // Waveform on (with a song loaded, canopy still off): the song's
     // peaks draw behind the curve, static but visibly different.
@@ -171,9 +207,9 @@ test.describe("canopy pixel smoke", () => {
     const plain = await shoot(page);
     await toggleLayer("Waveform");
     const wave = await shoot(page);
-    expect(diffBytes(plain, wave)).toBeGreaterThan(2_000);
+    expect(await diffPixels(plain, wave)).toBeGreaterThan(MOVED);
     const wave2 = await shoot(page);
-    expect(diffBytes(wave, wave2)).toBeLessThan(100);
+    expect(await diffPixels(wave, wave2)).toBeLessThan(STATIC);
 
     // Both layers on stack: the waveform stays put while the canopy
     // animates through behind it.
@@ -181,7 +217,7 @@ test.describe("canopy pixel smoke", () => {
     const stacked1 = await shoot(page);
     await page.waitForTimeout(900);
     const stacked2 = await shoot(page);
-    expect(diffBytes(stacked1, stacked2)).toBeGreaterThan(2_000);
+    expect(await diffPixels(stacked1, stacked2)).toBeGreaterThan(MOVED);
   });
 
   test("param edits still repaint after an undo", async ({ page }) => {
@@ -201,6 +237,6 @@ test.describe("canopy pixel smoke", () => {
     await page.keyboard.press("Escape");
     await page.waitForTimeout(400);
     const afterEdit = await shoot(page);
-    expect(diffBytes(beforeEdit, afterEdit)).toBeGreaterThan(2_000);
+    expect(await diffPixels(beforeEdit, afterEdit)).toBeGreaterThan(MOVED);
   });
 });
