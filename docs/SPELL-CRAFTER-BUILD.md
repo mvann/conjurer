@@ -357,11 +357,10 @@ ramp.
 
 In order:
 
-1. **Consolidate the value lane** — the section above. Doing this first is what
-   makes items 2 and 3 fall out rather than being built twice.
-2. **Time selection on colour lanes.** Comes free from 1 if 1 is done properly;
-   if it does not, 1 was not done properly.
-3. **Keyframe dots in the colour lane preview.** Same.
+1. ~~**Consolidate the value lane**~~ — DONE, and items 2 and 3 did fall out of
+   it, along with a fourth nobody had connected to it (see below).
+2. ~~**Time selection on colour lanes.**~~ DONE.
+3. ~~**Keyframe dots in the colour lane preview.**~~ DONE.
 4. **Undo** over `store.layers` snapshots, `lanedParams` included, takeover
    excluded (decision 6 makes it memory-only).
 5. **Info Strip copy** still speaks in pattern-stack vocabulary, not layers and
@@ -369,6 +368,62 @@ In order:
 6. **Demo seed** — `demoExperience.json` is still the legacy blob.
 7. The `untitled`-name save guard (the no-song guard is done and working; it is
    what refuses a save until a song is chosen).
+
+### The value-lane consolidation: DONE
+
+`LaneValueSwatches` is gone. One `LaneCurve` draws every lane kind, differing
+only where the spec says it does. The period geometry moved to `valueLane.ts`,
+which the lane preview AND the expanded editor both read — the same one-source
+rule that already bound them to one time viewport and one value range.
+
+The test of whether it was done properly was whether the other reported bugs
+fell out rather than needing their own patches. They did, and so did a fourth:
+
+- **Keyframe dots in the preview** — the shared dot pass now runs for every
+  lane kind ("the automation preview curve should also show the keyframes but
+  they should be smaller", @@L776, with no exception for colour).
+- **Periods fit the block** (@@L1478 *"color automation preview doesnt fit to
+  block"*). `LaneCurve` always took a `blockRange`; `LaneValueSwatches` did not
+  take one at all, and tiled across the whole view. The editor had the same bug
+  hidden under its dim overlay. One shared `valueRegions` fixed both.
+- **Time selection** needed real work beyond deleting the gates: the window
+  operations were rebuilding keyframes as bare `{time, value}` and dropping the
+  period payload, which on a value lane starts a period with no colour.
+  `copyCurveWindow`, `pasteClipAt` and `insertBoundary` carry payloads now.
+
+Hard-won details worth not undoing:
+
+- **A boundary splits a PERIOD, not a segment.** `insertBoundary` gives its new
+  keyframe the payload holding there, and a gradient is cut at its interpolated
+  colour with the left half's far end moved to the cut — the payload analogue
+  of `sliceSpec`, so both halves read as the whole did.
+- **Paste pins the FAR edge on a value lane.** Periods hold until the next
+  keyframe, so with nothing at the window's end the pasted colour bleeds past
+  it instead of the original resuming. A numeric lane needs no such pin; its
+  junction segment already carries the value across.
+- **Deleting a window that spans every keyframe empties the curve**, and the
+  lane falls back to the one display-only period an unautomated lane shows.
+  That is the numeric contract, not a value-lane quirk.
+- **The greyed-out report was a vocabulary collision, not a bug.**
+  `.valueBaseline` was byte-identical to dev, but drawn at the same weight as
+  `.curveDimmed` — and grey means DEACTIVATED everywhere else in this editor.
+  Shown to the owner beside an active and a suspended numeric curve; he chose
+  to draw it like an active curve, with a dimmed variant so it suspends like
+  every other lane.
+
+### Running the tests from a worktree — READ THIS
+
+`playwright.config.ts` has `reuseExistingServer: true`, and the owner keeps a
+dev server on `:3000` from `~/GitHub/mvann/conjurer`. A worktree's suite will
+silently adopt THAT server and pass green against code you did not write. It
+did exactly that here for several runs, including a "31 passed" that meant
+nothing. `PORT` now overrides:
+
+    PORT=3100 corepack yarn playwright test --project=chrome
+
+A fresh worktree also needs `corepack yarn install` and a seeded `local.db`
+(`cp ~/GitHub/mvann/conjurer/local.db .`) or every test fails at the log-in
+step. `local.db` is gitignored.
 
 ### Already done, do not rebuild
 
