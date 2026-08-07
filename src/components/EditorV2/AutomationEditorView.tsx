@@ -1375,9 +1375,14 @@ export const AutomationEditorView = observer(function AutomationEditorView({
         )}
         {isValueLane && (
           <>
-            {/* A neutral straight line: value lanes have no vertical
-                meaning. */}
-            <div className={styles.valueBaseline} />
+            {/* The straight line that stands in for the curve, since a value
+                lane has no vertical meaning — drawn like a curve, and dimmed
+                like one while the lane is suspended. */}
+            <div
+              className={`${styles.valueBaseline} ${
+                suspended ? styles.valueBaselineDimmed : ""
+              }`}
+            />
             {regions().map((region) => (
               <button
                 key={region.index}

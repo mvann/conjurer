@@ -204,8 +204,13 @@ function LaneCurve({
   // The body: what stands in for the shape of the automation.
   const body = isValueLane ? (
     <>
-      {/* A neutral straight line: a value lane has no curve to draw. */}
-      <div className={styles.valueBaseline} />
+      {/* The straight line that stands in for the curve — drawn like one,
+          and dimmed like one while the lane is suspended. */}
+      <div
+        className={`${styles.valueBaseline} ${
+          dimmed ? styles.valueBaselineDimmed : ""
+        }`}
+      />
       {valueRegions({
         curve,
         timeToX: x,

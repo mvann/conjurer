@@ -2672,6 +2672,10 @@
 /* ---- Value lanes (color, palette): strips, editors ---- */
 
 /* Value lanes have no vertical meaning: a neutral straight line. */
+/* A value lane's straight line IS its automation curve, so it is drawn like
+   one: the same stroke and glow an active curve gets. Drawn faint it landed
+   at the same weight as .curveDimmed, the editor's own "this lane is
+   suspended" treatment, and read as permanently disabled. */
 .valueBaseline {
   position: absolute;
   top: 50%;
@@ -2679,8 +2683,15 @@
   right: 0;
   height: 2px;
   transform: translateY(-50%);
-  background: rgba(232, 236, 244, 0.3);
+  background: #e8ecf4;
+  filter: drop-shadow(0 0 4px rgba(220, 230, 250, 0.45));
   pointer-events: none;
+}
+
+/* And it dims when the lane is suspended, like every other lane's curve. */
+.valueBaselineDimmed {
+  background: rgba(150, 156, 172, 0.4);
+  filter: none;
 }
 
 /* A period's color (or palette gradient): a tiny bordered rectangle
