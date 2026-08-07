@@ -925,7 +925,6 @@ export const AutomationEditorView = observer(function AutomationEditorView({
 
   const doCopy = () => {
     const current = curveRef.current;
-    if (isValueLane) return;
     if (!timeSelection || !current || current.keyframes.length === 0) return;
     automationClipboard.clip = copyCurveWindow(
       current,
@@ -937,14 +936,12 @@ export const AutomationEditorView = observer(function AutomationEditorView({
 
   const doDelete = () => {
     const current = curveRef.current;
-    if (isValueLane) return;
     if (!timeSelection || !current || current.keyframes.length === 0) return;
     commitCurve(deleteCurveWindow(current, timeSelection.t0, timeSelection.t1));
     setTimeSelection(null);
   };
 
   const doPaste = () => {
-    if (isValueLane) return;
     const clip = automationClipboard.clip;
     if (!clip || editCursor === null) return;
     const next = pasteClipAt(curveRef.current, clip, editCursor);
@@ -966,9 +963,6 @@ export const AutomationEditorView = observer(function AutomationEditorView({
     );
     let dragging = false;
     const onMove = (moveEvent: PointerEvent) => {
-      // Value lanes have no window operations; clicks still place the
-      // cursor but drags select nothing.
-      if (isValueLane) return;
       if (!dragging && Math.abs(moveEvent.clientX - startClientX) < 4) return;
       // Highlighting dismisses the cursor; the next plain click places
       // a fresh one.

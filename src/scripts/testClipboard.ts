@@ -24,6 +24,7 @@ import {
   evaluateSegment,
   insertBoundary,
   pasteClipAt,
+  payloadAtTime,
   setAudioEnvelope,
   sliceSpec,
   SegmentSpec,
@@ -420,6 +421,119 @@ const curveOf = (
   setAudioEnvelope(null, 0);
   const flat = curveExtremes(curve)!;
   near(flat.high, 1, 1e-9, "audio: extremes refit when the envelope clears");
+}
+
+// ---- value lanes go through the same window operations ----
+//
+// A colour or palette lane is a variation of the numeric lane, not a separate
+// one, so copy/delete/paste are the SAME functions. What they have to carry
+// extra is the period payload: keyframes delimit periods, and a keyframe with
+// no payload starts a period with no colour.
+{
+  type Rgba = [number, number, number, number];
+  const RED: Rgba = [1, 0, 0, 1];
+  const GREEN: Rgba = [0, 1, 0, 1];
+  const BLUE: Rgba = [0, 0, 1, 1];
+
+  const sameColor = (
+    actual: Rgba | undefined,
+    expected: Rgba,
+    context: string,
+  ) => {
+    if (!actual) return fail(`${context}: no colour at all`);
+    for (let i = 0; i < 4; i++) near(actual[i], expected[i], 1e-6, context);
+  };
+
+  // Three periods: lead-in red, green from 0.3, blue from 0.6.
+  const colourCurve = (): AutomationCurve => ({
+    keyframes: [
+      { time: 0.3, value: 0, color: GREEN },
+      { time: 0.6, value: 0, color: BLUE },
+    ],
+    segments: [{ type: "flat" }],
+    leadIn: { color: RED },
+  });
+
+  // A boundary inside a period continues that period's colour, rather than
+  // starting a colourless one.
+  const split = insertBoundary(colourCurve(), 0.45);
+  const added = split.keyframes.find((k) => Math.abs(k.time - 0.45) < 1e-6);
+  if (!added) fail("value: no boundary inserted at 0.45");
+  else sameColor(added.color as Rgba, GREEN, "value: boundary continues green");
+
+  // Copy carries payloads, including at the window's own edges — the edge at
+  // 0.15 falls in the lead-in, which no keyframe carries.
+  const clip = copyCurveWindow(colourCurve(), 0.15, 0.7)!;
+  sameColor(clip.keyframes[0].color as Rgba, RED, "value: clip starts red");
+  const clipGreen = clip.keyframes.find(
+    (k) => Math.abs(k.time - (0.3 - 0.15)) < 1e-6,
+  );
+  if (!clipGreen) fail("value: clip lost its interior keyframe");
+  else sameColor(clipGreen.color as Rgba, GREEN, "value: clip keeps green");
+
+  // Delete leaves the window holding the colour that showed at its start,
+  // and leaves everything outside untouched — the numeric contract exactly.
+  const deleted = deleteCurveWindow(colourCurve(), 0.35, 0.5);
+  sameColor(
+    payloadAtTime(deleted, 0.4)?.color as Rgba,
+    GREEN,
+    "value: deleted window holds the colour at its start",
+  );
+  sameColor(
+    payloadAtTime(deleted, 0.8)?.color as Rgba,
+    BLUE,
+    "value: delete leaves the outside untouched",
+  );
+
+  // Paste lands the copied periods at the cursor, and the original colour
+  // resumes at the window's end rather than the pasted one bleeding past it.
+  const target: AutomationCurve = {
+    keyframes: [{ time: 0.5, value: 0, color: BLUE }],
+    segments: [],
+    leadIn: { color: RED },
+  };
+  const greenClip = copyCurveWindow(colourCurve(), 0.35, 0.55)!;
+  const pastedValue = pasteClipAt(target, greenClip, 0.1)!;
+  sameColor(
+    payloadAtTime(pastedValue, 0.2)?.color as Rgba,
+    GREEN,
+    "value: paste puts green at the cursor",
+  );
+  sameColor(
+    payloadAtTime(pastedValue, 0.05)?.color as Rgba,
+    RED,
+    "value: paste leaves the lead-in alone",
+  );
+  sameColor(
+    payloadAtTime(pastedValue, 0.6)?.color as Rgba,
+    BLUE,
+    "value: paste does not bleed past its window",
+  );
+
+  // A gradient period cut in half reads the same as it did whole: the cut
+  // lands on the interpolated colour, and the left half ends there.
+  const gradient: AutomationCurve = {
+    keyframes: [
+      { time: 0.2, value: 0, color: RED, colorTo: BLUE },
+      { time: 0.6, value: 0, color: GREEN },
+    ],
+    segments: [{ type: "flat" }],
+    leadIn: { color: RED },
+  };
+  const cut = insertBoundary(gradient, 0.4);
+  const left = cut.keyframes[cut.keyframes.length - 3];
+  const mid = cut.keyframes.find((k) => Math.abs(k.time - 0.4) < 1e-6);
+  const halfway: Rgba = [0.5, 0, 0.5, 1];
+  sameColor(
+    left.colorTo as Rgba,
+    halfway,
+    "value: gradient's left half ends at the cut",
+  );
+  if (!mid) fail("value: gradient not cut");
+  else {
+    sameColor(mid.color as Rgba, halfway, "value: gradient cut starts at the cut");
+    sameColor(mid.colorTo as Rgba, BLUE, "value: gradient's right half keeps its end");
+  }
 }
 
 if (failures > 0) {

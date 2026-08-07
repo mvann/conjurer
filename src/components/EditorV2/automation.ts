@@ -53,12 +53,60 @@ export type AutomationKeyframe = {
 
 export type ValuePayload = {
   color?: [number, number, number, number];
+  colorTo?: [number, number, number, number];
   palette?: {
     a: [number, number, number];
     b: [number, number, number];
     c: [number, number, number];
     d: [number, number, number];
   };
+};
+
+/** A keyframe's period payload, without its numeric or Bezier fields. */
+export const payloadOf = (keyframe: AutomationKeyframe): ValuePayload => ({
+  color: keyframe.color,
+  colorTo: keyframe.colorTo,
+  palette: keyframe.palette,
+});
+
+/** True when a keyframe carries a value-lane payload at all. */
+export const hasPayload = (keyframe: AutomationKeyframe) =>
+  !!keyframe.color || !!keyframe.palette;
+
+/**
+ * A colour period is structurally always a gradient upstream (linear4
+ * from->to); equal ends are what "one colour" means (decision 23). So a period
+ * whose ends differ is a real gradient and reads as one.
+ */
+export const isGradientPayload = (payload: ValuePayload) =>
+  !!payload.color &&
+  !!payload.colorTo &&
+  payload.color.some(
+    (component, index) => Math.abs(component - payload.colorTo![index]) > 1e-6,
+  );
+
+/**
+ * The payload showing at `t` within a period running [start, end].
+ *
+ * The value-lane analogue of `sliceSpec`: cutting a period has to leave both
+ * halves reading exactly as the whole did, which for a gradient means the cut
+ * lands on the interpolated colour rather than on the period's start colour.
+ * A solid period is its own slice.
+ */
+export const payloadSlicedAt = (
+  payload: ValuePayload,
+  start: number,
+  end: number,
+  t: number,
+): ValuePayload => {
+  if (!isGradientPayload(payload)) return { ...payload };
+  const span = end - start;
+  const local = span > 0 ? Math.min(Math.max((t - start) / span, 0), 1) : 0;
+  const at = payload.color!.map(
+    (component, index) =>
+      component + (payload.colorTo![index] - component) * local,
+  ) as [number, number, number, number];
+  return { ...payload, color: at };
 };
 
 // The payload holding at the given time. Keyframes are boundaries: the
@@ -569,7 +617,22 @@ export const insertBoundary = (
         ? a.value + (b.value - a.value) * localT
         : evaluateSegment(a, b, spec, localT);
     const nextKeyframes = [...keyframes];
-    nextKeyframes.splice(i + 1, 0, { time: t, value });
+    // On a value lane the boundary splits a PERIOD rather than a segment, so
+    // it carries the payload holding there — otherwise the new keyframe would
+    // start a period with no colour at all. Keyframes delimit periods, so the
+    // period being cut is exactly the one starting at `a`. A gradient is cut
+    // at its interpolated colour and `a`'s far end moves to the cut, which is
+    // what leaves the two halves reading as the whole did.
+    const boundary: AutomationKeyframe = { time: t, value };
+    if (hasPayload(a)) {
+      const cut = payloadSlicedAt(payloadOf(a), a.time, b.time, t);
+      boundary.color = cut.color;
+      boundary.colorTo = a.colorTo;
+      boundary.palette = a.palette;
+      if (isGradientPayload(payloadOf(a)))
+        nextKeyframes[i] = { ...a, colorTo: cut.color };
+    }
+    nextKeyframes.splice(i + 1, 0, boundary);
     const nextSegments = [...segments];
     nextSegments.splice(
       i,
@@ -617,10 +680,28 @@ export const copyCurveWindow = (
   const inner = work.keyframes.filter(
     (keyframe) => keyframe.time > w0 + EPS && keyframe.time < w1 - EPS,
   );
+  // On a value lane the window's own edges start periods, so each takes the
+  // payload holding there. Inside the keyframe span insertBoundary has
+  // already put a keyframe at the edge, sliced if it cut a gradient; outside
+  // it the edge falls in the lead-in or the trailing period, whose far end is
+  // the BLOCK's and unknown here, so a gradient there copies whole rather
+  // than sliced. Numeric lanes carry no payload and are unaffected.
+  const edgePayload = (t: number): ValuePayload => {
+    const at = keyframeAt(t);
+    if (at) return payloadOf(at);
+    const span = work.keyframes;
+    if (t < span[0].time) return work.leadIn ?? payloadOf(span[0]);
+    let holder = span[0];
+    for (const keyframe of span) {
+      if (keyframe.time > t) break;
+      holder = keyframe;
+    }
+    return payloadOf(holder);
+  };
   const absolute = [
-    { time: w0, value: startValue },
+    { time: w0, value: startValue, ...edgePayload(w0) },
     ...inner,
-    { time: w1, value: endValue },
+    { time: w1, value: endValue, ...edgePayload(w1) },
   ];
   const segments: SegmentSpec[] = [];
   for (let i = 0; i < absolute.length - 1; i++)
@@ -628,8 +709,8 @@ export const copyCurveWindow = (
   return {
     duration: w1 - w0,
     keyframes: absolute.map((keyframe) => ({
+      ...keyframe,
       time: keyframe.time - w0,
-      value: keyframe.value,
     })),
     segments,
   };
@@ -714,12 +795,23 @@ export const pasteClipAt = (
     ...base.keyframes.filter((keyframe) => keyframe.time < at - EPS),
     ...(startPin ? [startPin] : []),
   ];
-  const right = base.keyframes.filter(
-    (keyframe) => keyframe.time > at + duration + EPS,
+  // A value lane needs the far edge pinned as well. Its periods hold until
+  // the next keyframe, so with nothing at the window's end the pasted colour
+  // would bleed past it instead of the original resuming there. The pin
+  // stacks against the clip's last keyframe, the same instantaneous step the
+  // near edge uses. A numeric lane needs none: its junction segment already
+  // carries the value across.
+  const endBoundary = base.keyframes.find(
+    (keyframe) => Math.abs(keyframe.time - (at + duration)) <= EPS * 2,
   );
+  const endPin = endBoundary && hasPayload(endBoundary) ? endBoundary : undefined;
+  const right = [
+    ...(endPin ? [endPin] : []),
+    ...base.keyframes.filter((keyframe) => keyframe.time > at + duration + EPS),
+  ];
   const pasted = trimmed.keyframes.map((keyframe) => ({
+    ...keyframe,
     time: Math.min(at + keyframe.time, 1),
-    value: keyframe.value,
   }));
 
   const keyframes = [...left, ...pasted, ...right];

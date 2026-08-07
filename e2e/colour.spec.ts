@@ -109,3 +109,88 @@ test.describe("colour gradients", () => {
     ).toHaveCount(0);
   });
 });
+
+// The colour lane is a VARIATION of the numeric lane, not a parallel
+// implementation of it. It had grown as one, and these are the symptoms the
+// owner reported from that: the lane preview drew chips but no keyframe dots,
+// and a highlight drag did nothing at all ("highlighting a section doesn't
+// work in this although it looks like that's just for colors").
+test.describe("the colour lane behaves like any other lane", () => {
+  test.beforeEach(async ({ page }) => gotoEditorClean(page));
+
+  test("the lane preview shows keyframe dots, like every other lane", async ({
+    page,
+  }) => {
+    await openColourLane(page);
+    await page.getByLabel("Close automation editor").click();
+
+    // "the automation preview curve should also show the keyframes but they
+    // should be smaller" — with no exception carved out for colour.
+    const lane = page.locator("[class*=laneRow]").first();
+    await expect(lane.locator("[class*=laneKeyframeDot]")).toHaveCount(1);
+    await expect(
+      lane.locator("[class*=valueSwatchMini]").first(),
+    ).toBeVisible();
+
+    // And they are circles, not the ovals a squished curve would give.
+    const dot = (await lane
+      .locator("[class*=laneKeyframeDot]")
+      .first()
+      .boundingBox())!;
+    expect(dot.width).toBeCloseTo(dot.height, 0);
+  });
+
+  test("a highlight drag selects time, copies, and deletes", async ({
+    page,
+  }) => {
+    await openColourLane(page);
+    // Two more periods, so there is something in the middle to lose.
+    const area = page.locator("[class*=editorLineArea]");
+    const box = (await area.boundingBox())!;
+    await page.mouse.dblclick(box.x + box.width * 0.7, box.y + box.height / 2);
+    await page.waitForTimeout(300);
+    await expect(page.locator("[data-doc=value-swatch]")).toHaveCount(3);
+
+    const lowY = box.y + box.height * 0.9;
+    await page.mouse.move(box.x + box.width * 0.4, lowY);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.8, lowY, { steps: 5 });
+    await page.mouse.up();
+
+    // The same gold window and the same actions the numeric lane offers.
+    await expect(page.locator("[data-doc=time-selection]")).toBeVisible();
+    await page
+      .locator("[class*=selectionActions]")
+      .getByRole("button", { name: "Copy" })
+      .click();
+
+    await page.mouse.move(box.x + box.width * 0.4, lowY);
+    await page.mouse.down();
+    await page.mouse.move(box.x + box.width * 0.8, lowY, { steps: 5 });
+    await page.mouse.up();
+    await page
+      .locator("[class*=selectionActions]")
+      .getByRole("button", { name: "Delete" })
+      .click();
+
+    // The window covered every keyframe, so the lane empties back to the one
+    // display-only period an unautomated lane shows — the numeric contract
+    // ("deleting the whole keyframe span empties the curve") applied here.
+    await expect(page.locator("[data-doc=time-selection]")).toHaveCount(0);
+    await expect(page.locator("[data-doc=value-swatch]")).toHaveCount(1);
+
+    // Paste puts the periods back, and each one still carries its own colour.
+    // A keyframe that arrived without its payload would start a period with
+    // no colour at all, which draws as the neutral placeholder — so the real
+    // assertion is that none of them is that placeholder.
+    await page.mouse.click(box.x + box.width * 0.45, lowY);
+    await page.getByRole("button", { name: "Paste" }).click();
+    await page.waitForTimeout(300);
+    const swatches = page.locator("[data-doc=value-swatch]");
+    expect(await swatches.count()).toBeGreaterThan(1);
+    for (const background of await swatches.evaluateAll((nodes) =>
+      nodes.map((node) => getComputedStyle(node).background),
+    ))
+      expect(background).not.toContain("232, 236, 244");
+  });
+});

@@ -3,6 +3,15 @@ import { defineConfig } from "@playwright/test";
 // End-to-end tests for the spell crafter (/editor). Uses the installed
 // Google Chrome (channel) so no browser download is needed, and reuses a
 // running dev server when there is one.
+//
+// PORT overrides which one. That matters when this checkout is a worktree:
+// `reuseExistingServer` will happily adopt a dev server that ANOTHER checkout
+// left on 3000, and then the whole suite passes against code you did not
+// write. Run `PORT=3100 corepack yarn playwright test` from a worktree, or
+// stop the other server first.
+const port = process.env.PORT ?? "3000";
+const baseURL = process.env.E2E_BASE_URL ?? `http://127.0.0.1:${port}`;
+
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
@@ -16,7 +25,7 @@ export default defineConfig({
   retries: 1,
   reporter: [["list"]],
   use: {
-    baseURL: "http://localhost:3000",
+    baseURL,
     viewport: { width: 1400, height: 900 },
   },
   projects: [
@@ -34,8 +43,9 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: "yarn dev",
-    url: "http://localhost:3000",
+    // 127.0.0.1 only, never all interfaces.
+    command: `yarn dev -H 127.0.0.1 -p ${port}`,
+    url: baseURL,
     reuseExistingServer: true,
     timeout: 120_000,
   },

@@ -16,37 +16,19 @@
 // own, which is how the preview came to disagree with the editor about where
 // a period ends ("color automation preview doesnt fit to block").
 
-import type { AutomationCurve, AutomationKeyframe } from "./automation";
+import type { AutomationCurve, ValuePayload } from "./automation";
+import { isGradientPayload } from "./automation";
 import { paletteToGradientCss, rgbaToCss } from "./ValueEditors";
 import { isVector4 } from "@/src/utils/object";
 import { isPalette } from "@/src/params/palette/Palette";
 
 export type LaneKind = "number" | "color" | "palette";
 
-export type ValuePayload = {
-  color?: [number, number, number, number];
-  colorTo?: [number, number, number, number];
-  palette?: NonNullable<AutomationCurve["leadIn"]>["palette"];
-};
-
 /** Which kind of lane a parameter's value calls for. */
 export const laneKindOf = (value: unknown): LaneKind =>
   isPalette(value) ? "palette" : isVector4(value) ? "color" : "number";
 
 export const isValueKind = (kind: LaneKind) => kind !== "number";
-
-/**
- * A colour period is structurally always a gradient upstream (linear4
- * from->to); equal ends are what "one colour" means (decision 23). So a period
- * with different ends paints its chip left to right with the real gradient
- * rather than lying about it with the start colour.
- */
-export const isGradientPayload = (payload: ValuePayload) =>
-  !!payload.color &&
-  !!payload.colorTo &&
-  payload.color.some(
-    (component, index) => Math.abs(component - payload.colorTo![index]) > 1e-6,
-  );
 
 export const payloadCss = (payload: ValuePayload) =>
   payload.color
@@ -172,37 +154,3 @@ export const valueRegions = ({
   return regions;
 };
 
-/**
- * The payload showing at `t` inside a period running [periodStart, periodEnd].
- *
- * The value-lane analogue of `sliceSpec`: splitting a period has to leave both
- * halves reading exactly as the whole did, which for a gradient means the cut
- * lands on the interpolated colour rather than on the period's start colour.
- */
-export const payloadSlicedAt = (
-  payload: ValuePayload,
-  periodStart: number,
-  periodEnd: number,
-  t: number,
-): ValuePayload => {
-  if (!payload.color || !payload.colorTo || !isGradientPayload(payload))
-    return { ...payload };
-  const span = periodEnd - periodStart;
-  const local = span > 0 ? Math.min(Math.max((t - periodStart) / span, 0), 1) : 0;
-  const at = payload.color.map(
-    (component, index) =>
-      component + (payload.colorTo![index] - component) * local,
-  ) as [number, number, number, number];
-  return { ...payload, color: at, colorTo: payload.colorTo };
-};
-
-/** Strip a keyframe down to just its period payload. */
-export const payloadOf = (keyframe: AutomationKeyframe): ValuePayload => ({
-  color: keyframe.color,
-  colorTo: keyframe.colorTo,
-  palette: keyframe.palette,
-});
-
-/** True when a keyframe carries any value-lane payload at all. */
-export const hasPayload = (keyframe: AutomationKeyframe) =>
-  !!keyframe.color || !!keyframe.palette;
