@@ -28,11 +28,13 @@ import {
   ColorValueEditor,
   PaletteValueEditor,
   Rgba,
-  paletteToGradientCss,
-  rgbaToCss,
 } from "@/src/components/EditorV2/ValueEditors";
-import { isVector4 } from "@/src/utils/object";
-import { isPalette } from "@/src/params/palette/Palette";
+import {
+  currentValuePayload,
+  isValueKind,
+  laneKindOf,
+  valueRegions,
+} from "@/src/components/EditorV2/valueLane";
 import {
   TIME_VIEWPORT_EVENT,
   sharedWaveform,
@@ -171,100 +173,19 @@ export const AutomationEditorView = observer(function AutomationEditorView({
   // that starts it (like picking palettes in the main app). The lane has
   // no vertical meaning: no scale, no guides, no curve shapes; the strip
   // shows each period's color, and the inspector edits it.
-  const laneKind: "number" | "color" | "palette" = isPalette(param.value)
-    ? "palette"
-    : isVector4(param.value)
-      ? "color"
-      : "number";
-  const isValueLane = laneKind !== "number";
+  const laneKind = laneKindOf(param.value);
+  const isValueLane = isValueKind(laneKind);
 
-  // A colour period is structurally always a gradient upstream (linear4
-  // from->to); equal ends are what "one colour" means (decision 23). So a
-  // period with different ends paints the chip left to right with the real
-  // gradient rather than lying about it with the start colour.
-  const isGradientPayload = (payload: {
-    color?: [number, number, number, number];
-    colorTo?: [number, number, number, number];
-  }) =>
-    !!payload.color &&
-    !!payload.colorTo &&
-    payload.color.some(
-      (component, index) => Math.abs(component - payload.colorTo![index]) > 1e-6,
-    );
-
-  const payloadCss = (payload: {
-    color?: [number, number, number, number];
-    colorTo?: [number, number, number, number];
-    palette?: NonNullable<AutomationCurve["leadIn"]>["palette"];
-  }) =>
-    payload.color
-      ? isGradientPayload(payload)
-        ? `linear-gradient(90deg, ${rgbaToCss(payload.color)}, ${rgbaToCss(
-            payload.colorTo!,
-          )})`
-        : rgbaToCss(payload.color)
-      : payload.palette
-        ? paletteToGradientCss(payload.palette)
-        : "rgba(232, 236, 244, 0.4)";
-
-  // Value-lane periods: region 0 runs from the view's start to the first
-  // keyframe (its value is the curve's leadIn), region i (>= 1) from
-  // keyframe i-1 onward. N keyframes make N+1 regions. With no
-  // keyframes at all, one display-only region shows the current value.
-  const valueRegions = () => {
-    const regions: {
-      index: number;
-      from: number;
-      to: number;
-      css: string;
-      selectable: boolean;
-      gradient: boolean;
-    }[] = [];
-    const clampPct = (pct: number) => Math.min(Math.max(pct, 0), 100);
-    if (keyframes.length === 0) {
-      regions.push({
-        index: 0,
-        from: clampPct(Math.max(timeToX(0), 0)),
-        to: 100,
-        css: payloadCss(currentValuePayload()),
-        selectable: false,
-        gradient: isGradientPayload(currentValuePayload()),
-      });
-      return regions;
-    }
-    const leadIn = curve?.leadIn ?? {
-      color: keyframes[0].color,
-      palette: keyframes[0].palette,
-    };
-    const boundaries = [
-      clampPct(Math.max(timeToX(0), 0)),
-      ...keyframes.map((keyframe) => clampPct(timeToX(keyframe.time))),
-      100,
-    ];
-    const payloads = [leadIn, ...keyframes];
-    for (let i = 0; i < payloads.length; i++) {
-      const from = boundaries[i];
-      const to = boundaries[i + 1];
-      if (to - from < 0.5) continue;
-      regions.push({
-        index: i,
-        from,
-        to,
-        css: payloadCss(payloads[i]),
-        selectable: true,
-        gradient: isGradientPayload(payloads[i]),
-      });
-    }
-    return regions;
-  };
-
-  const currentValuePayload = (): Partial<AutomationKeyframe> => {
-    const value = param.value;
-    if (isVector4(value))
-      return { color: [value.x, value.y, value.z, value.w] as Rgba };
-    if (isPalette(value)) return { palette: value.serialize() };
-    return {};
-  };
+  // The periods, their chips and their colours all come from the shared
+  // value-lane module, which is also what the lane preview draws from — the
+  // same rule that binds the two to one time viewport and one value range.
+  const regions = () =>
+    valueRegions({
+      curve,
+      timeToX,
+      blockRange: blockRange ?? null,
+      emptyPayload: currentValuePayload(param.value),
+    });
 
   // A parameter that declares both bounds pins the view to exactly that
   // range; the self-managing zero-centered range only applies to
@@ -818,14 +739,14 @@ export const AutomationEditorView = observer(function AutomationEditorView({
     const payload = isValueLane
       ? current && currentKeyframes.length > 0
         ? (payloadAtTime(current, time) ?? {})
-        : currentValuePayload()
+        : currentValuePayload(param.value)
       : {};
     nextKeyframes.splice(insertAt, 0, { time, value, ...payload });
     // The very first keyframe on a value lane also pins the lead-in
     // period (the region before it) to the current value.
     const leadIn =
       isValueLane && currentKeyframes.length === 0
-        ? currentValuePayload()
+        ? currentValuePayload(param.value)
         : undefined;
 
     let nextSegments: SegmentSpec[];
@@ -1463,7 +1384,7 @@ export const AutomationEditorView = observer(function AutomationEditorView({
             {/* A neutral straight line: value lanes have no vertical
                 meaning. */}
             <div className={styles.valueBaseline} />
-            {valueRegions().map((region) => (
+            {regions().map((region) => (
               <button
                 key={region.index}
                 className={`${styles.valueSwatch} ${
@@ -1773,7 +1694,7 @@ export const AutomationEditorView = observer(function AutomationEditorView({
                 })()
               ) : (
                 <PaletteValueEditor
-                  palette={source.palette ?? currentValuePayload().palette!}
+                  palette={source.palette ?? currentValuePayload(param.value).palette!}
                   onChange={(palette) => apply({ palette })}
                 />
               )}

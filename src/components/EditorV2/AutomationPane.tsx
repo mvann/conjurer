@@ -18,10 +18,11 @@ import {
   sampleSegment,
 } from "@/src/components/EditorV2/automation";
 import {
-  paletteToGradientCss,
-  rgbaToCss,
-} from "@/src/components/EditorV2/ValueEditors";
-import { isVector4 } from "@/src/utils/object";
+  currentValuePayload,
+  isValueKind,
+  laneKindOf,
+  valueRegions,
+} from "@/src/components/EditorV2/valueLane";
 import type { Layer } from "@/src/types/Layer";
 import type { Block } from "@/src/types/Block";
 import { getLaneSongDuration } from "@/src/components/EditorV2/blockLanes";
@@ -29,7 +30,6 @@ import {
   laneCurve,
   laneKeysOf,
 } from "@/src/components/EditorV2/blockLanes";
-import { isPalette } from "@/src/params/palette/Palette";
 import {
   TIME_VIEWPORT_EVENT,
   timeViewport,
@@ -160,13 +160,24 @@ const laneViewRange = (curve: AutomationCurve | null, param: PatternParam) => {
 // the expanded editor would settle on (zero centered, power-of-two pairs
 // fitted to the curve) and the shared time viewport, so the preview is a
 // scale model of the editor view. Dimmed while deactivated.
+//
+// A value lane (colour, palette) is this same component with three
+// substitutions and nothing else: its keyframes sit at the vertical middle
+// because it has no value axis (@@L5846), its body is a neutral baseline
+// rather than a shaped path, and it carries a bordered chip per period
+// (@@L6136). The keyframe dots, the dimming, the time mapping and the block's
+// bounds are the numeric lane's own, shared rather than reimplemented — they
+// were reimplemented, and the copy drifted: it drew no keyframe dots and
+// tiled its periods across the whole view instead of across the block.
 function LaneCurve({
   curve,
   param,
   timeView,
   blockRange,
 }: {
-  curve: AutomationCurve;
+  // Null or empty only on a value lane, which still draws: one chip of the
+  // parameter's own value, the display-only period the editor shows too.
+  curve: AutomationCurve | null;
   param: PatternParam;
   timeView: { left: number; width: number };
   // The block's span as fractions of the song. The curve is drawn only inside
@@ -176,78 +187,121 @@ function LaneCurve({
   blockRange: { start: number; end: number } | null;
 }) {
   const clipId = useId().replace(/:/g, "");
-  const view = laneViewRange(curve, param);
-  const viewMax = view.center + view.span / 2;
-  const top = (v: number) => ((viewMax - v) / view.span) * 100;
+  const isValueLane = isValueKind(laneKindOf(param.value));
   const x = (time: number) => ((time - timeView.left) / timeView.width) * 100;
 
-  const { keyframes } = curve;
-  const segments = getSegments(curve);
-  const first = keyframes[0];
-  const last = keyframes[keyframes.length - 1];
-  const parts = [`M ${blockRange ? x(blockRange.start) : 0} ${top(first.value)}`];
-  for (let i = 0; i < keyframes.length - 1; i++) {
-    const a = keyframes[i];
-    const b = keyframes[i + 1];
-    // Route through the starting keyframe explicitly, so a segment whose
-    // shape ends off its endpoint (wave, flat) never bleeds into the next.
-    parts.push(`L ${x(a.time)} ${top(a.value)}`);
-    // Lower detail than the big editor: the lane is only ~30px tall.
-    for (const point of sampleSegment(a, b, segments[i], 1 / 3))
-      parts.push(
-        `L ${x(a.time + (b.time - a.time) * point.t)} ${top(point.value)}`,
-      );
-  }
-  parts.push(`L ${x(last.time)} ${top(last.value)}`);
-  // The hold past the last keyframe exists only while that keyframe is inside
-  // the block, and stops at the block's end. A keyframe beyond the end (what a
-  // right-trim leaves) gets no hold: drawing one to the block's end would run
-  // backwards. Mirrors buildFullPath in the expanded editor.
-  const holdEnd = blockRange
-    ? last.time < blockRange.end
-      ? x(blockRange.end)
-      : null
-    : 100;
-  if (holdEnd !== null) parts.push(`L ${holdEnd} ${top(last.value)}`);
+  // A value lane has no vertical meaning, so every keyframe sits at the
+  // middle; a numeric lane maps through the range the editor would settle on.
+  const view = isValueLane ? null : laneViewRange(curve, param);
+  const top = view
+    ? (v: number) => ((view.center + view.span / 2 - v) / view.span) * 100
+    : () => 50;
 
-  // Anything past the block's end draws dotted, the same as in the editor.
-  const overhangX =
-    blockRange && last.time > blockRange.end ? x(blockRange.end) : null;
+  const dimmed = !isCurveActive(curve);
+  const keyframes = curve?.keyframes ?? [];
+  if (!isValueLane && keyframes.length === 0) return null;
+
+  // The body: what stands in for the shape of the automation.
+  const body = isValueLane ? (
+    <>
+      {/* A neutral straight line: a value lane has no curve to draw. */}
+      <div className={styles.valueBaseline} />
+      {valueRegions({
+        curve,
+        timeToX: x,
+        blockRange,
+        emptyPayload: currentValuePayload(param.value),
+      }).map((region) => (
+        <div
+          key={region.index}
+          className={`${styles.valueSwatch} ${styles.valueSwatchMini} ${
+            dimmed ? styles.valueSwatchDimmed : ""
+          } ${region.gradient ? styles.valueSwatchWide : ""}`}
+          style={{
+            left: `${(region.from + region.to) / 2}%`,
+            background: region.css,
+          }}
+        />
+      ))}
+    </>
+  ) : (
+    (() => {
+      const segments = getSegments(curve!);
+      const first = keyframes[0];
+      const last = keyframes[keyframes.length - 1];
+      const parts = [
+        `M ${blockRange ? x(blockRange.start) : 0} ${top(first.value)}`,
+      ];
+      for (let i = 0; i < keyframes.length - 1; i++) {
+        const a = keyframes[i];
+        const b = keyframes[i + 1];
+        // Route through the starting keyframe explicitly, so a segment whose
+        // shape ends off its endpoint (wave, flat) never bleeds into the next.
+        parts.push(`L ${x(a.time)} ${top(a.value)}`);
+        // Lower detail than the big editor: the lane is only ~30px tall.
+        for (const point of sampleSegment(a, b, segments[i], 1 / 3))
+          parts.push(
+            `L ${x(a.time + (b.time - a.time) * point.t)} ${top(point.value)}`,
+          );
+      }
+      parts.push(`L ${x(last.time)} ${top(last.value)}`);
+      // The hold past the last keyframe exists only while that keyframe is
+      // inside the block, and stops at the block's end. A keyframe beyond the
+      // end (what a right-trim leaves) gets no hold: drawing one to the
+      // block's end would run backwards. Mirrors buildFullPath in the editor.
+      const holdEnd = blockRange
+        ? last.time < blockRange.end
+          ? x(blockRange.end)
+          : null
+        : 100;
+      if (holdEnd !== null) parts.push(`L ${holdEnd} ${top(last.value)}`);
+
+      // Anything past the block's end draws dotted, the same as in the editor.
+      const overhangX =
+        blockRange && last.time > blockRange.end ? x(blockRange.end) : null;
+      const d = parts.join(" ");
+
+      return (
+        <svg
+          className={`${styles.laneCurveSvg} ${dimmed ? styles.curveDimmed : ""}`}
+          viewBox="0 0 100 100"
+          preserveAspectRatio="none"
+        >
+          {overhangX !== null && (
+            <defs>
+              <clipPath id={`${clipId}-in`}>
+                <rect x="-500" y="-500" width={500 + overhangX} height="1100" />
+              </clipPath>
+              <clipPath id={`${clipId}-out`}>
+                <rect x={overhangX} y="-500" width="1000" height="1100" />
+              </clipPath>
+            </defs>
+          )}
+          <path
+            className={styles.curvePath}
+            d={d}
+            clipPath={overhangX !== null ? `url(#${clipId}-in)` : undefined}
+          />
+          {overhangX !== null && (
+            <path
+              className={`${styles.curvePath} ${styles.curvePathOutside}`}
+              d={d}
+              clipPath={`url(#${clipId}-out)`}
+            />
+          )}
+        </svg>
+      );
+    })()
+  );
 
   return (
     <>
-      <svg
-        className={`${styles.laneCurveSvg} ${
-          isCurveActive(curve) ? "" : styles.curveDimmed
-        }`}
-        viewBox="0 0 100 100"
-        preserveAspectRatio="none"
-      >
-        {overhangX !== null && (
-          <defs>
-            <clipPath id={`${clipId}-in`}>
-              <rect x="-500" y="-500" width={500 + overhangX} height="1100" />
-            </clipPath>
-            <clipPath id={`${clipId}-out`}>
-              <rect x={overhangX} y="-500" width="1000" height="1100" />
-            </clipPath>
-          </defs>
-        )}
-        <path
-          className={styles.curvePath}
-          d={parts.join(" ")}
-          clipPath={overhangX !== null ? `url(#${clipId}-in)` : undefined}
-        />
-        {overhangX !== null && (
-          <path
-            className={`${styles.curvePath} ${styles.curvePathOutside}`}
-            d={parts.join(" ")}
-            clipPath={`url(#${clipId}-out)`}
-          />
-        )}
-      </svg>
-      {/* Scale-model keyframe dots (positioned divs, not svg circles:
-          the stretched viewBox would deform them). */}
+      {body}
+      {/* Scale-model keyframe dots (positioned divs, not svg circles: the
+          stretched viewBox would deform them into ovals). Every lane kind
+          gets them — "the automation preview curve should also show the
+          keyframes but they should be smaller" (@@L776) — a value lane's
+          simply sit on its baseline. */}
       {keyframes.map((keyframe, index) => {
         const left = x(keyframe.time);
         if (left < 0 || left > 100) return null;
@@ -255,81 +309,9 @@ function LaneCurve({
           <div
             key={index}
             className={`${styles.laneKeyframeDot} ${
-              isCurveActive(curve) ? "" : styles.laneKeyframeDotDimmed
+              dimmed ? styles.laneKeyframeDotDimmed : ""
             }`}
             style={{ left: `${left}%`, top: `${top(keyframe.value)}%` }}
-          />
-        );
-      })}
-    </>
-  );
-}
-
-// A value lane's miniature: a neutral line with a tiny bordered swatch
-// in the middle of each period, matching the expanded editor.
-function LaneValueSwatches({
-  curve,
-  timeView,
-}: {
-  curve: AutomationCurve;
-  timeView: { left: number; width: number };
-}) {
-  const x = (time: number) => ((time - timeView.left) / timeView.width) * 100;
-  const clampPct = (pct: number) => Math.min(Math.max(pct, 0), 100);
-  const { keyframes } = curve;
-  const dimmed = !isCurveActive(curve);
-  // Mirrors the expanded editor: a period whose ends differ is a real
-  // gradient and is painted as one, on a chip twice as wide so it reads as a
-  // gradient at a glance rather than as a solid it happens not to be.
-  const isGradient = (payload: {
-    color?: [number, number, number, number];
-    colorTo?: [number, number, number, number];
-  }) =>
-    !!payload.color &&
-    !!payload.colorTo &&
-    payload.color.some(
-      (component, index) => Math.abs(component - payload.colorTo![index]) > 1e-6,
-    );
-
-  const css = (payload: {
-    color?: [number, number, number, number];
-    colorTo?: [number, number, number, number];
-    palette?: NonNullable<AutomationCurve["leadIn"]>["palette"];
-  }) =>
-    payload.color
-      ? isGradient(payload)
-        ? `linear-gradient(90deg, ${rgbaToCss(payload.color)}, ${rgbaToCss(
-            payload.colorTo!,
-          )})`
-        : rgbaToCss(payload.color)
-      : payload.palette
-        ? paletteToGradientCss(payload.palette)
-        : "rgba(232, 236, 244, 0.4)";
-
-  const leadIn = curve.leadIn ?? {
-    color: keyframes[0]?.color,
-    palette: keyframes[0]?.palette,
-  };
-  const boundaries = [
-    0,
-    ...keyframes.map((keyframe) => clampPct(x(keyframe.time))),
-    100,
-  ];
-  const payloads = [leadIn, ...keyframes];
-  return (
-    <>
-      <div className={styles.valueBaseline} />
-      {payloads.map((payload, index) => {
-        const from = boundaries[index];
-        const to = boundaries[index + 1];
-        if (to - from < 1) return null;
-        return (
-          <div
-            key={index}
-            className={`${styles.valueSwatch} ${styles.valueSwatchMini} ${
-              dimmed ? styles.valueSwatchDimmed : ""
-            } ${isGradient(payload) ? styles.valueSwatchWide : ""}`}
-            style={{ left: `${(from + to) / 2}%`, background: css(payload) }}
           />
         );
       })}
@@ -699,29 +681,35 @@ export const AutomationPane = observer(function AutomationPane({
             </div>
           </div>
           <div className={styles.laneArea}>
-            {isVector4(lane.param.value) || isPalette(lane.param.value) ? (
-              lane.curve && lane.curve.keyframes.length > 0 ? (
-                <LaneValueSwatches curve={lane.curve} timeView={timeView} />
-              ) : null
-            ) : lane.curve && lane.curve.keyframes.length > 0 ? (
-              <>
-                <LaneCurve
-                  curve={lane.curve}
-                  param={lane.param}
-                  timeView={timeView}
-                  blockRange={lane.blockRange}
-                />
-                {!isCurveActive(lane.curve) && (
-                  <ManualValueLine
-                    param={lane.param}
+            {(() => {
+              // A value lane always draws, keyframes or not: with none it
+              // shows one chip of the parameter's own value. A numeric lane
+              // with no curve shows its manual value line instead, and shows
+              // it over a suspended curve, where that line is what actually
+              // drives the parameter. A value lane has no such line: it has
+              // no vertical axis to draw one on.
+              const isValueLane = isValueKind(laneKindOf(lane.param.value));
+              const automated = !!lane.curve && lane.curve.keyframes.length > 0;
+              if (!isValueLane && !automated)
+                return <ManualValueLine param={lane.param} />;
+              return (
+                <>
+                  <LaneCurve
                     curve={lane.curve}
-                    dashed
+                    param={lane.param}
+                    timeView={timeView}
+                    blockRange={lane.blockRange}
                   />
-                )}
-              </>
-            ) : (
-              <ManualValueLine param={lane.param} />
-            )}
+                  {!isValueLane && !isCurveActive(lane.curve) && (
+                    <ManualValueLine
+                      param={lane.param}
+                      curve={lane.curve}
+                      dashed
+                    />
+                  )}
+                </>
+              );
+            })()}
             <LaneTimeDot curve={lane.curve} param={lane.param} />
           </div>
         </div>
