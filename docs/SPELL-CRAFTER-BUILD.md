@@ -355,13 +355,43 @@ Done already: the gradient toggle (decision 23, memory-only) and the colour
 ramp.
 
 
-1. **Opacity as a pseudo-param** (decision 25) — tri-state auto/manual/lane at
-   the top of every pattern's list, with right-click → "Reset to auto".
-2. **The color lane's presentation** against the spec settled below: centred
-   chip, gradient chip twice as wide, time selection working on color lanes.
-3. **Undo** over `store.layers` snapshots, `lanedParams` included.
-4. Info Strip copy still uses the old pattern-stack vocabulary; effect opacity
-   exclusion; demo seed data; the `untitled`-name save guard.
+In order:
+
+1. **Consolidate the value lane** — the section above. Doing this first is what
+   makes items 2 and 3 fall out rather than being built twice.
+2. **Time selection on colour lanes.** Comes free from 1 if 1 is done properly;
+   if it does not, 1 was not done properly.
+3. **Keyframe dots in the colour lane preview.** Same.
+4. **Undo** over `store.layers` snapshots, `lanedParams` included, takeover
+   excluded (decision 6 makes it memory-only).
+5. **Info Strip copy** still speaks in pattern-stack vocabulary, not layers and
+   blocks.
+6. **Demo seed** — `demoExperience.json` is still the legacy blob.
+7. The `untitled`-name save guard (the no-song guard is done and working; it is
+   what refuses a save until a song is chosen).
+
+### Already done, do not rebuild
+
+Opacity as a pseudo-param (decision 25) with its tri-state and Reset to Auto,
+and opacity wired into CanopyPane's merge chain so it actually renders. The
+gradient toggle (decision 23) and the double-width gradient chip. Colour periods
+ramping across their span. Block bounds at the song's end. One grid stride
+shared by drawing and snapping. Manual values reaching their params on load AND
+writing through on edit — both halves of decision 7, which had neither.
+
+Effect opacity exclusion needs nothing: upstream's own `lanableParamNames`
+already excludes `u_opacity` on effect blocks.
+
+### Running the tests
+
+`corepack yarn playwright test --project=chrome` — 81 tests, ~3.5 min at the
+configured two workers. Four workers is faster but flakes the pointer-drag
+tests; one worker is 6.3 min. There is no result caching to add: these tests
+reach the app over HTTP rather than importing it, so `--only-changed` sees no
+dependency from a source edit to a spec and selects nothing at all.
+
+During iteration run the affected spec by name (10-30s) and the full suite once
+before committing.
 
 ### A note on the pixel tests
 
