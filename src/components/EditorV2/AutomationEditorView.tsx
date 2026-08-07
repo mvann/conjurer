@@ -165,12 +165,31 @@ export const AutomationEditorView = observer(function AutomationEditorView({
       : "number";
   const isValueLane = laneKind !== "number";
 
+  // A colour period is structurally always a gradient upstream (linear4
+  // from->to); equal ends are what "one colour" means (decision 23). So a
+  // period with different ends paints the chip left to right with the real
+  // gradient rather than lying about it with the start colour.
+  const isGradientPayload = (payload: {
+    color?: [number, number, number, number];
+    colorTo?: [number, number, number, number];
+  }) =>
+    !!payload.color &&
+    !!payload.colorTo &&
+    payload.color.some(
+      (component, index) => Math.abs(component - payload.colorTo![index]) > 1e-6,
+    );
+
   const payloadCss = (payload: {
     color?: [number, number, number, number];
+    colorTo?: [number, number, number, number];
     palette?: NonNullable<AutomationCurve["leadIn"]>["palette"];
   }) =>
     payload.color
-      ? rgbaToCss(payload.color)
+      ? isGradientPayload(payload)
+        ? `linear-gradient(90deg, ${rgbaToCss(payload.color)}, ${rgbaToCss(
+            payload.colorTo!,
+          )})`
+        : rgbaToCss(payload.color)
       : payload.palette
         ? paletteToGradientCss(payload.palette)
         : "rgba(232, 236, 244, 0.4)";
@@ -186,6 +205,7 @@ export const AutomationEditorView = observer(function AutomationEditorView({
       to: number;
       css: string;
       selectable: boolean;
+      gradient: boolean;
     }[] = [];
     const clampPct = (pct: number) => Math.min(Math.max(pct, 0), 100);
     if (keyframes.length === 0) {
@@ -195,6 +215,7 @@ export const AutomationEditorView = observer(function AutomationEditorView({
         to: 100,
         css: payloadCss(currentValuePayload()),
         selectable: false,
+        gradient: isGradientPayload(currentValuePayload()),
       });
       return regions;
     }
@@ -218,6 +239,7 @@ export const AutomationEditorView = observer(function AutomationEditorView({
         to,
         css: payloadCss(payloads[i]),
         selectable: true,
+        gradient: isGradientPayload(payloads[i]),
       });
     }
     return regions;
@@ -383,12 +405,32 @@ export const AutomationEditorView = observer(function AutomationEditorView({
       ),
     });
   };
+  // How many beats apart the grid lines currently are.
+  //
+  // The stride escalates by fours — beat, bar, four bars — until lines are
+  // comfortably spaced, so the grid gets finer as you zoom in. Snapping reads
+  // the SAME number, because the owner's rule is that "whatever lines are
+  // shown for the grid should be what is snapped to": snapping to beats that
+  // are not drawn puts keyframes between the lines you can see.
+  const gridStrideBeats = () => {
+    if (!beatGrid || !beatGrid.durationSeconds) return 1;
+    const areaWidth =
+      areaRef.current?.clientWidth ??
+      (typeof window === "undefined" ? 1200 : window.innerWidth - 72);
+    const beatFracOfView =
+      60 / beatGrid.bpm / beatGrid.durationSeconds / timeView.width;
+    let stride = 1;
+    while (areaWidth * beatFracOfView * stride < 9 && stride < 4096) stride *= 4;
+    return stride;
+  };
+
   // Nearest snap target to a time (song fraction); identity when off or
   // when the mode's targets are unavailable.
   const snapTime = (time: number): number => {
     if (snapMode === "grid") {
       if (!beatGrid || !beatGrid.durationSeconds) return time;
-      const beat = 60 / beatGrid.bpm / beatGrid.durationSeconds;
+      const beat =
+        (60 / beatGrid.bpm / beatGrid.durationSeconds) * gridStrideBeats();
       const offset = beatGrid.offsetSeconds / beatGrid.durationSeconds;
       const k = Math.max(0, Math.round((time - offset) / beat));
       return Math.min(1, Math.max(0, offset + k * beat));
@@ -1307,16 +1349,11 @@ export const AutomationEditorView = observer(function AutomationEditorView({
             const beatDuration = 60 / beatGrid.bpm;
             const total = beatGrid.durationSeconds;
             if (!total) return null;
-            const areaWidth =
-              areaRef.current?.clientWidth ??
-              (typeof window === "undefined" ? 1200 : window.innerWidth - 72);
             // Density adapts to the visible window (which follows the
             // minimap): the stride escalates by fours (beat, bar, four
-            // bars, ...) until lines are comfortably spaced.
-            const beatFracOfView = beatDuration / total / timeView.width;
-            let stride = 1;
-            while (areaWidth * beatFracOfView * stride < 9 && stride < 4096)
-              stride *= 4;
+            // bars, ...) until lines are comfortably spaced. Snapping shares
+            // this exact number — see gridStrideBeats.
+            const stride = gridStrideBeats();
             // The grid covers the full drawing area, including the strip
             // left of the visible window (which shows earlier song time
             // when zoomed in), stopping only at the song's start.
@@ -1406,11 +1443,12 @@ export const AutomationEditorView = observer(function AutomationEditorView({
                 key={region.index}
                 className={`${styles.valueSwatch} ${
                   suspended ? styles.valueSwatchDimmed : ""
-                } ${
+                } ${region.gradient ? styles.valueSwatchWide : ""} ${
                   selectedSegment === region.index
                     ? styles.valueSwatchSelected
                     : ""
                 }`}
+                data-gradient={region.gradient ? "true" : "false"}
                 data-doc="value-swatch"
                 style={{
                   left: `${(region.from + region.to) / 2}%`,

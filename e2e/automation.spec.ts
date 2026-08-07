@@ -1251,6 +1251,78 @@ test.describe("automation is clipped to its block", () => {
     ).toBeGreaterThan(1);
   });
 
+  test("a block cannot be dragged or grown past the end of the song", async ({
+    page,
+  }) => {
+    await openTimeFactorLane(page);
+
+    const area = (await page
+      .locator("[class*=blockLaneArea]")
+      .first()
+      .boundingBox())!;
+    const songEnd = () =>
+      page.evaluate(() => {
+        const store = (window as unknown as Record<string, any>).__editorStore;
+        const block = store.layers[0].blockMap.getAllBlocks()[0];
+        return { end: block.startTime + block.duration, start: block.startTime };
+      });
+
+    // Shrink from the left so there is room to move right into.
+    const left = page.locator("[data-doc=block-edge-left]").first();
+    const leftBox = (await left.boundingBox())!;
+    await page.mouse.move(
+      leftBox.x + leftBox.width / 2,
+      leftBox.y + leftBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.waitForTimeout(50);
+    await page.mouse.move(
+      area.x + area.width * 0.4,
+      leftBox.y + leftBox.height / 2,
+      { steps: 10 },
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    const songLength = (await songEnd()).end;
+
+    // Drag the bar far past the right end: it stops with its right edge at the
+    // song's end rather than sailing past it.
+    const bar = page.locator("[data-doc=block-bar]").first();
+    const barBox = (await bar.boundingBox())!;
+    await page.mouse.move(
+      barBox.x + barBox.width / 2,
+      barBox.y + barBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.waitForTimeout(50);
+    await page.mouse.move(
+      area.x + area.width * 3,
+      barBox.y + barBox.height / 2,
+      { steps: 10 },
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    expect((await songEnd()).end).toBeLessThanOrEqual(songLength + 0.01);
+
+    // And growing the right edge stops there too.
+    const right = page.locator("[data-doc=block-edge-right]").first();
+    const rightBox = (await right.boundingBox())!;
+    await page.mouse.move(
+      rightBox.x + rightBox.width / 2,
+      rightBox.y + rightBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.waitForTimeout(50);
+    await page.mouse.move(
+      area.x + area.width * 3,
+      rightBox.y + rightBox.height / 2,
+      { steps: 10 },
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(200);
+    expect((await songEnd()).end).toBeLessThanOrEqual(songLength + 0.01);
+  });
+
   test("a last keyframe inside the block still holds out to the block end", async ({
     page,
   }) => {
@@ -1275,3 +1347,4 @@ test.describe("automation is clipped to its block", () => {
     ).toHaveCount(0);
   });
 });
+

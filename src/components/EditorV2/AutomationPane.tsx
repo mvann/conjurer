@@ -278,12 +278,30 @@ function LaneValueSwatches({
   const clampPct = (pct: number) => Math.min(Math.max(pct, 0), 100);
   const { keyframes } = curve;
   const dimmed = !isCurveActive(curve);
+  // Mirrors the expanded editor: a period whose ends differ is a real
+  // gradient and is painted as one, on a chip twice as wide so it reads as a
+  // gradient at a glance rather than as a solid it happens not to be.
+  const isGradient = (payload: {
+    color?: [number, number, number, number];
+    colorTo?: [number, number, number, number];
+  }) =>
+    !!payload.color &&
+    !!payload.colorTo &&
+    payload.color.some(
+      (component, index) => Math.abs(component - payload.colorTo![index]) > 1e-6,
+    );
+
   const css = (payload: {
     color?: [number, number, number, number];
+    colorTo?: [number, number, number, number];
     palette?: NonNullable<AutomationCurve["leadIn"]>["palette"];
   }) =>
     payload.color
-      ? rgbaToCss(payload.color)
+      ? isGradient(payload)
+        ? `linear-gradient(90deg, ${rgbaToCss(payload.color)}, ${rgbaToCss(
+            payload.colorTo!,
+          )})`
+        : rgbaToCss(payload.color)
       : payload.palette
         ? paletteToGradientCss(payload.palette)
         : "rgba(232, 236, 244, 0.4)";
@@ -310,7 +328,7 @@ function LaneValueSwatches({
             key={index}
             className={`${styles.valueSwatch} ${styles.valueSwatchMini} ${
               dimmed ? styles.valueSwatchDimmed : ""
-            }`}
+            } ${isGradient(payload) ? styles.valueSwatchWide : ""}`}
             style={{ left: `${(from + to) / 2}%`, background: css(payload) }}
           />
         );
@@ -547,7 +565,12 @@ export const AutomationPane = observer(function AutomationPane({
         const onMove = (moveEvent: PointerEvent) => {
           const delta = (moveEvent.clientX - startX) * perPixel;
           if (mode === "move") {
-            const next = Math.max(0, originStart + delta);
+            // "Blocks shouldn't be able to be dragged such that their right
+            // side goes past the end of the timeline." Moving is bounded at
+            // both ends, so the block stays inside the song. A block longer
+            // than the song pins to the start rather than jittering.
+            const latest = Math.max(0, songDuration - originDuration);
+            const next = Math.min(Math.max(0, originStart + delta), latest);
             onChange(block, next, originDuration);
           } else if (mode === "left") {
             // The right edge holds: an earlier start is a longer block.
@@ -557,7 +580,13 @@ export const AutomationPane = observer(function AutomationPane({
             );
             onChange(block, next, originStart + originDuration - next);
           } else {
-            onChange(block, originStart, Math.max(0.05, originDuration + delta));
+            // Growing the right edge stops at the end of the song.
+            const longest = Math.max(0.05, songDuration - originStart);
+            onChange(
+              block,
+              originStart,
+              Math.min(Math.max(0.05, originDuration + delta), longest),
+            );
           }
         };
         const onUp = () => {

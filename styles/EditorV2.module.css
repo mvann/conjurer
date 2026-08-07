@@ -2688,12 +2688,24 @@
 }
 
 /* In the lane preview: smaller, centered on the line, display only. */
+/* A gradient period's chip. The owner's call, chosen over end-stop chips and
+   over a full-width sweep: "one chip that gradients from->to but also want
+   that chip to be twice as wide" — the width is what tells it apart from a
+   solid at a glance. */
+.valueSwatchWide {
+  width: 52px;
+}
+
 .valueSwatchMini {
   width: 18px;
   height: 11px;
   transform: translate(-50%, -50%);
   cursor: default;
   pointer-events: none;
+}
+
+.valueSwatchMini.valueSwatchWide {
+  width: 36px;
 }
 
 .valueSwatchDimmed {
