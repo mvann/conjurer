@@ -323,6 +323,37 @@ export const writeLaneCurve = (
 };
 
 /**
+ * Push every block's saved MANUAL VALUES back into its pattern params.
+ *
+ * Decision 7 says an unarmed lone-constant region IS the manual value, and
+ * `laneKeysOf` therefore leaves it out — it is not a lane. But the editor's
+ * drive loop only walks lanes, so nothing was ever reading those regions back:
+ * on load a param would sit at its pattern DEFAULT while the value the author
+ * saved sat in the data untouched. Set Warp to 2, save, reopen, and it read 0
+ * again, in the panel and on the canopy both.
+ *
+ * The read half of the convention, in other words, was missing. This is it.
+ *
+ * Armed lanes are deliberately skipped: the drive loop owns those and will
+ * overwrite this on the next frame anyway. Evaluation goes through upstream's
+ * own `updateParameter` so every variation type — numbers, colours, palettes —
+ * is read exactly the way their editor reads it.
+ */
+export const adoptManualValues = (block: Block) => {
+  const seed = (owner: Block) => {
+    for (const uniform of Object.keys(owner.pattern.params)) {
+      if (owner.lanedParams.has(uniform)) continue;
+      const regions = owner.parameterVariations[uniform];
+      if (!regions || regions.length === 0) continue;
+      if (!isConstantLane(regions)) continue;
+      owner.updateParameter(uniform, 0);
+    }
+  };
+  seed(block);
+  for (const effect of block.effectBlocks) seed(effect);
+};
+
+/**
  * Which lanes are open is editor state, not experience data, so it does not go
  * in the blob — it goes where upstream already puts it, keyed by experience and
  * block (decision 9). Upstream's own toggle persists as a side effect of

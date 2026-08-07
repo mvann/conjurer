@@ -25,6 +25,7 @@ import type { Store } from "@/src/types/Store";
 import type { Pattern } from "@/src/types/Pattern";
 import type { StackEntry } from "@/src/components/EditorV2/PatternsPanel";
 import {
+  adoptManualValues,
   getLaneSongDuration,
   laneCurve,
   laneKeysOf,
@@ -44,6 +45,16 @@ export const blocksOf = (layer: Layer): Block[] => layer.getAllBlocks();
 /** Every block in the experience, layer by layer. */
 export const allBlocks = (store: Store): Block[] =>
   store.layers.flatMap((layer) => blocksOf(layer));
+
+/**
+ * Read every block's saved manual values back into its params, across the whole
+ * experience. Call after any deserialize; see adoptManualValues.
+ */
+export const adoptAllManualValues = (store: Store) => {
+  runInAction(() => {
+    for (const block of allBlocks(store)) adoptManualValues(block);
+  });
+};
 
 /** The layer holding a block, or null if it has been detached. */
 export const layerOf = (store: Store, block: Block): Layer | null =>

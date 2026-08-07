@@ -48,6 +48,54 @@ test.describe("persistence and docs", () => {
     );
   });
 
+  // A manual value is stored as an unarmed lone-constant region (decision 7),
+  // and `laneKeysOf` deliberately leaves those out — they are not lanes. But
+  // the drive loop only walks lanes, so nothing was reading them back: a saved
+  // value sat in the data while the param showed its pattern DEFAULT. Set Warp
+  // to 2, save, reopen, read 0. The canopy rendered the default too.
+  test("a scrubbed value survives save and reopen", async ({ page }) => {
+    await loadSeededSong(page);
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+
+    const warp = page
+      .locator("[data-doc=param-row]")
+      .filter({ hasText: "Warp" })
+      .first();
+    await warp.locator("[data-doc=param-value]").click();
+    await warp.locator("input").fill("2");
+    await warp.locator("input").press("Enter");
+    await expect(warp.locator("[class*=paramScrub]")).toHaveText("2");
+
+    await page.keyboard.press("Escape");
+    await saveFromGear(page);
+    await page.waitForTimeout(500);
+    await page.reload();
+
+    await openPatternPanel(page);
+    const expand = page.getByLabel("Expand parameters");
+    if (await expand.count()) await expand.first().click();
+    await expect(
+      page
+        .locator("[data-doc=param-row]")
+        .filter({ hasText: "Warp" })
+        .first()
+        .locator("[class*=paramScrub]"),
+    ).toHaveText("2");
+
+    // And the value really reached the pattern the canopy renders, not just
+    // the row: the store's own param is what the shader reads.
+    expect(
+      await page.evaluate(() => {
+        const store = (
+          window as unknown as Record<string, any>
+        ).__editorStore;
+        return store.layers[0].blockMap.getAllBlocks()[0].pattern.params.u_warp
+          .value;
+      }),
+    ).toBe(2);
+  });
+
   test("dismissing the autosave prompt keeps the saved state", async ({
     page,
   }) => {

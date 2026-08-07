@@ -23,6 +23,7 @@ import {
   fetchExperience,
   saveExperience,
 } from "@/src/components/EditorV2/experienceClient";
+import { adoptAllManualValues } from "@/src/components/EditorV2/blockStack";
 
 export const DEFAULT_EXPERIENCE_NAME = "untitled";
 
@@ -140,6 +141,7 @@ export const loadExperienceIntoStore = async (
 
   const experience = row ?? emptyExperience(store, name);
   store.deserialize(experience);
+  adoptAllManualValues(store);
   runInAction(() => {
     store.hasSaved = !!row;
     store.experienceLastSavedAt = row ? Date.now() : 0;
@@ -152,6 +154,7 @@ export const loadExperienceIntoStore = async (
 /** Apply a draft the author chose to restore. */
 export const restoreDraft = (store: Store, draft: Draft) => {
   store.deserialize(draft.experience);
+  adoptAllManualValues(store);
 };
 
 /**
