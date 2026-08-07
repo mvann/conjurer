@@ -2265,6 +2265,30 @@
     drop-shadow(0 0 10px rgba(170, 190, 235, 0.6));
 }
 
+/* The colour period's Gradient switch and its far-end label. Memory-only
+   state (decision 23), so it reads as a view control rather than a value. */
+.inspectorToggle {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
+  color: rgba(232, 236, 244, 0.72);
+  font-family: var(--font-mystical), serif;
+  font-size: 12px;
+  letter-spacing: 0.04em;
+  cursor: pointer;
+  user-select: none;
+}
+
+.inspectorSubLabel {
+  margin: 8px 0 4px;
+  color: rgba(232, 236, 244, 0.5);
+  font-family: var(--font-mystical), serif;
+  font-size: 11px;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+}
+
 /* Inspector card for the selected segment, bottom left of the editor. */
 .segmentInspector {
   position: absolute;

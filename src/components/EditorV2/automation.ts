@@ -166,6 +166,10 @@ export type AutomationCurve = {
   // first keyframe (keyframes are boundaries; N keyframes = N+1 periods).
   leadIn?: {
     color?: [number, number, number, number];
+    // The far end, when this period is a gradient. Upstream stores every
+    // colour period as linear4 from->to, so the lead-in is a period like any
+    // other and can carry one (decision 23).
+    colorTo?: [number, number, number, number];
     palette?: {
       a: [number, number, number];
       b: [number, number, number];

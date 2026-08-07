@@ -129,6 +129,19 @@ type Props = {
 // Right click a segment to change its type (curve, flat, linear, wave,
 // easing); a selected segment's parameters are edited in the inspector
 // card. The scale on the right labels the value range; it manages itself.
+const sameRgba = (a: Rgba, b: Rgba) =>
+  a.every((component, index) => Math.abs(component - b[index]) < 1e-6);
+
+// A second colour you can actually see is different from the first. The
+// complement is the obvious choice and is right nearly everywhere; near
+// mid-grey it collapses back onto the original, so that case takes a fixed
+// contrasting colour instead.
+const notablyDifferent = ([r, g, b, a]: Rgba): Rgba => {
+  const complement: Rgba = [1 - r, 1 - g, 1 - b, a];
+  const flat = [r, g, b].every((component) => Math.abs(component - 0.5) < 0.1);
+  return flat ? [0.15, 0.55, 0.95, a] : complement;
+};
+
 export const AutomationEditorView = observer(function AutomationEditorView({
   param,
   curve,
@@ -423,6 +436,18 @@ export const AutomationEditorView = observer(function AutomationEditorView({
     while (areaWidth * beatFracOfView * stride < 9 && stride < 4096) stride *= 4;
     return stride;
   };
+
+  // Which colour periods have had Gradient switched ON, by region index.
+  //
+  // Deliberately memory only, and the owner was explicit about why it has to
+  // be: "Gradient, for me, will only be in memory as far as UI goes, which is
+  // funny because in the data model, it's always there." Upstream stores every
+  // colour period as linear4 from->to, so a gradient is not a distinct kind of
+  // thing to persist — equal ends ARE what "one colour" means. The flag exists
+  // only to keep the toggle on while someone drags the second colour towards
+  // the first and back; on reload, equal ends read as one colour again, which
+  // is exactly what he said should happen.
+  const [gradientOn, setGradientOn] = useState<Set<number>>(new Set());
 
   // Nearest snap target to a time (song fraction); identity when off or
   // when the mode's targets are unavailable.
@@ -1676,6 +1701,7 @@ export const AutomationEditorView = observer(function AutomationEditorView({
             : keyframes[selectedSegment - 1];
           const apply = (patch: {
             color?: [number, number, number, number];
+            colorTo?: [number, number, number, number];
             palette?: NonNullable<AutomationCurve["leadIn"]>["palette"];
           }) => {
             const current = curveRef.current;
@@ -1696,10 +1722,55 @@ export const AutomationEditorView = observer(function AutomationEditorView({
                 {laneKind === "color" ? "Color" : "Palette"}
               </div>
               {laneKind === "color" ? (
-                <ColorValueEditor
-                  rgba={source.color ?? [1, 1, 1, 1]}
-                  onChange={(rgba) => apply({ color: rgba })}
-                />
+                (() => {
+                  const from = source.color ?? ([1, 1, 1, 1] as Rgba);
+                  const to = source.colorTo;
+                  const showing =
+                    gradientOn.has(selectedSegment) ||
+                    (!!to && !sameRgba(from, to));
+                  return (
+                    <>
+                      <label className={styles.inspectorToggle}>
+                        <input
+                          type="checkbox"
+                          data-doc="gradient-toggle"
+                          checked={showing}
+                          onChange={(event) => {
+                            const next = new Set(gradientOn);
+                            if (event.target.checked) {
+                              next.add(selectedSegment);
+                              // "it adds a second color different from the
+                              // first color, notably" — a far end you can see
+                              // is different, so the gradient is visible the
+                              // moment it is switched on.
+                              apply({ colorTo: notablyDifferent(from) });
+                            } else {
+                              next.delete(selectedSegment);
+                              // Equal ends is how the data model says "one
+                              // colour"; there is nothing else to clear.
+                              apply({ colorTo: from });
+                            }
+                            setGradientOn(next);
+                          }}
+                        />
+                        <span>Gradient</span>
+                      </label>
+                      <ColorValueEditor
+                        rgba={from}
+                        onChange={(rgba) => apply({ color: rgba })}
+                      />
+                      {showing && (
+                        <>
+                          <div className={styles.inspectorSubLabel}>To</div>
+                          <ColorValueEditor
+                            rgba={to ?? notablyDifferent(from)}
+                            onChange={(rgba) => apply({ colorTo: rgba })}
+                          />
+                        </>
+                      )}
+                    </>
+                  );
+                })()
               ) : (
                 <PaletteValueEditor
                   palette={source.palette ?? currentValuePayload().palette!}

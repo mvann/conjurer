@@ -172,7 +172,11 @@ const valueLaneToCurve = (
     }
     cursor += variation.duration;
     if (regionIndex === 0) {
-      leadIn = { color: keyframe.color, palette: keyframe.palette };
+      leadIn = {
+        color: keyframe.color,
+        colorTo: keyframe.colorTo,
+        palette: keyframe.palette,
+      };
       continue;
     }
     keyframes.push(keyframe);

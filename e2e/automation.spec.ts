@@ -625,7 +625,8 @@ test.describe("segment types", () => {
     const before = await swatches
       .nth(2)
       .evaluate((swatch) => (swatch as HTMLElement).style.background);
-    await inspector.locator("input").fill("#ff0000");
+    // Not just any input: the inspector also carries the Gradient checkbox.
+    await inspector.locator("input:not([type=checkbox])").fill("#ff0000");
     await expect
       .poll(async () =>
         swatches

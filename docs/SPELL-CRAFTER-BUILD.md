@@ -321,16 +321,9 @@ did hold detail the plan had compressed away.
 
 ### Where the next increment picks up
 
-Still outstanding on the colour lane: the **gradient toggle in the segment
-inspector**, which is decision 23's remaining half and memory-only by design.
-The owner's words (@@L11172): *"in the inspector for that segment in my
-version, there should just be a little toggle for, like, gradient. And then
-when you click that, it adds a second color different from the first color,
-notably... Gradient, for me, will only be in memory as far as UI goes, which is
-funny because in the data model, it's always there."* So the toggle's state is
-derived on load from whether the two ends differ, never serialized. Also still
-open: **time selection on colour lanes**, which `dev` never had and the owner
-confirmed is in scope to fix rather than preserve.
+Still outstanding on the colour lane: **time selection**, which `dev` never had
+and the owner confirmed is in scope to fix rather than preserve. The gradient
+toggle is done (decision 23, memory-only).
 
 
 1. **Opacity as a pseudo-param** (decision 25) — tri-state auto/manual/lane at
