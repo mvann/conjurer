@@ -6,8 +6,13 @@ import { defineConfig } from "@playwright/test";
 export default defineConfig({
   testDir: "./e2e",
   timeout: 60_000,
+  // Files run in parallel, tests within a file stay in order. Measured on the
+  // full suite: 6.3 min at 1 worker, 3.7 at 2, 2.9 at 4 — but 4 put enough CPU
+  // contention on the pointer-timing tests to make a drag test flake 1 run in
+  // 3. Two takes 41% off the wall clock and left them alone, which is the
+  // trade worth making: a flaky suite costs more than the 48 seconds.
   fullyParallel: false,
-  workers: 1,
+  workers: 2,
   retries: 1,
   reporter: [["list"]],
   use: {
