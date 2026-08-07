@@ -321,9 +321,38 @@ did hold detail the plan had compressed away.
 
 ### Where the next increment picks up
 
-Still outstanding on the colour lane: **time selection**, which `dev` never had
-and the owner confirmed is in scope to fix rather than preserve. The gradient
-toggle is done (decision 23, memory-only).
+### The colour lane diverges too much — consolidate it
+
+The owner's read, and it is correct: *"there are a number of differences for how
+the color automation operates that are different from other lane types. No need
+for it to be so different. I'm guessing it's unnecessarily duplicated logic."*
+
+The value lane grew as a parallel implementation rather than a variation, and
+the reported symptoms are all consequences of that:
+
+- **No keyframe dots in the preview.** `LaneCurve` renders `laneKeyframeDot`
+  for numeric lanes; `LaneValueSwatches` is a separate component that renders a
+  baseline and chips and no dots at all. Measured: 0 dots, 2 chips.
+- **No time selection.** The selection gestures are gated off for value lanes
+  rather than sharing the numeric path. `dev` never had this either; the owner
+  confirmed it is in scope to fix rather than preserve.
+- **"The automation curve is always greyed out."** NOT suspension — measured
+  `curve.active` undefined and 0 dimmed swatches, so nothing is suspended. The
+  grey he is seeing is `.valueBaseline`, drawn as a deliberately neutral line
+  because a value lane has no vertical meaning (@@L5846: *"that animation curve
+  should just be a straight line"*). Either it is styled dimmer than `dev` drew
+  it, or the neutral grey reads as "disabled". Worth showing him both before
+  choosing.
+
+So the fix is not three more patches onto the parallel component. It is to make
+the value lane a VARIATION of the numeric one — same keyframe rendering, same
+selection machinery, same active/suspended treatment — differing only where the
+spec says it does: no value axis, keyframes at mid-height, chips instead of a
+shaped curve. That is the same "port, never re-author" rule as hard rule 1,
+applied to a divergence this branch introduced itself.
+
+Done already: the gradient toggle (decision 23, memory-only) and the colour
+ramp.
 
 
 1. **Opacity as a pseudo-param** (decision 25) — tri-state auto/manual/lane at

@@ -69,6 +69,7 @@ import {
 import {
   AutomationCurve,
   evaluateCurve,
+  colorAtTime,
   isCurveActive,
   payloadAtTime,
 } from "@/src/components/EditorV2/automation";
@@ -272,16 +273,27 @@ export const EditorV2Page = observer(function EditorV2Page() {
             // Whole-value lanes: the period covering the current time
             // supplies the color or palette, copied in place so the
             // live uniform object keeps its identity.
+            if (isVector4(target)) {
+              // A colour period is a RAMP, not a hold: upstream stores it as
+              // linear4 from->to and interpolates. Reading the period's
+              // payload alone left the parameter on the first colour for the
+              // period's whole length, so a gradient never actually graded.
+              const frame = entry.block.parentBlock ?? entry.block;
+              const total = getLaneSongDuration();
+              const span = total > 0
+                ? {
+                    start: frame.startTime / total,
+                    end: (frame.startTime + frame.duration) / total,
+                  }
+                : { start: 0, end: 1 };
+              const rgba = colorAtTime(curve, frac, span);
+              if (rgba) target.set(rgba[0], rgba[1], rgba[2], rgba[3]);
+              continue;
+            }
+            // A palette is discrete: the period holding this time supplies it.
             const payload = payloadAtTime(curve, frac);
             if (!payload) continue;
-            if (isVector4(target) && payload.color)
-              target.set(
-                payload.color[0],
-                payload.color[1],
-                payload.color[2],
-                payload.color[3],
-              );
-            else if (isPalette(target) && payload.palette)
+            if (isPalette(target) && payload.palette)
               target.setFromSerialized(payload.palette);
           }
         }

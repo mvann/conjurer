@@ -40,6 +40,9 @@ import {
   curveToVariations,
   RegionContext,
 } from "@/src/components/EditorV2/regionCurve";
+import { colorAtTime } from "@/src/components/EditorV2/automation";
+
+type Rgba = [number, number, number, number];
 
 
 let failures = 0;
@@ -482,6 +485,34 @@ if (variationsToCurve([], fullSong) !== null)
   fail("empty region list should project to null, not an empty curve");
 if (variationsToCurve(undefined, fullSong) !== null)
   fail("absent region list should project to null");
+
+console.log("");
+// ---- a colour period is a ramp, not a hold
+{
+  // Reported from the app: "I have gradient on and when I move the playhead to
+  // the end of a segment with a gradient it still only shows the color of the
+  // first color." The lane was driving the parameter from the period's payload
+  // alone, which is the right question for a palette and the wrong one for a
+  // colour — upstream stores a colour period as linear4 from->to and ramps
+  // between them.
+  const span = { start: 0, end: 1 };
+  const curve = {
+    keyframes: [{ time: 0.5, value: 0, color: [0, 0, 0, 1] as Rgba }],
+    segments: [],
+    leadIn: { color: [1, 1, 1, 1] as Rgba, colorTo: [0, 0, 0, 1] as Rgba },
+  };
+
+  const at = (time: number) => colorAtTime(curve as never, time, span)!;
+  if (!(Math.abs(at(0)[0] - 1) < 1e-9)) fail("a gradient starts at its from colour");
+  if (!(Math.abs(at(0.25)[0] - 0.5) < 1e-9))
+    fail(`halfway through the period is halfway between the colours, got ${at(0.25)[0]}`);
+  if (!(Math.abs(at(0.499)[0]) < 0.01))
+    fail(`the end of the period reaches the to colour, got ${at(0.499)[0]}`);
+  // A solid period holds, which is the behaviour that was already right.
+  if (!(Math.abs(at(0.75)[0]) < 1e-9))
+    fail("a period with no far end holds its colour");
+  console.log("  a gradient period ramps across its span; a solid one holds");
+}
 
 console.log("");
 if (failures > 0) {

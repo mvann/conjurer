@@ -86,6 +86,63 @@ export const payloadAtTime = (
   return { color: holder.color, palette: holder.palette };
 };
 
+/**
+ * The colour at a time, INTERPOLATED across its period.
+ *
+ * `payloadAtTime` answers "which period holds here", which is the right
+ * question for a palette (discrete) and the wrong one for a colour. Upstream
+ * stores a colour period as linear4 from->to and its valueAtTime ramps between
+ * them, so a gradient period is a ramp, not a hold — reading only the payload
+ * left the parameter stuck on the period's first colour for the period's whole
+ * length, gradient or not.
+ *
+ * `span` is the block's own start and end as song fractions: the first period
+ * begins at the block's start and the last ends at its end, neither of which
+ * the curve knows on its own.
+ */
+export const colorAtTime = (
+  curve: AutomationCurve,
+  time: number,
+  span: { start: number; end: number },
+): [number, number, number, number] | null => {
+  const { keyframes } = curve;
+  let from: [number, number, number, number] | undefined;
+  let to: [number, number, number, number] | undefined;
+  let periodStart = span.start;
+  let periodEnd = span.end;
+
+  if (keyframes.length === 0 || time < keyframes[0].time) {
+    const leadIn = curve.leadIn ?? {
+      color: keyframes[0]?.color,
+      colorTo: keyframes[0]?.colorTo,
+    };
+    from = leadIn.color;
+    to = leadIn.colorTo;
+    periodEnd = keyframes.length ? keyframes[0].time : span.end;
+  } else {
+    let index = 0;
+    for (let i = 0; i < keyframes.length; i++)
+      if (keyframes[i].time <= time) index = i;
+    from = keyframes[index].color;
+    to = keyframes[index].colorTo;
+    periodStart = keyframes[index].time;
+    periodEnd =
+      index + 1 < keyframes.length ? keyframes[index + 1].time : span.end;
+  }
+
+  if (!from) return null;
+  if (!to) return from;
+  const width = periodEnd - periodStart;
+  if (!(width > 0)) return from;
+  const t = Math.min(Math.max((time - periodStart) / width, 0), 1);
+  return [
+    from[0] + (to[0] - from[0]) * t,
+    from[1] + (to[1] - from[1]) * t,
+    from[2] + (to[2] - from[2]) * t,
+    from[3] + (to[3] - from[3]) * t,
+  ];
+};
+
 // Mirrors the data model's PeriodicVariationType, including the saw kinds
 // added upstream after the merge plan was written.
 export type WaveKind =
