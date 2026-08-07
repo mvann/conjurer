@@ -871,7 +871,16 @@ export const EditorV2Page = observer(function EditorV2Page() {
     () =>
       entries
         .filter((entry) => entry.visible)
-        .map(({ id, pattern, effects }) => ({ id, pattern, effects })),
+        .map(({ id, pattern, effects, block }) => ({
+          id,
+          pattern,
+          effects,
+          // Opacity comes from upstream's own single source of truth, which
+          // answers both halves of decision 25: the authored value when the
+          // block has one, and the derived equal-power crossfade when it does
+          // not. Read per frame, since it moves with the playhead.
+          getOpacity: () => block.currentMergeOpacity(transportTime.seconds),
+        })),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [visibleKey],
   );

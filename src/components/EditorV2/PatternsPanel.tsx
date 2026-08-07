@@ -1,3 +1,4 @@
+import { runInAction } from "mobx";
 import { observer } from "mobx-react-lite";
 import { useEffect, useRef, useState } from "react";
 import {
@@ -58,6 +59,11 @@ const formatParamValue = (value: ParamType) => {
 // is automatable like a param but is not a shader uniform. Uniform names in
 // practice are u_-prefixed, so this cannot collide.
 export const VISIBILITY_PARAM = "__visibility";
+
+// Opacity's uniform, upstream's own. It is in BASE_UNIFORMS, so every param
+// list filter inherited from them hides it — the row is a deliberate
+// exception (decision 25).
+export const OPACITY_PARAM = "u_opacity";
 
 // An effect applied to a pattern: a Pattern whose shader transforms the
 // previous render stage (u_texture). Chained in order after the pattern.
@@ -172,6 +178,18 @@ export const PatternsPanel = observer(function PatternsPanel({
   const [renamingLayer, setRenamingLayer] = useState<string | null>(null);
   const [draggingLayer, setDraggingLayer] = useState<string | null>(null);
   const contextMenuRef = useRef<HTMLDivElement>(null);
+  // Which pattern's opacity just went from auto to manual, so the row can say
+  // so for a moment. The transition is worth showing: it silently ends a live
+  // crossfade, which no other manual value edit does.
+  const [justMaterialized, setJustMaterialized] = useState<string | null>(null);
+  const materializedTimer = useRef<ReturnType<typeof setTimeout>>();
+  useEffect(() => () => clearTimeout(materializedTimer.current), []);
+  const flagMaterialized = (entryId: string) => {
+    setJustMaterialized(entryId);
+    clearTimeout(materializedTimer.current);
+    materializedTimer.current = setTimeout(() => setJustMaterialized(null), 1400);
+  };
+
   // Composite params (palette, color) render expanded by default; this set
   // tracks the ones collapsed, keyed by `entryId:uniform`. UI-only state.
   const [collapsedParams, setCollapsedParams] = useState<Set<string>>(
@@ -258,6 +276,77 @@ export const PatternsPanel = observer(function PatternsPanel({
     const suspended =
       !!curve && curve.keyframes.length > 0 && !isCurveActive(curve);
     return suspended ? styles.eyeBarInactive : styles.eyeBarActive;
+  };
+
+  // Opacity: a pseudo-param at the TOP of every pattern's list (decision 25).
+  // The owner's words: "you can add it as an additional parameter for all
+  // patterns at the top of the list. Just call opacity, and it will just be
+  // auto. And then you can drag it up or down to create a new automation,
+  // which is just flat."
+  //
+  // Three states, not two, because `u_opacity` is in upstream's BASE_UNIFORMS
+  // and so has one more state below "lone flat": no entry at all.
+  //   - absent    = AUTO. Upstream derives an equal-power crossfade from block
+  //                 overlaps; identical spans get none and render full, which
+  //                 is what makes the default full-song stack sum as before.
+  //   - lone flat = MANUAL, the ordinary decision 7 manual value.
+  //   - a lane    = authored automation, promoted through lanedParams.
+  //
+  // Patterns only. Upstream's own lanableParamNames excludes u_opacity on
+  // effect blocks, since opacity applies once per pattern after its whole
+  // effect chain.
+  const renderOpacityRow = (entry: StackEntry) => {
+    const param = entry.pattern.params[OPACITY_PARAM] as
+      | PatternParam<number>
+      | undefined;
+    if (!param) return null;
+    const isAuto = !entry.block.hasManualOpacity;
+
+    return (
+      <li
+        data-doc="param-row"
+        data-opacity-mode={isAuto ? "auto" : "manual"}
+        className={`${styles.paramRow} ${
+          assigning ? styles.paramRowAssign : ""
+        } ${laneEdgeClass(entry, OPACITY_PARAM)} ${
+          justMaterialized === entry.id ? styles.paramRowChanged : ""
+        }`}
+        onContextMenu={(event) => {
+          event.preventDefault();
+          setContextMenu({
+            entryId: entry.id,
+            uniform: OPACITY_PARAM,
+            x: event.clientX,
+            y: event.clientY,
+          });
+        }}
+        {...(assigning
+          ? { onClick: () => onAssignParam(entry.id, OPACITY_PARAM) }
+          : {})}
+      >
+        <span className={styles.paramName}>Opacity</span>
+        <ScrubbableNumber
+          param={param}
+          displayAs={isAuto ? "auto" : undefined}
+          onUserEdit={() => {
+            // The first drag is what turns auto into a real value. Upstream's
+            // materialize copies the DERIVED fade into variations, so a block
+            // that was mid-crossfade keeps its shape instead of jumping; the
+            // drag then moves it from there. Flagged for a beat afterwards
+            // because this transition kills a live crossfade, unlike an
+            // ordinary silent write-through.
+            if (!entry.block.hasManualOpacity) {
+              runInAction(() => entry.block.materializeAutoOpacity());
+              flagMaterialized(entry.id);
+            }
+            deactivateLane(entry, OPACITY_PARAM)();
+          }}
+          onCommitted={() =>
+            syncManualValue(entry.block, OPACITY_PARAM, entry.block.store)
+          }
+        />
+      </li>
+    );
   };
 
   // One parameter list, used for the pattern's own params and for each
@@ -432,6 +521,13 @@ export const PatternsPanel = observer(function PatternsPanel({
       writeLaneCurve(menuEntry.block, laneKey, null, menuEntry.block.store);
       disarmLane(menuEntry.block, laneKey);
     } else {
+      // Opacity has no empty state to open onto: absence already means auto.
+      // So promoting it materializes first, and materializing copies the
+      // DERIVED crossfade rather than a flat 1 — on an overlapped block the
+      // lane then opens showing the fade that was really playing, instead of
+      // erasing it (decision 25).
+      if (laneKey === OPACITY_PARAM && !menuEntry.block.hasManualOpacity)
+        runInAction(() => menuEntry.block.materializeAutoOpacity());
       // Arming seeds a full-span region so the lane never opens onto nothing.
       armLane(menuEntry.block, laneKey);
     }
@@ -521,6 +617,7 @@ export const PatternsPanel = observer(function PatternsPanel({
                 {entry.expanded && (
                   <>
                     <ul className={styles.paramList}>
+                      {renderOpacityRow(entry)}
                       {renderParamRows(entry, entry.pattern, (u) => u)}
                     </ul>
                     {entry.effects.map((effect, effectIndex) => (
@@ -809,6 +906,27 @@ export const PatternsPanel = observer(function PatternsPanel({
               >
                 {menuHasLane ? "Delete Automation Lane" : "Add Automation Lane"}
               </button>
+              {contextMenu.uniform === OPACITY_PARAM &&
+                menuEntry.block.hasManualOpacity && (
+                  <button
+                    className={styles.contextMenuItem}
+                    data-doc="reset-opacity"
+                    onClick={() => {
+                      // "Just right click to reset to auto works for opacity."
+                      // Which is literally deleting the entry: absence IS auto,
+                      // and it survives saves because u_opacity is a base
+                      // uniform, so the save-time backfill skips it.
+                      runInAction(() => {
+                        menuEntry.block.resetOpacityToAuto();
+                        menuEntry.block.lanedParams.delete(OPACITY_PARAM);
+                      });
+                      resumeLane(menuEntry.block, OPACITY_PARAM);
+                      setContextMenu(null);
+                    }}
+                  >
+                    Reset to Auto
+                  </button>
+                )}
               {menuCanToggleActive && (
                 <button
                   className={styles.contextMenuItem}

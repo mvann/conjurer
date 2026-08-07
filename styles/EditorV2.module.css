@@ -1905,6 +1905,22 @@
   border-bottom-color: rgba(232, 236, 244, 0.7);
 }
 
+/* A parameter row that just changed state on its own account. Used for
+   opacity going from auto to manual: unlike every other manual value edit,
+   that one silently ends a live crossfade, so it says so for a beat. */
+.paramRowChanged {
+  animation: param-row-changed 1.4s ease-out;
+}
+
+@keyframes param-row-changed {
+  0% {
+    background: rgba(232, 236, 244, 0.16);
+  }
+  100% {
+    background: rgba(232, 236, 244, 0);
+  }
+}
+
 /* ---- Add-pattern flow ---- */
 
 /* Each "add" action lines up with the names of the thing it adds, the way Add

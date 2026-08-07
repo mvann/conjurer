@@ -35,6 +35,12 @@ const MERGE_PRIORITY = 100;
 
 export type VisiblePattern = {
   id: string;
+  // The block's opacity for this frame, applied as the pattern enters the
+  // merge chain. Read per frame rather than passed as a value because it
+  // varies with the playhead: upstream's currentMergeOpacity returns the
+  // authored value when the block has one and the derived crossfade when it
+  // does not (decision 25). Omitted means fully opaque.
+  getOpacity?: () => number;
   pattern: Pattern;
   effects: { id: string; pattern: Pattern }[];
 };
@@ -94,13 +100,17 @@ function StackPipeline({
   const structureKey = `${count}|${entries
     .map((entry) => entry.effects.length)
     .join(",")}`;
-  const { patternTargets, scratchTargets, intermediateTargets } =
+  const { patternTargets, scratchTargets, intermediateTargets, blackTarget } =
     useMemo(() => {
       const make = () =>
         new WebGLRenderTarget(RENDER_TARGET_SIZE, RENDER_TARGET_SIZE);
       return {
-        patternTargets:
-          count >= 2 ? entries.map(make) : ([] as WebGLRenderTarget[]),
+        // One per entry even when there is only one: a lone pattern still
+        // merges, against a black target, so its opacity is applied. Adding
+        // black is the identity, so the pattern passes through untouched at
+        // full opacity — the same trick upstream's MergeNodes uses.
+        blackTarget: make(),
+        patternTargets: entries.map(make),
         scratchTargets: entries.map((entry) =>
           entry.effects.length > 0 ? make() : null,
         ),
@@ -113,11 +123,14 @@ function StackPipeline({
     }, [structureKey]);
   useEffect(
     () => () => {
-      [...patternTargets, ...scratchTargets, ...intermediateTargets].forEach(
-        (target) => target?.dispose(),
-      );
+      [
+        ...patternTargets,
+        ...scratchTargets,
+        ...intermediateTargets,
+        blackTarget,
+      ].forEach((target) => target?.dispose());
     },
-    [patternTargets, scratchTargets, intermediateTargets],
+    [patternTargets, scratchTargets, intermediateTargets, blackTarget],
   );
 
   useFrame(({ clock }) => {
@@ -180,7 +193,19 @@ function StackPipeline({
     );
   };
 
-  if (count === 1) return renderChain(entries[0], 0, outputTarget);
+  if (count === 1)
+    return (
+      <>
+        {renderChain(entries[0], 0, patternTargets[0])}
+        <MergeNode
+          priority={MERGE_PRIORITY}
+          renderTargetIn1={patternTargets[0]}
+          renderTargetIn2={blackTarget}
+          renderTargetOut={outputTarget}
+          getOpacityIn1={entries[0].getOpacity}
+        />
+      </>
+    );
 
   return (
     <>
@@ -202,6 +227,12 @@ function StackPipeline({
               ? outputTarget
               : intermediateTargets[mergeIndex]
           }
+          // Opacity is applied as each pattern ENTERS the chain; the running
+          // total is already scaled and carries at full opacity from there.
+          getOpacityIn1={
+            mergeIndex === 0 ? entries[0].getOpacity : undefined
+          }
+          getOpacityIn2={entries[mergeIndex + 1].getOpacity}
         />
       ))}
     </>

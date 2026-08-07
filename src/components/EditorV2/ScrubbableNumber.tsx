@@ -21,6 +21,7 @@ export function ScrubbableNumber({
   param,
   onUserEdit,
   onCommitted,
+  displayAs,
 }: {
   param: PatternParam<number>;
   onUserEdit?: () => void;
@@ -29,6 +30,11 @@ export function ScrubbableNumber({
   // value moves. Anything that needs to READ the committed value — writing a
   // manual value through to its region, say — belongs here.
   onCommitted?: (value: number) => void;
+  // Shown in place of the number. For opacity in AUTO, which has no authored
+  // value to show but must still drag: the first drag commits, which is what
+  // turns auto into a real one (decision 25), and the word is replaced by the
+  // number it just became.
+  displayAs?: string;
 }) {
   const [displayValue, setDisplayValue] = useState(param.value);
   const [isEditing, setIsEditing] = useState(false);
@@ -173,7 +179,7 @@ export function ScrubbableNumber({
       onPointerDown={onPointerDown}
       title="Drag to change · shift for fine · click to type"
     >
-      {formatNumber(displayValue)}
+      {displayAs ?? formatNumber(displayValue)}
     </span>
   );
 }
