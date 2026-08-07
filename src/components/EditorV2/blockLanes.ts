@@ -35,6 +35,11 @@ import {
   variationsToCurve,
   RegionContext,
 } from "@/src/components/EditorV2/regionCurve";
+import type { Variation } from "@/src/types/Variations/Variation";
+import { LinearVariation4 } from "@/src/types/Variations/LinearVariation4";
+import { PaletteVariation } from "@/src/params/palette/variation/PaletteVariation";
+import { isVector4 } from "@/src/utils/object";
+import { isPalette } from "@/src/params/palette/Palette";
 
 // A nominal span for an experience with no song. The editor works perfectly
 // well before one is loaded — its curves are fractions of the timeline, not
@@ -283,6 +288,75 @@ export const isConstantLane = (regions: unknown[]): boolean => {
  * Write a lane back to its block. Replaces the region array rather than
  * mutating it, which is what mobx needs to see the change (see the header).
  */
+/**
+ * Write the parameter's CURRENT value as a lone constant region — the shape
+ * decision 7 gives a manual value.
+ *
+ * Covers every kind a pattern param can hold, dispatching the way upstream's
+ * own armParamLane does, so a colour or a palette keeps its manual value as
+ * faithfully as a number does.
+ */
+export const writeManualConstant = (
+  owner: Block,
+  uniform: string,
+  store: Store,
+) => {
+  const value = owner.pattern.params[uniform]?.value;
+  const { blockDuration } = regionContextFor(owner);
+  let constant: Variation[] | null = null;
+
+  if (typeof value === "number")
+    constant = curveToVariations(
+      {
+        keyframes: [
+          { time: 0, value },
+          { time: 1, value },
+        ],
+        segments: [{ type: "flat" }],
+      },
+      { blockStartTime: 0, blockDuration, songDuration: blockDuration },
+      store,
+    );
+  else if (isVector4(value))
+    constant = [new LinearVariation4(blockDuration, value, value)];
+  else if (isPalette(value))
+    constant = [new PaletteVariation(blockDuration, value)];
+
+  if (!constant) return;
+  const regions = constant;
+  runInAction(() => {
+    owner.parameterVariations[uniform] = regions;
+  });
+};
+
+/**
+ * Keep a manual value's region in step with the value the author just set.
+ *
+ * The other half of adoptManualValues, and the other half of the same bug.
+ * Once a param has a lone-constant region behind it — which every param gets
+ * after one save and reopen — scrubbing it changed `param.value` and left the
+ * region holding the old number. The editor showed the new value, the save
+ * wrote the old one, and reopening threw the edit away.
+ *
+ * Only unarmed lone constants are touched. A real lane is the author's
+ * automation and none of this function's business; a param with no region at
+ * all needs none, since the save-time backfill writes one from the value.
+ */
+export const syncManualValue = (
+  block: Block,
+  laneKey: string,
+  store: Store,
+) => {
+  const resolved = resolveLaneOwner(block, laneKey);
+  if (!resolved) return;
+  const { owner, uniform } = resolved;
+  if (owner.lanedParams.has(uniform)) return;
+  const regions = owner.parameterVariations[uniform];
+  if (!regions || regions.length === 0) return;
+  if (!isConstantLane(regions)) return;
+  writeManualConstant(owner, uniform, store);
+};
+
 export const writeLaneCurve = (
   block: Block,
   laneKey: string,
@@ -296,23 +370,7 @@ export const writeLaneCurve = (
   if (!curve || curve.keyframes.length === 0) {
     // Emptying a lane leaves the parameter at its current value, which in this
     // data model means a lone constant region — the manual value.
-    const value = owner.pattern.params[uniform]?.value;
-    if (typeof value !== "number") return;
-    const { blockDuration } = regionContextFor(owner);
-    const constant = curveToVariations(
-      {
-        keyframes: [
-          { time: 0, value },
-          { time: 1, value },
-        ],
-        segments: [{ type: "flat" }],
-      },
-      { blockStartTime: 0, blockDuration, songDuration: blockDuration },
-      store,
-    );
-    runInAction(() => {
-      owner.parameterVariations[uniform] = constant;
-    });
+    writeManualConstant(owner, uniform, store);
     return;
   }
 

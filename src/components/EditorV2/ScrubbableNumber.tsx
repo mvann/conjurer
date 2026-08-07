@@ -20,9 +20,15 @@ const CLICK_MS = 250;
 export function ScrubbableNumber({
   param,
   onUserEdit,
+  onCommitted,
 }: {
   param: PatternParam<number>;
   onUserEdit?: () => void;
+  // Fires AFTER the new value has landed on the param, which onUserEdit
+  // cannot do: it runs first, so that takeover can suspend a lane before the
+  // value moves. Anything that needs to READ the committed value — writing a
+  // manual value through to its region, say — belongs here.
+  onCommitted?: (value: number) => void;
 }) {
   const [displayValue, setDisplayValue] = useState(param.value);
   const [isEditing, setIsEditing] = useState(false);
@@ -53,6 +59,7 @@ export function ScrubbableNumber({
     onUserEdit?.();
     param.value = value;
     setDisplayValue(value);
+    onCommitted?.(value);
     // Param mutations happen outside React state; tell the autosave.
     window.dispatchEvent(new Event(EDITOR_DIRTY_EVENT));
   };

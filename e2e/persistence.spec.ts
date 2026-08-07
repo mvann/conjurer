@@ -85,15 +85,42 @@ test.describe("persistence and docs", () => {
 
     // And the value really reached the pattern the canopy renders, not just
     // the row: the store's own param is what the shader reads.
-    expect(
-      await page.evaluate(() => {
+    const storedValue = () =>
+      page.evaluate(() => {
         const store = (
           window as unknown as Record<string, any>
         ).__editorStore;
         return store.layers[0].blockMap.getAllBlocks()[0].pattern.params.u_warp
           .value;
-      }),
-    ).toBe(2);
+      });
+    expect(await storedValue()).toBe(2);
+
+    // The second edit is the one that used to be lost. By now the param has a
+    // lone-constant region behind it, and scrubbing only moved param.value —
+    // the region kept the old number, so the save wrote the old number and
+    // reopening threw the edit away.
+    const warpAgain = page
+      .locator("[data-doc=param-row]")
+      .filter({ hasText: "Warp" })
+      .first();
+    await warpAgain.locator("[data-doc=param-value]").click();
+    await warpAgain.locator("input").fill("4");
+    await warpAgain.locator("input").press("Enter");
+    await page.keyboard.press("Escape");
+    await saveFromGear(page);
+    await page.waitForTimeout(500);
+    await page.reload();
+    await openPatternPanel(page);
+    const expandAgain = page.getByLabel("Expand parameters");
+    if (await expandAgain.count()) await expandAgain.first().click();
+    await expect(
+      page
+        .locator("[data-doc=param-row]")
+        .filter({ hasText: "Warp" })
+        .first()
+        .locator("[class*=paramScrub]"),
+    ).toHaveText("4");
+    expect(await storedValue()).toBe(4);
   });
 
   test("dismissing the autosave prompt keeps the saved state", async ({

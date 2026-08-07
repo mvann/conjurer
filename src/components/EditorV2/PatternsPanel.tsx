@@ -39,6 +39,7 @@ import {
   laneKeysOf,
   resumeLane,
   suspendLane,
+  syncManualValue,
   writeLaneCurve,
 } from "@/src/components/EditorV2/blockLanes";
 import { Vector4 } from "three";
@@ -306,6 +307,7 @@ export const PatternsPanel = observer(function PatternsPanel({
                 <ScrubbableNumber
                   param={param as PatternParam<number>}
                   onUserEdit={deactivateLane(entry, laneKey)}
+                  onCommitted={() => syncManualValue(entry.block, laneKey, entry.block.store)}
                 />
               ) : (
                 <span className={styles.paramValue}>
@@ -322,6 +324,7 @@ export const PatternsPanel = observer(function PatternsPanel({
         const isCollapsed = collapsedParams.has(collapseKey);
         const onValueEdited = () => {
           deactivateLane(entry, laneKey)();
+          syncManualValue(entry.block, laneKey, entry.block.store);
           window.dispatchEvent(new Event(EDITOR_DIRTY_EVENT));
           bumpEditors();
         };
