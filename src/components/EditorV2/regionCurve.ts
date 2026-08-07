@@ -514,14 +514,19 @@ export const curveToVariations = (
       carriesPalette ? "palette" : "color",
     );
 
-  // Fractions back to block-local seconds, clamped into the block: the
-  // first region starts at the block start (leadIn dissolves) and nothing
-  // is emitted past the end.
+  // Fractions back to block-local seconds. The floor at zero is structural:
+  // a region's position is the sum of the durations before it, so region 0
+  // always begins at the block's start and there is nowhere to put anything
+  // earlier (leadIn dissolves).
+  //
+  // There is deliberately NO ceiling. Regions may legitimately run past the
+  // block's end — decision 16 leaves them overhanging when the right edge is
+  // trimmed, which is precisely the state the dotted overhang is drawn for.
+  // Clamping here truncated that automation on the next edit and dragged the
+  // final keyframe onto the block's edge, distorting the shape inside the
+  // block as well as destroying what lay outside it.
   const local = (fraction: number) =>
-    Math.min(
-      Math.max(fraction * songDuration - blockStartTime, 0),
-      blockDuration,
-    );
+    Math.max(fraction * songDuration - blockStartTime, 0);
 
   // One keyframe is a constant curve. A single-node Curve region evaluates to
   // that value everywhere (upstream returns nodes[0].value when there is only
@@ -665,7 +670,11 @@ export const curveToVariations = (
     // A run fills from wherever the previous region ended to wherever the next
     // one begins — the whole remaining block when it is last.
     const spanStart = cursor;
-    const spanEnd = isLast ? blockDuration : next.startT;
+    // The last run fills to the block's end, or to its own end when the curve
+    // reaches past it (see `local`).
+    const spanEnd = isLast
+      ? Math.max(blockDuration, chunk.endT)
+      : next.startT;
     const duration = spanEnd - spanStart;
     if (duration <= TIME_EPS) continue;
 

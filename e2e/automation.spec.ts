@@ -1170,6 +1170,87 @@ test.describe("automation is clipped to its block", () => {
     ).toHaveCount(1);
   });
 
+  test("editing the lane does not truncate what overhangs the block", async ({
+    page,
+  }) => {
+    await openTimeFactorLane(page);
+    const lineArea = (await page
+      .locator("[class*=editorLineArea]")
+      .boundingBox())!;
+    for (const [fx, fy] of [
+      [0.25, 0.75],
+      [0.55, 0.25],
+      [0.85, 0.6],
+    ])
+      await page.mouse.dblclick(
+        lineArea.x + lineArea.width * fx,
+        lineArea.y + lineArea.height * fy,
+      );
+    await expect(page.locator("[class*=keyframeDot]")).toHaveCount(3);
+
+    const edge = page.locator("[data-doc=block-edge-right]").first();
+    const edgeBox = (await edge.boundingBox())!;
+    const area = (await page
+      .locator("[class*=blockLaneArea]")
+      .first()
+      .boundingBox())!;
+    await page.mouse.move(
+      edgeBox.x + edgeBox.width / 2,
+      edgeBox.y + edgeBox.height / 2,
+    );
+    await page.mouse.down();
+    await page.waitForTimeout(50);
+    await page.mouse.move(
+      area.x + area.width * 0.6,
+      edgeBox.y + edgeBox.height / 2,
+      { steps: 12 },
+    );
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+
+    const lastKeyframeTime = () =>
+      page.evaluate(() => {
+        const entries = (window as unknown as Record<string, any>)
+          .__editorEntries;
+        const curve: any = Object.values(entries[0].automation)[0];
+        return curve.keyframes[curve.keyframes.length - 1].time;
+      });
+    const before = await lastKeyframeTime();
+    await expect(
+      page.locator("[class*=automationEditor__] [class*=curvePathOutside]"),
+    ).toHaveCount(1);
+
+    // Add a keyframe INSIDE the block. Every edit re-projects the whole lane,
+    // and that projection used to clamp times into the block: the overhanging
+    // keyframes collapsed onto the block's end, the regions past it were
+    // truncated, and the dotted path vanished. One edit destroyed automation
+    // the author never touched, and bent the shape inside the block too.
+    await page.mouse.dblclick(
+      lineArea.x + lineArea.width * 0.4,
+      lineArea.y + lineArea.height * 0.5,
+    );
+    await page.waitForTimeout(400);
+    await expect(page.locator("[class*=keyframeDot]")).toHaveCount(4);
+
+    expect(await lastKeyframeTime()).toBeCloseTo(before, 6);
+    await expect(
+      page.locator("[class*=automationEditor__] [class*=curvePathOutside]"),
+    ).toHaveCount(1);
+
+    // And the regions really still run past the block, rather than the dotted
+    // path merely being drawn from stale state.
+    expect(
+      await page.evaluate(() => {
+        const block = (
+          window as unknown as Record<string, any>
+        ).__editorStore.layers[0].blockMap.getAllBlocks()[0];
+        const regions = block.parameterVariations.u_timeFactor ?? [];
+        const total = regions.reduce((sum: number, r: any) => sum + r.duration, 0);
+        return total - block.duration;
+      }),
+    ).toBeGreaterThan(1);
+  });
+
   test("a last keyframe inside the block still holds out to the block end", async ({
     page,
   }) => {
