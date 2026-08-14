@@ -20,14 +20,43 @@ export function DocsStrip() {
 
   useEffect(() => {
     const onMouseOver = (event: MouseEvent) => {
-      const key = (event.target as Element)
-        .closest?.("[data-doc]")
-        ?.getAttribute("data-doc");
-      if (key) setDocKey(key);
+      const element = (event.target as Element).closest?.("[data-doc]");
+      const key = element?.getAttribute("data-doc");
+      // A panel stays mounted and under the cursor while it slides shut, so
+      // the pointer keeps landing on it after it is gone. Ignore anything
+      // already marked hidden.
+      if (key && !element?.closest('[aria-hidden="true"]')) setDocKey(key);
     };
     document.addEventListener("mouseover", onMouseOver);
     return () => document.removeEventListener("mouseover", onMouseOver);
   }, []);
+
+  // Stickiness ends when the thing being described goes away. A panel stays
+  // mounted while it slides shut and is marked aria-hidden, so without this
+  // the strip would go on explaining a panel that has closed: pick a user and
+  // the login panel's copy would sit there afterwards. Falling back to the
+  // welcome text is the same thing an undocumented control does.
+  useEffect(() => {
+    if (!docKey) return;
+    const stillShowing = () => {
+      const element = document.querySelector(`[data-doc="${docKey}"]`);
+      return !!element && !element.closest('[aria-hidden="true"]');
+    };
+    if (!stillShowing()) {
+      setDocKey(null);
+      return;
+    }
+    const observer = new MutationObserver(() => {
+      if (!stillShowing()) setDocKey(null);
+    });
+    observer.observe(document.body, {
+      subtree: true,
+      childList: true,
+      attributes: true,
+      attributeFilter: ["aria-hidden"],
+    });
+    return () => observer.disconnect();
+  }, [docKey]);
 
   // The strip lives on the side panels' layer: when one slides open the
   // strip's width squishes to the space between them instead of being

@@ -20,7 +20,7 @@ export const docs: Record<string, DocEntry> = {
   welcome: {
     title: "Conjurer Spell Crafter",
     short: "Hover any control for a one line how-to. Press ? for more.",
-    long: `To build an experience: open the pattern editor with the chevron at the left edge, add patterns, set their parameters, load a song with Add Song, and automate parameters over the song by right clicking them.
+    long: `To build an experience: open the layer list with the chevron at the left edge, add a pattern to a layer, set its parameters, load a song with Add Song, and automate parameters over the song by right clicking them.
 
 Hover any control and this strip explains how to use it. Press ? (or /) for the full instructions for that control; press it again, or Escape, to close them.
 
@@ -31,9 +31,9 @@ Undo any change with control z (or command z); add shift to redo. Press Save in 
     short: "Drag to orbit. Scroll to zoom.",
     long: `Drag anywhere in the view to orbit the canopy; scroll to zoom in and out.
 
-To put something on the canopy, open the pattern editor (the chevron at the left edge) and add a pattern. Every visible pattern renders at once, summed together; use each pattern's eye toggle to choose which ones contribute.
+To put something on the canopy, open the layer list (the chevron at the left edge) and add a pattern to a layer. Every visible pattern renders at once, summed together; use each pattern's eye toggle to choose which ones contribute.
 
-The checkerboard means the stack is empty or every pattern is hidden.`,
+The checkerboard means no layer holds a pattern yet, or every pattern is hidden.`,
   },
   volume: {
     title: "Volume",
@@ -118,7 +118,7 @@ Detection assumes a constant tempo and is most reliable for music with a steady 
   save: {
     title: "Save",
     short: "Saves the experience. It glows when there are unsaved changes.",
-    long: `Click to save the experience: the pattern stack, parameter values, effects, automation, and the loaded song. The button glows while unsaved changes exist.
+    long: `Click to save the experience: its layers and their blocks, parameter values, effects, automation, block timing, and the loaded song. The button glows while unsaved changes exist.
 
 Between saves, every change writes an autosave; if the editor is closed and reopened, a prompt offers to restore it. Saves live in the browser for now.`,
   },
@@ -159,19 +159,19 @@ To add a song, use Upload Song at the bottom. While the upload form is open, the
     long: `Click to take the song out of the timeline. Playback stops and the transport disables until another song is loaded. The song stays in the library; nothing on disk is deleted.`,
   },
   "panel-toggle": {
-    title: "Pattern Editor",
-    short: "Opens the pattern stack. Escape or a click outside closes it.",
-    long: `Click the chevron to open the pattern editor. Close it with Escape, a click outside the panel, or the chevron again.
+    title: "Layer List",
+    short: "Opens the layer list. Escape or a click outside closes it.",
+    long: `Click the chevron to open the layer list. Close it with Escape, a click outside the panel, or the chevron again.
 
-Inside: expand a pattern's row with the caret to reach its parameters, toggle its eye to show or hide it on the canopy, add patterns with Add Pattern at the bottom, and remove one with its trash button.`,
+The pane holds layers, and each layer holds its patterns. Expand a pattern's row with the caret to reach its parameters, toggle its eye to show or hide it on the canopy, add a pattern with Add Pattern inside a layer, add a layer with Add Layer beneath them all, and remove a pattern with its trash button.`,
   },
   "pattern-row": {
     title: "Pattern",
     short:
       "Caret expands parameters. Eye toggles visibility. Trash removes. Right click to duplicate.",
-    long: `Use the caret to expand this pattern's parameters and effects. Use the eye to show or hide it on the canopy; hiding keeps its settings and automation intact. Use the trash to remove it from the stack entirely, which also removes its automation lanes (undo restores everything). Right click the row and choose Duplicate for a full copy of the pattern, parameters, effects, and automation included, inserted just below it.
+    long: `A pattern is a block on its layer's timeline. Use the caret to expand its parameters and effects. Use the eye to show or hide it on the canopy; hiding keeps its settings and automation intact. Use the trash to remove it from its layer, which also removes its automation lanes (undo restores everything). Right click the row and choose Duplicate for a full copy of the pattern, parameters, effects, and automation included, inserted just below it.
 
-All visible patterns render at once, summed together; hide others to isolate the one being adjusted.`,
+All visible patterns render at once, summed together; hide others to isolate the one being adjusted. A new pattern spans the whole song, so it behaves like an always on layer until you drag one of its block's edges.`,
   },
   "pattern-expand": {
     title: "Expand Pattern",
@@ -190,7 +190,7 @@ To automate visibility, right click the eye and choose Add Automation Lane; it a
   "pattern-remove": {
     title: "Remove Pattern",
     short: "Removes this pattern and its automation lanes.",
-    long: `Click to remove the pattern from the stack, along with any automation lanes on its parameters.
+    long: `Click to remove the pattern from its layer, along with any automation lanes on its parameters.
 
 Control z restores it exactly, parameters and lanes included. Adding the same pattern fresh from the library instead starts it at defaults.`,
   },
@@ -199,7 +199,7 @@ Control z restores it exactly, parameters and lanes included. Adding the same pa
     short: "Drag the value to change it. Right click to automate.",
     long: `Drag the value up or down to change it; the canopy updates as you drag. Click the value to type an exact number.
 
-To animate this parameter over the song, right click it and choose Add Automation Lane; the lane appears in the automation pane beneath the timeline. The same menu deletes the lane, or disables and re-enables its automation once the lane has keyframes.`,
+To animate this parameter over the song, right click it and choose Add Automation Lane; the lane appears in the automation pane beneath the timeline, under this pattern's block. The same menu deletes the lane, or disables and re-enables its automation once the lane has keyframes.`,
   },
   "param-component": {
     title: "Parameter Component",
@@ -218,14 +218,14 @@ Click (a brief press without movement) to type instead: enter a value and press 
   "add-pattern": {
     title: "Add Pattern",
     short: "Opens the pattern library. Pick a tile, then Insert.",
-    long: `Click to open the pattern library. Click a tile to preview it, then press Insert to add it to the bottom of the stack.
+    long: `Click to open the pattern library. Click a tile to preview it, then press Insert to add it to this layer.
 
-To leave without adding, press Cancel, press Escape, or click the exposed edge of the pattern list.`,
+The pattern arrives as a block spanning the whole song, so it plays throughout until you drag one of its edges. To leave without adding, press Cancel, press Escape, or click the exposed edge of the layer list.`,
   },
   "pattern-tile": {
     title: "Pattern Library",
-    short: "Click to preview. Insert adds it to the stack.",
-    long: `Click a tile to select it and see it rendered live in the preview above. Press Insert to add the selection to the stack.
+    short: "Click to preview. Insert adds it to the layer.",
+    long: `Click a tile to select it and see it rendered live in the preview above. Press Insert to add the selection to the layer you started from.
 
 Add the same pattern as many times as needed; each copy keeps its own parameter values and automation.`,
   },
@@ -245,25 +245,25 @@ Canopy renders it onto the LED geometry in three dimensions, orbitable by draggi
   },
   "insert-pattern": {
     title: "Insert",
-    short: "Adds the selected pattern to the bottom of the stack.",
-    long: `Click to add the selected pattern to the stack and return to the pattern list. It arrives visible with default values and starts rendering immediately, summed with the rest of the stack.`,
+    short: "Adds the selected pattern to the layer.",
+    long: `Click to add the selected pattern to its layer and return to the layer list. It arrives visible with default values, spanning the whole song, and starts rendering immediately, summed with every other visible pattern.`,
   },
   "cancel-add": {
     title: "Cancel",
     short: "Closes the pattern library without adding anything.",
-    long: `Click to close the library and return to the pattern list with nothing added. Escape, or a click on the list's exposed edge, does the same.`,
+    long: `Click to close the library and return to the layer list with nothing added. Escape, or a click on the list's exposed edge, does the same.`,
   },
   sliver: {
-    title: "Back to Pattern List",
-    short: "Click the exposed edge to return to the pattern list.",
-    long: `Click the exposed edge of the pattern list to close the library view and bring the list back. This is the same as Cancel.`,
+    title: "Back to Layer List",
+    short: "Click the exposed edge to return to the layer list.",
+    long: `Click the exposed edge of the layer list to close the library view and bring the list back. This is the same as Cancel.`,
   },
   "automation-pane": {
     title: "Automation",
     short: "Click a lane to edit its curve. Drag the top edge to resize.",
-    long: `Each lane here is one automated parameter. Click a lane to expand it into the automation editor; click it again, or press Escape, to close it.
+    long: `The lanes are grouped the way the layer list is: a lane for each layer, a lane for each pattern block inside it, and beneath that block one lane per automated parameter. Layer order here matches the layer list on the left.
 
-To create a lane, click Add Automation at the bottom of the lanes and pick a parameter, or right click a parameter in the pattern editor and choose Add Automation Lane; delete it from that same menu. Drag the pane's top edge to resize it.`,
+Click a parameter lane to expand it into the automation editor; click it again, or press Escape, to close it. To create one, click Add Automation at the bottom of the lanes and pick a parameter, or right click a parameter in the layer list and choose Add Automation Lane; delete it from that same menu. Drag the pane's top edge to resize it.`,
   },
   "lane-visibility": {
     title: "Lane Eye",
@@ -281,10 +281,10 @@ Control z restores the lane, curve and all.`,
   },
   "add-lane": {
     title: "Add Automation",
-    short: "Click, then pick a parameter in the pattern editor.",
-    long: `Click to start an assignment: the pattern editor opens and a small curve badge rides beside the cursor. Click any parameter (pattern or effect) to give it an automation lane; the new lane appears here.
+    short: "Click, then pick a parameter in the layer list.",
+    long: `Click to start an assignment: the layer list opens and a small curve badge rides beside the cursor. Click any parameter (pattern or effect) to give it an automation lane; the new lane appears here.
 
-Press Escape, or click anywhere outside the pattern editor, to cancel. The pattern editor stays open either way.`,
+Press Escape, or click anywhere outside the layer list, to cancel. The layer list stays open either way.`,
   },
   "automation-resize": {
     title: "Resize Automation Pane",
@@ -296,9 +296,9 @@ Press Escape, or click anywhere outside the pattern editor, to cancel. The patte
     short: "Click to expand this lane into the editor view.",
     long: `Click the lane to expand it into the automation editor and shape its curve; click it again or press Escape to close.
 
-The label names the pattern (and effect, for effect parameters) above the parameter. Drag the label up or down to reorder the lanes; the order is saved with the experience. The eye beside it disables and re-enables the curve; the trash deletes the lane. The miniature shows the curve, its keyframes, and the gold dot marking the value at the playhead.
+The label names the parameter, and its effect for an effect parameter; the pattern is named once on the block lane above. Drag the label up or down to reorder the lanes; the order is saved with the experience. The eye beside it disables and re-enables the curve; the trash deletes the lane. The miniature shows the curve, its keyframes, and the gold dot marking the value at the playhead.
 
-While a song is loaded, an active curve drives the parameter. To take manual control, just edit the parameter in the pattern editor: the edit becomes the manual value, the curve deactivates (drawn dimmed, with a bright dashed line at the manual value now driving the parameter), and the row's edge turns red. Edit the curve in any way to hand control back to it. To disable or re-enable without editing, use the parameter's right click menu.
+While a song is loaded, an active curve drives the parameter. To take manual control, just edit the parameter in the layer list: the edit becomes the manual value, the curve deactivates (drawn dimmed, with a bright dashed line at the manual value now driving the parameter), and the row's edge turns red. Edit the curve in any way to hand control back to it. To disable or re-enable without editing, use the parameter's right click menu.
 
 To delete the lane, right click its parameter and choose Delete Automation Lane.`,
   },
@@ -430,6 +430,125 @@ Snapping applies to dragging keyframes, double click creation, the edit cursor, 
 For a curve, set the bend: one is linear, below one bows early, above one bows late. For a wave, set the shape (sine, square, triangle), amplitude, cycles across the segment, and phase in fractions of a cycle. For an easing, choose the mode (in, out, in and out) and family. For audio, set the amount the loudness is scaled by (negative inverts it) and a smoothing window in seconds. Flat and linear have nothing to set.
 
 Numbers here edit like everywhere else: drag, Shift for fine, click to type. Escape or a click on empty space drops the selection.`,
+  },
+  layer: {
+    title: "Layer",
+    short: "Holds patterns. Double click the name to rename. Hold and drag to reorder.",
+    long: `A layer holds patterns, and each pattern is a block on that layer's timeline. Double click the layer's name to rename it, the same gesture that edits a parameter value. Click and hold the layer, then drag, to reorder it; the automation lanes reorder to match.
+
+Use the caret to collapse a layer and hide its contents; collapsing is a view setting and is not saved with the experience. Add Pattern inside a layer adds a block to it, and Add Layer beneath them all adds another layer.`,
+  },
+  "add-layer": {
+    title: "Add Layer",
+    short: "Adds an empty layer beneath the others.",
+    long: `Click to add a new, empty layer at the bottom of the list. Add patterns to it with its own Add Pattern button.
+
+Layer order is part of the experience and is saved with it. The last layer cannot be removed: an experience needs somewhere to put a pattern.`,
+  },
+  "lane-layer": {
+    title: "Layer Lane",
+    short: "Groups the lanes belonging to one layer.",
+    long: `This lane heads the group of lanes belonging to one layer, and the groups run in the same order as the layer list on the left. Reordering layers there reorders them here.`,
+  },
+  "lane-block": {
+    title: "Block Lane",
+    short: "One pattern's block. Drag to move it, drag an edge to resize.",
+    long: `This lane holds one pattern's block, labelled with the pattern's name, and every automated parameter of that pattern sits in the lanes beneath it.
+
+Drag the block to move it in time; drag either edge to change where it starts or ends. A pattern renders only while its block is under the playhead. New patterns span the whole song, so blocks only matter once you move an edge.`,
+  },
+  "block-bar": {
+    title: "Block",
+    short: "Drag to move this pattern in time.",
+    long: `Drag the block to move the pattern in time. It stops at the start and the end of the song rather than running past either.
+
+The block's automation moves with it: a curve begins where its block begins. Drag an edge instead to change the block's length.`,
+  },
+  "block-edge-left": {
+    title: "Block Start",
+    short: "Drag to change where this pattern starts.",
+    long: `Drag to move the block's start. The automation slides with it, keeping its shape and its length, because a block's automation begins where the block does.
+
+Growing the block leaves the curve's tail holding its last value; shrinking it leaves any keyframes past the end overhanging, drawn dotted and not played. They are still there if you grow the block back.`,
+  },
+  "block-edge-right": {
+    title: "Block End",
+    short: "Drag to change where this pattern ends.",
+    long: `Drag to move the block's end. The curve keeps its start and its shape; anything past the new end overhangs, drawn dotted, and is not played until the block grows again.
+
+The end stops at the end of the song. A wave inside the block keeps its period rather than stretching, so a longer block simply reveals more cycles.`,
+  },
+  "dim-before": {
+    title: "Before the Block",
+    short: "Outside the block. Nothing here is played.",
+    long: `The dimmed area before the block's start. The pattern is not rendering out here, so nothing in this stretch drives its parameters, and a curve drawn through it is shown dotted.`,
+  },
+  "dim-after": {
+    title: "After the Block",
+    short: "Outside the block. Nothing here is played.",
+    long: `The dimmed area after the block's end. The pattern is not rendering out here, so nothing in this stretch drives its parameters, and a curve drawn through it is shown dotted.`,
+  },
+  "editor-empty": {
+    title: "No Automation Selected",
+    short: "Click a lane on the left to edit its curve here.",
+    long: `Nothing is selected yet. Click any parameter lane in the automation pane to open its curve here.
+
+This view stays where it is; picking a different lane swaps what it shows.`,
+  },
+  "time-dot": {
+    title: "Value at the Playhead",
+    short: "The gold dot: this parameter's value right now.",
+    long: `The gold dot sits on the curve at the transport's current time, marking the value the parameter is being driven to. It follows the manual value line instead while the lane's automation is disabled.
+
+Colour and palette lanes have no dot: they have no value axis for one to sit on.`,
+  },
+  "gradient-toggle": {
+    title: "Gradient",
+    short: "Ramps this colour period from one colour to another.",
+    long: `Turn on to give this period a second colour and ramp between them across its span; the chip in the lane widens and fills with the gradient so it reads as one at a glance. Turn off to put the two ends back together into a single colour.
+
+The toggle is a view of the data rather than a setting: a period always stores a start and an end colour, and equal ends are what one colour means.`,
+  },
+  "reset-opacity": {
+    title: "Reset to Auto",
+    short: "Returns opacity to the automatic crossfade.",
+    long: `Click to drop this block's manual opacity and return it to auto, where overlapping blocks crossfade on their own.
+
+Setting opacity by hand replaces that crossfade for this block; resetting restores it.`,
+  },
+  gear: {
+    title: "Settings",
+    short: "Opens the settings pane. Save lives here.",
+    long: `Click to open the settings pane, which holds Save, the experience name, and the editor's own options. The button glows while there are unsaved changes.`,
+  },
+  "gear-pane": {
+    title: "Settings",
+    short: "Save, the experience name, and editor options.",
+    long: `Save writes the experience: its layers and their blocks, parameter values, effects, automation, block timing, and the loaded song. Between saves every change is autosaved, and reopening the editor offers to restore it.
+
+Click the gear again, press Escape, or click outside to close the pane.`,
+  },
+  login: {
+    title: "Account",
+    short: "Click to choose which user you are working as.",
+    long: `Click to pick the user you are working as. The choice decides who an experience is saved under and is remembered in this browser.`,
+  },
+  "login-panel": {
+    title: "Choose a User",
+    short: "Pick a user to work as.",
+    long: `Pick a user from the list to work as them. Saving writes the experience under whoever is selected here.
+
+The panel opens on its own when nobody is signed in. Click outside, or press Escape, to close it.`,
+  },
+  "save-notice": {
+    title: "Save Notice",
+    short: "Why the last save did not go through.",
+    long: `A short message beside the title explaining why a save was refused, such as an experience with no song loaded. It clears itself once the problem is fixed.`,
+  },
+  "gear-subpanel": {
+    title: "Settings Detail",
+    short: "The options for the settings row you picked.",
+    long: `The detail pane for whichever settings row you opened. Pick another row to swap it, or close the settings pane to dismiss it.`,
   },
 };
 
