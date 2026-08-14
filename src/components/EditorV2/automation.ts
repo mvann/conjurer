@@ -335,6 +335,99 @@ export const defaultSegment = (
   }
 };
 
+/**
+ * A generator is a region whose shape comes from a formula around a constant
+ * offset rather than from its endpoints — a wave or the audio envelope. The
+ * owner: "that's not just for waves. Like, anything with an offset like that
+ * can follow this type of logic."
+ */
+export const isGeneratorType = (type: SegmentType) =>
+  type === "wave" || type === "audio";
+
+export const isGeneratorAt = (curve: AutomationCurve, index: number) =>
+  isGeneratorType(getSegments(curve)[index]?.type);
+
+/**
+ * The generator segments a keyframe is an endpoint of. A stacked boundary
+ * keyframe belongs to exactly one side, which is what makes the two sides
+ * value-decoupled: grabbing the generator's dot edits the generator, grabbing
+ * the neighbour's dot edits the neighbour.
+ */
+export const generatorAtKeyframe = (
+  curve: AutomationCurve,
+  index: number,
+): number | null => {
+  const segments = getSegments(curve);
+  if (isGeneratorType(segments[index]?.type)) return index;
+  if (index > 0 && isGeneratorType(segments[index - 1]?.type)) return index - 1;
+  return null;
+};
+
+/**
+ * Give a generator its OWN keyframes at both boundaries, stacked on whatever
+ * keyframes already sit at those times (decision 14).
+ *
+ * The owner: "When you create a wave, it will create two additional keyframe
+ * UI elements on the left and the right side that are on the same time point
+ * as whatever other keyframes are there. And when you click and drag one of
+ * those keyframes that are effectively now stacked on top of each other, it
+ * will just pick one of them... the wave will be decoupled from whatever value
+ * the one on the left or the right is."
+ *
+ * The stack is a permanent one: the two sides genuinely own independent
+ * values. Between each pair sits a zero-width Bezier, which is what the
+ * unzip gesture widens — pulling a stacked pair apart "opens a new curve
+ * segment between the two", and squeezing it back to nothing is the zip. A
+ * zero-duration region is never written to the data model (the projection
+ * skips it), so the stack alone encodes the step, exactly as specified.
+ *
+ * Seeding: offset comes from the LEFT boundary's value with phase 0, so a
+ * fresh generator "starts lined up" and the right side lands wherever the
+ * formula lands.
+ */
+export const stackGeneratorBoundaries = (
+  curve: AutomationCurve,
+  index: number,
+): AutomationCurve => {
+  const segments = getSegments(curve);
+  if (!isGeneratorType(segments[index]?.type)) return curve;
+  const src = curve.keyframes;
+  const offset = src[index].value;
+  const bridge = (): SegmentSpec => ({ type: "curve", bend: 1 });
+
+  // A boundary with no neighbour needs no stack — there is no second owner
+  // for the value there. One that is already stacked is left alone, so
+  // re-typing an existing generator does not pile up bridges.
+  const addLeft =
+    index > 0 && Math.abs(src[index].time - src[index - 1].time) > EPS;
+  const addRight =
+    index + 1 < segments.length &&
+    Math.abs(src[index + 2].time - src[index + 1].time) > EPS;
+
+  // The generator owns both its endpoints and both carry the offset: it has
+  // no slope to interpolate along. Its neighbours keep their own values,
+  // which is precisely the decoupling.
+  const start = { ...src[index], value: offset };
+  const end = { ...src[index + 1], value: offset };
+
+  const keyframes = [
+    ...src.slice(0, index),
+    ...(addLeft ? [src[index]] : []),
+    start,
+    end,
+    ...(addRight ? [src[index + 1]] : []),
+    ...src.slice(index + 2),
+  ];
+  const next = [
+    ...segments.slice(0, index),
+    ...(addLeft ? [bridge()] : []),
+    segments[index],
+    ...(addRight ? [bridge()] : []),
+    ...segments.slice(index + 1),
+  ];
+  return { ...curve, keyframes, segments: next };
+};
+
 // Fraction of the way through the current cycle, in [0, 1).
 const cyclePosition = (u: number) => ((u % 1) + 1) % 1;
 
@@ -408,9 +501,14 @@ export const evaluateSegment = (
     case "linear":
       return a.value + (b.value - a.value) * t;
     case "wave":
+      // An ABSOLUTE generator (decision 14): `offset` is a constant y-centre,
+      // so "waves can never sit on an angle". The baseline is the segment's
+      // own left keyframe, NOT the a->b slope — the data model stores one
+      // offset and cannot represent an endpoint-riding baseline, so a sloped
+      // wave was being silently flattened on the next save and read back at a
+      // value the editor disagreed with.
       return (
         a.value +
-        (b.value - a.value) * t +
         spec.amplitude * waveShape(spec.wave, spec.cycles * t + spec.phase)
       );
     case "easing": {
@@ -418,9 +516,10 @@ export const evaluateSegment = (
       return a.value + (b.value - a.value) * easing(t);
     }
     case "audio":
+      // Absolute for the same reason as a wave: AudioVariation stores one
+      // offset too, so the envelope rides a flat baseline, not a slope.
       return (
         a.value +
-        (b.value - a.value) * t +
         spec.factor *
           sampleAudioEnvelope(a.time + (b.time - a.time) * t, spec.smoothing)
       );
@@ -613,8 +712,12 @@ export const insertBoundary = (
     // place the keyframe on the curve itself.
     const spec = segments[i];
     const value =
-      spec.type === "wave" || spec.type === "audio"
-        ? a.value + (b.value - a.value) * localT
+      isGeneratorType(spec.type)
+        ? // A generator's keyframes ARE its baseline, and that baseline is
+          // constant (decision 14), so a boundary inside one sits on the
+          // offset. Splitting stays exact: each half keeps the same centre,
+          // and the cycle/phase math lines the halves up.
+          a.value
         : evaluateSegment(a, b, spec, localT);
     const nextKeyframes = [...keyframes];
     // On a value lane the boundary splits a PERIOD rather than a segment, so

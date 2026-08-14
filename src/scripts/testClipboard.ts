@@ -22,11 +22,14 @@ import {
   deleteCurveWindow,
   evaluateCurve,
   evaluateSegment,
+  generatorAtKeyframe,
+  getSegments,
   insertBoundary,
   pasteClipAt,
   payloadAtTime,
   setAudioEnvelope,
   sliceSpec,
+  stackGeneratorBoundaries,
   SegmentSpec,
 } from "../components/EditorV2/automation";
 
@@ -218,9 +221,12 @@ const curveOf = (
       1e-6,
       `delete outside at ${t}`,
     );
-  // Inside, a straight line between the pinned edges: the wave edge pins
-  // to its baseline (0.25 at t=0.2), the linear edge to the curve (0.75).
-  const edge0 = 0.25;
+  // Inside, a straight line between the pinned edges: the wave edge pins to
+  // its baseline, the linear edge to the curve (0.75). A generator's baseline
+  // is CONSTANT at its offset (decision 14) rather than riding the endpoints,
+  // so the wave edge pins to 0 wherever in the wave the cut falls — it used
+  // to read 0.25 here, interpolated along a slope the data model cannot store.
+  const edge0 = 0;
   const edge1 = 0.75;
   for (const t of [0.3, 0.4, 0.5]) {
     const expected = edge0 + ((edge1 - edge0) * (t - 0.2)) / 0.4;
@@ -534,6 +540,91 @@ const curveOf = (
     sameColor(mid.color as Rgba, halfway, "value: gradient cut starts at the cut");
     sameColor(mid.colorTo as Rgba, BLUE, "value: gradient's right half keeps its end");
   }
+}
+
+// ---- generator boundary stacks, unzip and zip (decision 14) ----
+//
+// "When you create a wave, it will create two additional keyframe UI elements
+//  on the left and the right side that are on the same time point as whatever
+//  other keyframes are there... the wave will be decoupled from whatever value
+//  the one on the left or the right is."
+{
+  const gen = (): AutomationCurve => ({
+    keyframes: [kf(0.1, 0), kf(0.4, 1), kf(0.7, 0.2), kf(0.9, 0.5)],
+    segments: [
+      { type: "flat" },
+      { type: "wave", wave: "sine", amplitude: 0.5, cycles: 4, phase: 0 },
+      { type: "flat" },
+    ],
+  });
+
+  const stacked = stackGeneratorBoundaries(gen(), 1);
+  // Two neighbours, so two new keyframes and two zero-width bridges.
+  if (stacked.keyframes.length !== 6)
+    fail(`stack: expected 6 keyframes, got ${stacked.keyframes.length}`);
+  const specs = getSegments(stacked).map((s) => s.type);
+  if (specs.join(",") !== "flat,curve,wave,curve,flat")
+    fail(`stack: segments are ${specs.join(",")}`);
+
+  // Each new keyframe is coincident in TIME with the neighbour's.
+  near(stacked.keyframes[1].time, stacked.keyframes[2].time, 1e-12, "stack: left pair coincident");
+  near(stacked.keyframes[3].time, stacked.keyframes[4].time, 1e-12, "stack: right pair coincident");
+
+  // The generator owns both its endpoints at one constant offset, seeded from
+  // the LEFT boundary; the neighbours keep their own values. That is the
+  // decoupling: the pair sits at the same time with different values.
+  const offset = gen().keyframes[1].value;
+  near(stacked.keyframes[2].value, offset, 1e-12, "stack: generator start is the offset");
+  near(stacked.keyframes[3].value, offset, 1e-12, "stack: generator end is the offset");
+  near(stacked.keyframes[1].value, offset, 1e-12, "stack: left neighbour keeps its value");
+  near(stacked.keyframes[4].value, 0.2, 1e-12, "stack: right neighbour keeps its value");
+
+  // Idempotent: re-typing an existing generator must not pile up bridges.
+  const twice = stackGeneratorBoundaries(stacked, 2);
+  if (twice.keyframes.length !== stacked.keyframes.length)
+    fail(`stack: not idempotent (${twice.keyframes.length} keyframes)`);
+
+  // A boundary with no neighbour gets no stack: nothing else owns that value.
+  const lone: AutomationCurve = {
+    keyframes: [kf(0.2, 1), kf(0.8, 3)],
+    segments: [{ type: "wave", wave: "sine", amplitude: 0.5, cycles: 3, phase: 0 }],
+  };
+  const loneStacked = stackGeneratorBoundaries(lone, 0);
+  if (loneStacked.keyframes.length !== 2)
+    fail(`stack: lone generator gained keyframes (${loneStacked.keyframes.length})`);
+
+  // A generator is ABSOLUTE: it oscillates around its own offset and never
+  // sits on an angle, so the endpoints do not tilt the baseline.
+  const sloped: AutomationCurve = {
+    keyframes: [kf(0, 1), kf(1, 5)],
+    segments: [{ type: "wave", wave: "sine", amplitude: 0.5, cycles: 1, phase: 0 }],
+  };
+  const a = sloped.keyframes[0];
+  const b = sloped.keyframes[1];
+  const spec = getSegments(sloped)[0];
+  near(evaluateSegment(a, b, spec, 0), 1, 1e-9, "absolute: starts on the offset");
+  near(evaluateSegment(a, b, spec, 0.5), 1, 1e-9, "absolute: half a sine cycle returns to it");
+  near(evaluateSegment(a, b, spec, 0.25), 1.5, 1e-9, "absolute: peak is offset + amplitude");
+  near(evaluateSegment(a, b, spec, 0.75), 0.5, 1e-9, "absolute: trough is offset - amplitude");
+
+  // Splitting a generator keeps that constant centre.
+  const split = insertBoundary(sloped, 0.5);
+  near(split.keyframes[1].value, 1, 1e-9, "absolute: boundary sits on the offset");
+
+  // ZIP: a zero-width bridge is never written as a region. The stack itself
+  // encodes the step, and a zero-duration region is data-model junk.
+  const zipped: AutomationCurve = {
+    keyframes: [kf(0.2, 1), kf(0.5, 1), kf(0.5, 3), kf(0.8, 3)],
+    segments: [{ type: "flat" }, { type: "curve", bend: 1 }, { type: "flat" }],
+  };
+  for (const keyframe of zipped.keyframes)
+    if (!Number.isFinite(keyframe.value)) fail("zip: bad fixture");
+  near(
+    evaluateCurve(zipped, 0.5)!,
+    3,
+    1e-9,
+    "zip: the later side wins at a stacked time",
+  );
 }
 
 if (failures > 0) {

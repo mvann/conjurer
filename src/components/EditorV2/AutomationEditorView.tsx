@@ -16,6 +16,9 @@ import {
   curveExtremes,
   defaultSegment,
   deleteCurveWindow,
+  generatorAtKeyframe,
+  isGeneratorType,
+  stackGeneratorBoundaries,
   evaluateCurve,
   getSegments,
   isCurveActive,
@@ -721,7 +724,21 @@ export const AutomationEditorView = observer(function AutomationEditorView({
     const b = current.keyframes[index + 1];
     if (!a || !b) return;
     nextSegments[index] = defaultSegment(type, a, b);
-    commitCurve({ ...current, segments: nextSegments });
+    const retyped = { ...current, segments: nextSegments };
+    // Becoming a generator gives it its own boundary keyframes, stacked on
+    // the neighbours' (decision 14). Selection is by segment index, and the
+    // stack shifts the generator right by one when a left bridge appears.
+    if (isGeneratorType(type)) {
+      const stacked = stackGeneratorBoundaries(retyped, index);
+      const shifted =
+        stacked.keyframes.length - retyped.keyframes.length > 0 &&
+        index > 0 &&
+        isGeneratorType(getSegments(stacked)[index + 1]?.type);
+      commitCurve(stacked);
+      if (shifted) setSelectedSegment(index + 1);
+      return;
+    }
+    commitCurve(retyped);
   };
 
   const addKeyframe = (time: number, value: number) => {
@@ -1053,22 +1070,57 @@ export const AutomationEditorView = observer(function AutomationEditorView({
         // just draws the vertical).
         const minTime = nextKeyframes[index - 1]?.time ?? 0;
         const maxTime = nextKeyframes[index + 1]?.time ?? 1;
-        nextKeyframes[index] = {
-          ...nextKeyframes[index],
+        const time = clamp(
           // Snap first, then bound by the neighbors (a snap target
           // beyond a neighbor pins at the neighbor).
-          time: clamp(
-            snapTime(xFracToTime((moveEvent.clientX - rect.left) / rect.width)),
-            minTime,
-            Math.max(maxTime, minTime),
-          ),
+          snapTime(xFracToTime((moveEvent.clientX - rect.left) / rect.width)),
+          minTime,
+          Math.max(maxTime, minTime),
+        );
+        nextKeyframes[index] = {
+          ...nextKeyframes[index],
+          time,
           // Value lanes drag in time only; there is no vertical meaning.
           value: isValueLane ? nextKeyframes[index].value : rawValue,
         };
+
+        const nextSegments = [...getSegments(current)];
+        // A generator has no slope, so moving either of ITS OWN boundary
+        // keyframes vertically moves the whole offset and the wave rides up
+        // and down as one piece — "dragging the right edge keyframe up and
+        // down does move the entire offset". A neighbour's stacked keyframe
+        // is a different owner and moves alone, which is the decoupling.
+        const generator = generatorAtKeyframe(current, index);
+        if (generator !== null && !isValueLane) {
+          nextKeyframes[generator] = {
+            ...nextKeyframes[generator],
+            value: rawValue,
+          };
+          nextKeyframes[generator + 1] = {
+            ...nextKeyframes[generator + 1],
+            value: rawValue,
+          };
+          // The wave never stretches (decision 15): its period is fixed in
+          // seconds, so resizing the span reveals more or fewer cycles rather
+          // than squeezing the ones it has.
+          const spec = nextSegments[generator];
+          if (spec?.type === "wave") {
+            const was =
+              current.keyframes[generator + 1].time -
+              current.keyframes[generator].time;
+            const now =
+              nextKeyframes[generator + 1].time - nextKeyframes[generator].time;
+            if (was > 1e-9 && now > 0)
+              nextSegments[generator] = {
+                ...spec,
+                cycles: spec.cycles * (now / was),
+              };
+          }
+        }
         commitCurve({
           ...current,
           keyframes: nextKeyframes,
-          segments: getSegments(current),
+          segments: nextSegments,
         });
       };
       const onUp = () => {
