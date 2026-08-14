@@ -444,6 +444,24 @@ export const armLane = (block: Block, laneKey: string) => {
   persistLanes(resolved.owner);
 };
 
+/**
+ * Empty a lane's regions without disarming it — Spell Crafter's EMPTY lane,
+ * which upstream has no equivalent for.
+ *
+ * Not the same as `writeLaneCurve(..., null)`: that writes the manual constant,
+ * a two-node flat region, which projects straight back as two keyframes. An
+ * armed lane with nothing in it holds no regions at all; the manual value
+ * lives on the pattern param. Restoring one any other way puts keyframes on a
+ * lane the author had emptied.
+ */
+export const clearLaneRegions = (block: Block, laneKey: string) => {
+  const resolved = resolveLaneOwner(block, laneKey);
+  if (!resolved) return;
+  runInAction(() => {
+    delete resolved.owner.parameterVariations[resolved.uniform];
+  });
+};
+
 /** Disarm a lane. A constant lane returns to being the manual value. */
 export const disarmLane = (block: Block, laneKey: string) => {
   const resolved = resolveLaneOwner(block, laneKey);

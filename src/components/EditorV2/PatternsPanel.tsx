@@ -531,6 +531,11 @@ export const PatternsPanel = observer(function PatternsPanel({
       // Arming seeds a full-span region so the lane never opens onto nothing.
       armLane(menuEntry.block, laneKey);
     }
+    // Arming and disarming live on the block, so nothing in React state
+    // changed and the page had no idea this happened: the edit missed the
+    // autosave AND the undo history, which is why undo used to skip straight
+    // past a lane being added. lanedParams IS undoable (decision 21).
+    window.dispatchEvent(new Event(EDITOR_DIRTY_EVENT));
     setContextMenu(null);
   };
 

@@ -15,6 +15,8 @@ import {
   armLane,
   effectLaneKey,
   laneCurve,
+  clearLaneRegions,
+  getLaneSongDuration,
   laneKeysOf,
   resumeLane,
   writeLaneCurve,
@@ -52,6 +54,11 @@ export const EDITOR_DIRTY_EVENT = "editorv2-dirty";
 export type SerializedEditorState = {
   savedAt: number;
   song: Song | null;
+  // The song length the block timings below were measured against. A snapshot
+  // taken before a song loaded describes a nominal 60s timeline, and restoring
+  // those seconds verbatim onto a song-spanned block would shrink it. Absent
+  // in older saves, which carried no timings to misapply.
+  songDurationSeconds?: number;
   // Display order of the automation lanes, as `${entryId}/${laneKey}`
   // keys. Lanes missing from the list follow in their natural order.
   // Absent in older saves.
@@ -70,6 +77,11 @@ export type SerializedEditorState = {
     }[];
     visible: boolean;
     expanded: boolean;
+    // The block's span in seconds. Absent in older saves, which predate blocks
+    // and are all full-song by decision 24 — so leaving it undefined restores
+    // the block as it already is, which is exactly the old behaviour.
+    startTime?: number;
+    duration?: number;
     automatedParams: string[];
     automation?: Record<string, AutomationCurve>;
   }[];
@@ -95,6 +107,7 @@ export const serializeEditorState = (
 ): SerializedEditorState => ({
   savedAt: Date.now(),
   song,
+  songDurationSeconds: getLaneSongDuration(),
   laneOrder,
   entries: entries.map((entry) => {
     // Lanes and curves are read out of the block, which owns them now. The
@@ -118,6 +131,10 @@ export const serializeEditorState = (
       })),
       visible: entry.visible,
       expanded: entry.expanded,
+      // Block timing is part of the state now that blocks are the model, so
+      // undo restores a resize and a save round-trips one.
+      startTime: entry.block.startTime,
+      duration: entry.block.duration,
       automatedParams: [
         ...laneKeys,
         ...(entry.visibilityCurve ? [VISIBILITY_PARAM] : []),
@@ -240,11 +257,38 @@ export const restoreEntries = (
       if (!effects.some((effect) => effect.block === effectBlock))
         removeEffectFromBlock(block, effectBlock);
 
+    // Block timing, rescaled if the song has changed length since the
+    // snapshot. A block that covered the whole song still covers it, and one
+    // that covered the middle third still does — the same proportional re-span
+    // `applySongDuration` performs when a song first arrives. Older saves
+    // carry no timings, and by decision 24 every block in one was full-song
+    // anyway, so absence means "leave it as it is".
+    const scale =
+      state.songDurationSeconds && state.songDurationSeconds > 0
+        ? getLaneSongDuration() / state.songDurationSeconds
+        : 1;
+    if (typeof saved.startTime === "number")
+      runInAction(() => (block.startTime = (saved.startTime as number) * scale));
+    if (typeof saved.duration === "number")
+      runInAction(() => (block.duration = (saved.duration as number) * scale));
+
     // Write the saved curves back onto the block, remapping effect lane keys
     // onto the live effect block ids.
     let visibilityCurve: AutomationCurve | undefined;
     const savedAutomation = saved.automation ?? {};
     const savedLanes = saved.automatedParams ?? Object.keys(savedAutomation);
+
+    // The lane set has to end up EXACTLY as the snapshot describes it, in the
+    // snapshot's order. Arming alone only ever grows the set, so undoing an
+    // arm used to leave the lane behind; and `lanedParams` is insertion
+    // ordered, which IS lane order (decision 21), so a re-arm onto an existing
+    // lane would not put it back where it was. Clearing first makes both
+    // faithful. Curve regions are stored separately and survive the clear.
+    const laneKeyByOwner = new Map<string, string[]>();
+    const previousLanes = laneKeysOf(block);
+    for (const owner of [block, ...block.effectBlocks])
+      runInAction(() => owner.lanedParams.clear());
+
     for (const savedKey of savedLanes) {
       if (savedKey === VISIBILITY_PARAM) {
         visibilityCurve = savedAutomation[savedKey] ?? { keyframes: [] };
@@ -257,16 +301,32 @@ export const restoreEntries = (
         if (!liveId || !uniform) continue;
         laneKey = effectLaneKey(liveId, uniform);
       }
-      const curve = savedAutomation[savedKey];
       // Arm first so the lane exists even when the save had no curve for it,
-      // then write whatever curve there was.
+      // then write whatever curve there was — INCLUDING an empty one. Skipping
+      // the empty case left an armed-but-empty lane holding whatever curve it
+      // happened to have, so undoing back to it never took the keyframes away.
       armLane(block, laneKey);
-      if (curve && curve.keyframes.length > 0)
-        writeLaneCurve(block, laneKey, curve, store);
+      const savedCurve = savedAutomation[savedKey];
+      // An armed lane with no curve is EMPTY, and empty means no regions —
+      // writing the manual constant instead would put a two-node flat there,
+      // which projects straight back as two keyframes the author never placed.
+      if (savedCurve && savedCurve.keyframes.length > 0)
+        writeLaneCurve(block, laneKey, savedCurve, store);
+      else clearLaneRegions(block, laneKey);
       // A save never carries takeover state (decision 6), so a restored lane
       // is always driving.
       resumeLane(block, laneKey);
+      laneKeyByOwner.set(laneKey, []);
     }
+
+    // A lane the snapshot does not describe is gone: return its parameter to
+    // the manual value, the same thing deleting a lane does, so the data does
+    // not keep driving a parameter that no longer has a lane.
+    for (const laneKey of previousLanes)
+      if (!laneKeyByOwner.has(laneKey)) {
+        resumeLane(block, laneKey);
+        writeLaneCurve(block, laneKey, null, store);
+      }
 
     return [
       {
