@@ -425,6 +425,49 @@ A fresh worktree also needs `corepack yarn install` and a seeded `local.db`
 (`cp ~/GitHub/mvann/conjurer/local.db .`) or every test fails at the log-in
 step. `local.db` is gitignored.
 
+### Generator boundary stacks, unzip and zip: DONE
+
+Decision 14, mined from the transcript at @@L10708 / 10724 / 10727 / 10740 and
+settled at @@L10759. Note the `@@L` refs index the RAW JSONL, not
+`SPEC-full.txt` — that costs a pass if you assume otherwise.
+
+The spec, and it is a GENERATOR rule not a wave rule ("anything with an offset
+like that can follow this type of logic"):
+
+1. Creating a generator gives it its OWN keyframes at both boundaries, stacked
+   on the neighbours' at the same times. A permanent stack: the two sides own
+   independent values.
+2. Value-decoupled — dragging a stacked pair picks one, and which one you
+   grabbed decides what you edit.
+3. Dragging EITHER edge keyframe vertically moves the whole `offset`.
+4. **Unzip:** time-dragging a stacked pair apart does not trim the neighbours,
+   it opens ONE Bezier between them.
+5. **Zip:** squeezing that Bezier back to zero width drops the region; the
+   stack alone encodes the step.
+
+**The bug this fixed, and why it looked like something else.** The owner
+reported a wave's right keyframe spawning keyframes every frame and guessed the
+injection rule was miswired. It wasn't — the feature was not implemented at
+all. The editor evaluated a wave as `a + (b - a) * t + amplitude * shape(...)`,
+riding the slope between its endpoints, while `PeriodicVariation` stores one
+constant `offset`. Every commit flattened the wave on write and returned a
+different value on read, and the drag closure kept its own captured value, so
+the boundary disagreed with itself once per frame and each disagreement drew as
+a zero-width step. Making generators absolute removed the disagreement; the
+stacks then made the remaining step explicit and intentional.
+
+Two traps worth keeping:
+
+- **Injection is governed by the GESTURE, not by neighbour type.** The
+  neighbour-type condition belongs to rule 5 (the delete side), where curve
+  neighbours are exempt only because upstream's adjacent-curve merge already
+  absorbs the degenerate region. Reading it as a condition on rule 4 inverts
+  the design.
+- **A wave never stretches** (decision 15). Period is fixed in seconds, so
+  resizing a generator's span scales its cycle count. The write derives
+  `period = duration / cycles`, so the drag has to scale `cycles` or the wave
+  silently changes frequency.
+
 ### Already done, do not rebuild
 
 Opacity as a pseudo-param (decision 25) with its tri-state and Reset to Auto,
