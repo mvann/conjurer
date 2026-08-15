@@ -10,6 +10,7 @@
     "lint": "next lint --dir src",
     "format": "prettier --write .",
     "typecheck": "tsc --noEmit",
+    "build:demo": "ts-node -r tsconfig-paths/register --project tsconfig.script.json src/scripts/buildDemoExperience.ts",
     "test:docs": "ts-node --project tsconfig.script.json src/scripts/testDocs.ts",
     "test:blocklanes": "ts-node -r tsconfig-paths/register --project tsconfig.script.json src/scripts/testBlockLanes.ts",
     "test:migrate": "ts-node -r tsconfig-paths/register --project tsconfig.script.json src/scripts/testMigrateLegacySave.ts",

@@ -1,5 +1,9 @@
 {
-  "savedAt": 1785102090649,
+  "name": "demo",
+  "user": {
+    "id": 1,
+    "username": "Gandalf"
+  },
   "song": {
     "id": 2,
     "name": "shiny_2",
@@ -8,77 +12,324 @@
     "createdAt": "2026-07-25 04:53:07",
     "updatedAt": "2026-07-25 04:53:07"
   },
-  "entries": [
-    {
-      "pattern": "Nebula",
-      "id": 1,
-      "params": {
-        "u_palette": {
-          "a": [0.4578141942070545, 0.13747096755858157, 0.6218188281115182],
-          "b": [0.4672476443540443, 0.4642310181462297, 0.6766260507523637],
-          "c": [0.17720996009264467, 0.14253811784468085, 0.8633613193190549],
-          "d": [0.04930616403488419, 0.850407449162364, 0.4605103864304909]
-        },
-        "u_timeFactor": 0.2519497400346621,
-        "u_period": 2.5,
-        "u_warp": 1.1347487001733105,
-        "u_octaves": 5,
-        "u_threshold": 0.47,
-        "u_softness": 0.17,
-        "u_colorShift": 0.12,
-        "u_seed": 0
-      },
-      "visible": true,
-      "expanded": true,
-      "automatedParams": ["u_warp", "u_timeFactor"],
-      "automation": {
-        "u_warp": {
-          "keyframes": [
-            {
-              "time": 0.17968750000000003,
-              "value": 1.1347487001733105
+  "status": "inprogress",
+  "version": 2,
+  "data": {
+    "layers": [
+      {
+        "name": "",
+        "visible": true,
+        "blockMap": {
+          "b98950d0d522e": {
+            "id": "b98950d0d522e",
+            "pattern": {
+              "name": "Nebula"
             },
-            {
-              "time": 0.453125,
-              "value": 4.137348353552859
+            "startTime": 0,
+            "duration": 60,
+            "parameterVariations": {
+              "u_palette": [
+                {
+                  "type": "palette",
+                  "duration": 60,
+                  "palette": {
+                    "a": [
+                      0.4578141942070545,
+                      0.13747096755858157,
+                      0.6218188281115182
+                    ],
+                    "b": [
+                      0.4672476443540443,
+                      0.4642310181462297,
+                      0.6766260507523637
+                    ],
+                    "c": [
+                      0.17720996009264467,
+                      0.14253811784468085,
+                      0.8633613193190549
+                    ],
+                    "d": [
+                      0.04930616403488419,
+                      0.850407449162364,
+                      0.4605103864304909
+                    ]
+                  }
+                }
+              ],
+              "u_timeFactor": [
+                {
+                  "type": "curve",
+                  "duration": 60,
+                  "nodes": [
+                    {
+                      "time": 7.5,
+                      "value": 0.2519497400346621,
+                      "handleIn": {
+                        "dt": 0,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 14.21875,
+                        "dv": 0.16608896591565567
+                      }
+                    },
+                    {
+                      "time": 50.15625,
+                      "value": 0.7502166377816291,
+                      "handleIn": {
+                        "dt": -14.21875,
+                        "dv": -0.16608896591565564
+                      },
+                      "handleOut": {
+                        "dt": 0,
+                        "dv": 0
+                      }
+                    }
+                  ]
+                }
+              ],
+              "u_period": [
+                {
+                  "type": "curve",
+                  "duration": 60,
+                  "nodes": [
+                    {
+                      "time": 0,
+                      "value": 2.5,
+                      "handleIn": {
+                        "dt": 0,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 20,
+                        "dv": 0
+                      }
+                    },
+                    {
+                      "time": 60,
+                      "value": 2.5,
+                      "handleIn": {
+                        "dt": -20,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 0,
+                        "dv": 0
+                      }
+                    }
+                  ]
+                }
+              ],
+              "u_warp": [
+                {
+                  "type": "curve",
+                  "duration": 60,
+                  "nodes": [
+                    {
+                      "time": 10.781250000000002,
+                      "value": 1.1347487001733105,
+                      "handleIn": {
+                        "dt": 0,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 5.46875,
+                        "dv": 1.0008665511265171
+                      }
+                    },
+                    {
+                      "time": 27.1875,
+                      "value": 4.137348353552859,
+                      "handleIn": {
+                        "dt": -5.46875,
+                        "dv": -1.0008665511265178
+                      },
+                      "handleOut": {
+                        "dt": 5.46875,
+                        "dv": -0.753899480069324
+                      }
+                    },
+                    {
+                      "time": 43.59375,
+                      "value": 1.8756499133448878,
+                      "handleIn": {
+                        "dt": -5.46875,
+                        "dv": 0.7538994800693238
+                      },
+                      "handleOut": {
+                        "dt": 0,
+                        "dv": 0
+                      }
+                    }
+                  ]
+                }
+              ],
+              "u_octaves": [
+                {
+                  "type": "curve",
+                  "duration": 60,
+                  "nodes": [
+                    {
+                      "time": 0,
+                      "value": 5,
+                      "handleIn": {
+                        "dt": 0,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 20,
+                        "dv": 0
+                      }
+                    },
+                    {
+                      "time": 60,
+                      "value": 5,
+                      "handleIn": {
+                        "dt": -20,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 0,
+                        "dv": 0
+                      }
+                    }
+                  ]
+                }
+              ],
+              "u_threshold": [
+                {
+                  "type": "curve",
+                  "duration": 60,
+                  "nodes": [
+                    {
+                      "time": 0,
+                      "value": 0.47,
+                      "handleIn": {
+                        "dt": 0,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 20,
+                        "dv": 0
+                      }
+                    },
+                    {
+                      "time": 60,
+                      "value": 0.47,
+                      "handleIn": {
+                        "dt": -20,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 0,
+                        "dv": 0
+                      }
+                    }
+                  ]
+                }
+              ],
+              "u_softness": [
+                {
+                  "type": "curve",
+                  "duration": 60,
+                  "nodes": [
+                    {
+                      "time": 0,
+                      "value": 0.17,
+                      "handleIn": {
+                        "dt": 0,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 20,
+                        "dv": 0
+                      }
+                    },
+                    {
+                      "time": 60,
+                      "value": 0.17,
+                      "handleIn": {
+                        "dt": -20,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 0,
+                        "dv": 0
+                      }
+                    }
+                  ]
+                }
+              ],
+              "u_colorShift": [
+                {
+                  "type": "curve",
+                  "duration": 60,
+                  "nodes": [
+                    {
+                      "time": 0,
+                      "value": 0.12,
+                      "handleIn": {
+                        "dt": 0,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 20,
+                        "dv": 0
+                      }
+                    },
+                    {
+                      "time": 60,
+                      "value": 0.12,
+                      "handleIn": {
+                        "dt": -20,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 0,
+                        "dv": 0
+                      }
+                    }
+                  ]
+                }
+              ],
+              "u_seed": [
+                {
+                  "type": "curve",
+                  "duration": 60,
+                  "nodes": [
+                    {
+                      "time": 0,
+                      "value": 0,
+                      "handleIn": {
+                        "dt": 0,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 20,
+                        "dv": 0
+                      }
+                    },
+                    {
+                      "time": 60,
+                      "value": 0,
+                      "handleIn": {
+                        "dt": -20,
+                        "dv": 0
+                      },
+                      "handleOut": {
+                        "dt": 0,
+                        "dv": 0
+                      }
+                    }
+                  ]
+                }
+              ]
             },
-            {
-              "time": 0.7265625,
-              "value": 1.8756499133448878
-            }
-          ],
-          "segments": [
-            {
-              "type": "curve",
-              "bend": 1
-            },
-            {
-              "type": "curve",
-              "bend": 1
-            }
-          ],
-          "active": true
-        },
-        "u_timeFactor": {
-          "keyframes": [
-            {
-              "time": 0.125,
-              "value": 0.2519497400346621
-            },
-            {
-              "time": 0.8359375,
-              "value": 0.7502166377816291
-            }
-          ],
-          "segments": [
-            {
-              "type": "curve",
-              "bend": 1
-            }
-          ],
-          "active": true
+            "effectBlocks": []
+          }
         }
       }
-    }
-  ]
+    ]
+  },
+  "thumbnailURL": ""
 }

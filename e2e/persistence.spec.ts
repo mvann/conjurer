@@ -1,7 +1,9 @@
 import { expect, test } from "@playwright/test";
 import {
+  closePanel,
   gotoEditorClean,
   insertPattern,
+  logIn,
   loadSeededSong,
   openPatternPanel,
   patternsEmptyHint,
@@ -189,6 +191,34 @@ test.describe("persistence and docs", () => {
     });
     expect(probe.sameObject).toBe(true);
     expect(probe.timeFactor).not.toBe(0.9);
+  });
+
+  test("an unnamed experience will not save until it is named", async ({
+    page,
+  }) => {
+    // Opened with no experience in the query string, so it is the placeholder
+    // name the editor boots on rather than one anybody chose.
+    await page.goto("/editor");
+    await page.evaluate(() => localStorage.clear());
+    await page.reload();
+    await expect(page.locator("h1", { hasText: "Conjurer" })).toBeVisible();
+    await logIn(page);
+    await openPatternPanel(page);
+    await insertPattern(page, "Plasma");
+    await closePanel(page);
+
+    await saveFromGear(page);
+    await expect(page.locator("[data-doc=save-notice]")).toContainText("Name");
+
+    // Naming it through Save as clears the objection. The gear pane is still
+    // open from the refused save.
+    await page.getByRole("button", { name: "Save as…" }).click();
+    const named = `named-${Date.now().toString(36)}`;
+    const input = page.locator("[data-doc=gear-subpanel] input");
+    await input.fill(named);
+    await input.press("Enter");
+    await page.waitForTimeout(600);
+    await expect(page.locator("[data-doc=save-notice]")).toHaveCount(0);
   });
 
   test("docs strip follows hover; ? opens and closes the overlay", async ({

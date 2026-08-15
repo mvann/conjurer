@@ -16,10 +16,6 @@ import {
   type Draft,
 } from "@/src/components/EditorV2/editorExperience";
 import {
-  migrateLegacySave,
-  type LegacySave,
-} from "@/src/components/EditorV2/migrateLegacySave";
-import {
   armLane,
   disarmLane,
   getLaneSongDuration,
@@ -88,6 +84,7 @@ import {
 } from "@/src/components/EditorV2/experiencePersistence";
 import { IS_DEMO } from "@/src/utils/demo";
 import demoExperience from "@/src/components/EditorV2/demoExperience.json";
+import type { Experience } from "@/src/types/Experience";
 import { Pattern } from "@/src/types/Pattern";
 import type { Block } from "@/src/types/Block";
 import { NO_SONG, Song } from "@/src/types/Song";
@@ -765,17 +762,14 @@ export const EditorV2Page = observer(function EditorV2Page() {
     if (!experienceLoaded || didRestore.current) return;
     const experienceName = store.experienceName || DEFAULT_EXPERIENCE_NAME;
 
-    // The static demo ships a starter experience for first-time visitors. It
-    // was authored in the old save format, so it arrives through the same
-    // migration any of the owner's own old saves would (decision 22).
-    if (IS_DEMO && store.layers.every((layer) => !layer.getAllBlocks().length)) {
-      store.deserialize(
-        migrateLegacySave(demoExperience as unknown as LegacySave, {
-          name: experienceName,
-          store,
-        }),
-      );
-    }
+    // The static demo ships a starter experience for first-time visitors,
+    // authored in the current data model and loaded like any other experience.
+    // It used to ship the OLD save format and run the migration in the browser
+    // on every first visit, which meant the demo exercised the migration path
+    // instead of the model it exists to show. `yarn build:demo` runs that
+    // migration once and writes the result here.
+    if (IS_DEMO && store.layers.every((layer) => !layer.getAllBlocks().length))
+      store.deserialize(demoExperience as unknown as Experience);
 
     // The row is already in the store; the stack is a view over it.
     setEntries(entriesFromStore(store));
@@ -831,6 +825,14 @@ export const EditorV2Page = observer(function EditorV2Page() {
     // no explanation.
     if (store.audioStore.selectedSong.id === NO_SONG.id) {
       setSaveNotice("Select a song before saving");
+      return;
+    }
+    // "untitled" is the placeholder an editor opens on, not a name anybody
+    // chose. Saving under it collects every unnamed experience into one row and
+    // silently overwrites whatever was there, so ask for a name instead.
+    // Naming lives in Save as, which is on the gear.
+    if ((store.experienceName || DEFAULT_EXPERIENCE_NAME) === DEFAULT_EXPERIENCE_NAME) {
+      setSaveNotice("Name this experience first: Settings, then Save as");
       return;
     }
     writeLaneOrder(
