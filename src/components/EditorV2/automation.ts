@@ -341,6 +341,92 @@ export const defaultSegment = (
  * owner: "that's not just for waves. Like, anything with an offset like that
  * can follow this type of logic."
  */
+/**
+ * The handles that make a segment the straight chord between its endpoints:
+ * a cubic whose controls lie on the chord IS the chord.
+ */
+const chordHandles = (a: AutomationKeyframe, b: AutomationKeyframe) => {
+  const dt = (b.time - a.time) / 3;
+  const dv = (b.value - a.value) / 3;
+  return { out: { dt, dv }, in: { dt: -dt, dv: -dv } };
+};
+
+/**
+ * Handles bending a segment so its curve passes through `value` at the halfway
+ * point. A cubic's midpoint is (P0 + 3P1 + 3P2 + P3) / 8, so moving both
+ * handles by the same dv shifts it by three quarters of that: the symmetric
+ * bend the drag gesture wants, expressed the way upstream stores a curve.
+ */
+export const handlesThroughMidpoint = (
+  a: AutomationKeyframe,
+  b: AutomationKeyframe,
+  value: number,
+) => {
+  const straight = chordHandles(a, b);
+  const d = ((value - (a.value + b.value) / 2) * 4) / 3;
+  return {
+    out: { dt: straight.out.dt, dv: straight.out.dv + d },
+    in: { dt: straight.in.dt, dv: straight.in.dv + d },
+  };
+};
+
+/**
+ * The handles reproducing a legacy Schlick bend, matched at its midpoint.
+ *
+ * Curves used to be stored as one bend per segment and drawn with that
+ * formula, but the data model has no bend: it stores cubic handles, so a bend
+ * had to be fitted on every save, and fitting is what invented keyframes. A
+ * curve segment carries real handles from birth now, and this converts the
+ * ones that came from an older save. Schlick at the midpoint is 1 / (1 + bend),
+ * which is the same anchor `sliceSpec` refits against.
+ */
+export const handlesForBend = (
+  a: AutomationKeyframe,
+  b: AutomationKeyframe,
+  bend: number,
+) =>
+  handlesThroughMidpoint(a, b, a.value + (b.value - a.value) / (1 + bend));
+
+/**
+ * Give every curve segment explicit handles, so what the editor draws is
+ * exactly what the data model stores and a round trip changes nothing. A
+ * segment that already has them is left alone: the author's own shaping, or a
+ * handle they dragged, always wins over a derived one.
+ */
+export const ensureCurveHandles = (curve: AutomationCurve): AutomationCurve => {
+  const segments = getSegments(curve);
+  const keyframes = [...curve.keyframes];
+  let touched = false;
+  for (let i = 0; i < segments.length; i++) {
+    const spec = segments[i];
+    if (spec.type !== "curve") continue;
+    const a = keyframes[i];
+    const b = keyframes[i + 1];
+    if (a.handleOut && b.handleIn) continue;
+    const handles = handlesForBend(a, b, spec.bend ?? 1);
+    keyframes[i] = { ...a, handleOut: a.handleOut ?? handles.out };
+    keyframes[i + 1] = { ...b, handleIn: b.handleIn ?? handles.in };
+    touched = true;
+  }
+  return touched ? { ...curve, keyframes } : curve;
+};
+
+/** Put a segment's handles on the two keyframes that own them. */
+export const setSegmentHandles = (
+  curve: AutomationCurve,
+  index: number,
+  handles: {
+    out: { dt: number; dv: number };
+    in: { dt: number; dv: number };
+  },
+): AutomationCurve => {
+  const keyframes = [...curve.keyframes];
+  if (!keyframes[index] || !keyframes[index + 1]) return curve;
+  keyframes[index] = { ...keyframes[index], handleOut: handles.out };
+  keyframes[index + 1] = { ...keyframes[index + 1], handleIn: handles.in };
+  return { ...curve, keyframes };
+};
+
 export const isGeneratorType = (type: SegmentType) =>
   type === "wave" || type === "audio";
 

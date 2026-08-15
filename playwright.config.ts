@@ -24,6 +24,9 @@ export default defineConfig({
   workers: 2,
   retries: 1,
   reporter: [["list"]],
+  // Each test creates its own experience row; this removes them afterwards so
+  // they stop accumulating in the editor's Open menu.
+  globalTeardown: "./e2e/globalTeardown.ts",
   use: {
     baseURL,
     viewport: { width: 1400, height: 900 },

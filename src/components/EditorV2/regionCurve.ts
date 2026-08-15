@@ -854,7 +854,20 @@ const curveRegionForRun = (
     .map((keyframe) => (localOf(keyframe.time) - nodesStart) / nodesDuration)
     .filter((u) => u > 1e-6 && u < 1 - 1e-6);
 
-  const fitted = fitCurveNodes(valueAtCurveTime, nodesDuration, {}, seedUs);
+  // ONE node per keyframe the author placed, and not one more. The fitter is
+  // adaptive: seeded at the author's keyframes it then subdivides wherever the
+  // error is worst, up to 64 nodes. Every one of those extra nodes reads back
+  // as a KEYFRAME, because a Curve region's nodes are exactly what the editor
+  // draws dots for. So shaping a segment hard enough to need a third node made
+  // keyframes appear out of nowhere beside the real ones, and each edit made
+  // more. Capping the count at the seeds keeps one cubic per segment, which is
+  // upstream's own representation and the one the author is really editing.
+  const fitted = fitCurveNodes(
+    valueAtCurveTime,
+    nodesDuration,
+    { maxNodes: seedUs.length + 2 },
+    seedUs,
+  );
   for (const node of fitted) node.time += offset;
   return new CurveVariation(duration, fitted);
 };

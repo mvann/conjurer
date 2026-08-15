@@ -16,6 +16,10 @@ import {
   curveExtremes,
   defaultSegment,
   deleteCurveWindow,
+  ensureCurveHandles,
+  handlesForBend,
+  handlesThroughMidpoint,
+  setSegmentHandles,
   generatorAtKeyframe,
   isGeneratorType,
   stackGeneratorBoundaries,
@@ -693,8 +697,10 @@ export const AutomationEditorView = observer(function AutomationEditorView({
 
   const commitCurve = (next: AutomationCurve) => {
     // Any edit to the curve reactivates a deactivated lane.
+    const shaped =
+      isValueLane || isBooleanLane ? next : ensureCurveHandles(next);
     const revived = {
-      ...(isBooleanLane ? quantizeBooleanCurve(next) : next),
+      ...(isBooleanLane ? quantizeBooleanCurve(shaped) : shaped),
       active: true,
     };
     curveRef.current = revived;
@@ -712,7 +718,18 @@ export const AutomationEditorView = observer(function AutomationEditorView({
     if (!current) return;
     const nextSegments = [...currentSegments()];
     nextSegments[index] = { ...nextSegments[index], ...patch } as SegmentSpec;
-    commitCurve({ ...current, segments: nextSegments });
+    let next: AutomationCurve = { ...current, segments: nextSegments };
+    // Bend is a symmetric shortcut for the two handles, so setting it has to
+    // move them: with handles present they are what the curve is drawn from,
+    // and a bend nothing reads would silently do nothing.
+    const spec = nextSegments[index];
+    if ("bend" in patch && spec?.type === "curve") {
+      const a = next.keyframes[index];
+      const b = next.keyframes[index + 1];
+      if (a && b)
+        next = setSegmentHandles(next, index, handlesForBend(a, b, spec.bend));
+    }
+    commitCurve(next);
   };
 
   const setSegmentType = (index: number, type: SegmentType) => {
@@ -833,26 +850,23 @@ export const AutomationEditorView = observer(function AutomationEditorView({
       const a = keyframes[segmentIndex];
       const b = keyframes[segmentIndex + 1];
       const spec = segments[segmentIndex];
-      if (
-        !a ||
-        !b ||
-        spec?.type !== "curve" ||
-        Math.abs(b.value - a.value) < 1e-9
-      )
-        return;
+      // A flat chord bends now too: handles can lift a curve off a level pair
+      // of keyframes, which a Schlick bend could never express.
+      if (!a || !b || spec?.type !== "curve") return;
 
       const onMove = (moveEvent: PointerEvent) => {
-        const cursorValue = clientYToValue(moveEvent.clientY);
-        const fraction = clamp(
-          (cursorValue - a.value) / (b.value - a.value),
-          0.02,
-          0.98,
+        const current = curveRef.current;
+        if (!current) return;
+        // The curve passes through the cursor at the segment's halfway point.
+        // Moving the handles is the edit itself: the shape the editor draws is
+        // the shape the data model stores, so nothing is refitted on save.
+        commitCurve(
+          setSegmentHandles(
+            current,
+            segmentIndex,
+            handlesThroughMidpoint(a, b, clientYToValue(moveEvent.clientY)),
+          ),
         );
-        // Schlick bend whose midpoint passes exactly at the cursor's
-        // fraction: shaped(0.5) = 1 / (1 + bend) = fraction.
-        let bend = (1 - fraction) / fraction;
-        if (Math.abs(bend - 1) < 0.06) bend = 1;
-        updateSegment(segmentIndex, { bend });
       };
       const onUp = () => {
         isDraggingRef.current = false;

@@ -40,7 +40,14 @@ import {
   curveToVariations,
   RegionContext,
 } from "@/src/components/EditorV2/regionCurve";
-import { colorAtTime } from "@/src/components/EditorV2/automation";
+import {
+  AutomationCurve,
+  colorAtTime,
+  ensureCurveHandles,
+  evaluateCurve,
+  handlesThroughMidpoint,
+  setSegmentHandles,
+} from "@/src/components/EditorV2/automation";
 
 type Rgba = [number, number, number, number];
 
@@ -512,6 +519,112 @@ console.log("");
   if (!(Math.abs(at(0.75)[0]) < 1e-9))
     fail("a period with no far end holds its colour");
   console.log("  a gradient period ramps across its span; a solid one holds");
+}
+
+// ---- a curve segment is a Bezier, and the trip changes nothing ----
+//
+// "by default now, we're gonna do the curves that they do, which is, like, the
+//  Bezier handles. That's gonna be kind of the default thing."
+//
+// Curves used to be stored as one Schlick bend per segment and refitted on
+// every save. The fitter is adaptive: seeded at the author's keyframes it
+// subdivides wherever the error is worst, and EVERY node it adds reads back as
+// a keyframe, because a Curve region's nodes are exactly what the editor draws
+// dots for. A hard enough bend needed a third node, so keyframes appeared
+// beside the real ones and each edit made more. With real handles there is one
+// cubic per segment, nothing is fitted, and the trip is exact.
+{
+  const ctx: RegionContext = {
+    blockStartTime: 0,
+    blockDuration: 120,
+    songDuration: 120,
+  };
+  const store = {} as Store;
+
+  for (const bend of [1, 2, 4, 8, 0.25, 0.125]) {
+    const authored = ensureCurveHandles({
+      keyframes: [
+        { time: 0.1, value: 0 },
+        { time: 0.5, value: 1 },
+        { time: 0.9, value: 0 },
+      ],
+      segments: [
+        { type: "curve", bend },
+        { type: "curve", bend },
+      ],
+    });
+    const back = variationsToCurve(
+      curveToVariations(authored, ctx, store),
+      ctx,
+    )!;
+
+    if (back.keyframes.length !== authored.keyframes.length)
+      fail(
+        `bend ${bend}: keyframes ${authored.keyframes.length} -> ${back.keyframes.length}; the fitter invented some`,
+      );
+    let worst = 0;
+    for (let i = 0; i <= 200; i++) {
+      const t = 0.05 + (0.9 * i) / 200;
+      const before = evaluateCurve(authored, t);
+      const after = evaluateCurve(back, t);
+      if (before !== null && after !== null)
+        worst = Math.max(worst, Math.abs(before - after));
+    }
+    if (worst > 1e-6)
+      fail(`bend ${bend}: shape moved by ${worst.toFixed(5)} on a round trip`);
+  }
+  console.log("  a bent curve round trips exactly, keyframe set unchanged");
+
+  // A LEGACY curve, stored as a bend with no handles, still has to be fitted:
+  // old autosaves hold them. The fit is capped at the author's own keyframes,
+  // so it approximates the shape rather than subdividing until it matches and
+  // handing back the subdivisions as keyframes.
+  for (const bend of [4, 8, 0.125]) {
+    const legacy: AutomationCurve = {
+      keyframes: [
+        { time: 0.1, value: 0 },
+        { time: 0.5, value: 1 },
+        { time: 0.9, value: 0 },
+      ],
+      segments: [
+        { type: "curve", bend },
+        { type: "curve", bend },
+      ],
+    };
+    const back = variationsToCurve(curveToVariations(legacy, ctx, store), ctx)!;
+    if (back.keyframes.length !== legacy.keyframes.length)
+      fail(
+        `legacy bend ${bend}: keyframes ${legacy.keyframes.length} -> ${back.keyframes.length}; the fitter subdivided`,
+      );
+  }
+  console.log("  a legacy bend is fitted without inventing keyframes");
+
+  // The drag gesture: the curve passes through the cursor at the halfway
+  // point, including on a FLAT chord, which a Schlick bend could never lift.
+  const flat = ensureCurveHandles({
+    keyframes: [
+      { time: 0.2, value: 1 },
+      { time: 0.8, value: 1 },
+    ],
+    segments: [{ type: "curve", bend: 1 }],
+  });
+  const bent = setSegmentHandles(
+    flat,
+    0,
+    handlesThroughMidpoint(flat.keyframes[0], flat.keyframes[1], 2),
+  );
+  const mid = evaluateCurve(bent, 0.5)!;
+  if (Math.abs(mid - 2) > 1e-9)
+    fail(`a dragged bend should pass through the cursor, got ${mid}`);
+  const trippedBent = variationsToCurve(
+    curveToVariations(bent, ctx, store),
+    ctx,
+  )!;
+  if (trippedBent.keyframes.length !== 2)
+    fail(
+      `a bent flat chord gained keyframes: ${trippedBent.keyframes.length}`,
+    );
+  console.log("  a flat chord bends, and survives the trip");
 }
 
 console.log("");
