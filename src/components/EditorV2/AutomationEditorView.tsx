@@ -1152,6 +1152,97 @@ export const AutomationEditorView = observer(function AutomationEditorView({
       window.addEventListener("blur", onUp);
     };
 
+  // Drag a Bezier handle. The handle IS the curve's shape now, so moving one
+  // is a direct edit: no refit, and the stored cubic is what gets drawn.
+  const onHandlePointerDown =
+    (index: number, which: "handleIn" | "handleOut") =>
+    (event: React.PointerEvent) => {
+      if (event.button !== 0) return;
+      event.preventDefault();
+      event.stopPropagation();
+      isDraggingRef.current = true;
+      const onMove = (moveEvent: PointerEvent) => {
+        const rect = areaRef.current?.getBoundingClientRect();
+        const current = curveRef.current;
+        if (!rect || !current) return;
+        const anchor = current.keyframes[index];
+        if (!anchor) return;
+        const time = xFracToTime((moveEvent.clientX - rect.left) / rect.width);
+        const value = clientYToValue(moveEvent.clientY);
+        // A handle stays on its own side of its keyframe: an out handle
+        // reaches forward, an in handle back. Crossing over would turn the
+        // cubic inside out and fold the curve back on itself.
+        const rawDt = time - anchor.time;
+        const dt =
+          which === "handleOut" ? Math.max(rawDt, 0) : Math.min(rawDt, 0);
+        const nextKeyframes = [...current.keyframes];
+        nextKeyframes[index] = {
+          ...anchor,
+          [which]: { dt, dv: value - anchor.value },
+        };
+        commitCurve({ ...current, keyframes: nextKeyframes });
+      };
+      const onUp = () => {
+        isDraggingRef.current = false;
+        activeDragCleanup.current = null;
+        document.removeEventListener("pointermove", onMove);
+        document.removeEventListener("pointerup", onUp);
+        document.removeEventListener("pointercancel", onUp);
+        window.removeEventListener("blur", onUp);
+      };
+      activeDragCleanup.current = onUp;
+      document.addEventListener("pointermove", onMove);
+      document.addEventListener("pointerup", onUp);
+      document.addEventListener("pointercancel", onUp);
+      window.addEventListener("blur", onUp);
+    };
+
+  // Every handle belonging to a curve segment, both sides of every keyframe.
+  // A handle only means something where the adjacent segment is a curve: a
+  // flat or a wave takes its shape from somewhere else entirely.
+  const bezierHandles = () => {
+    if (isValueLane || isBooleanLane) return [];
+    const out: {
+      index: number;
+      which: "handleIn" | "handleOut";
+      x: number;
+      y: number;
+      anchorX: number;
+      anchorY: number;
+    }[] = [];
+    // A zero-width segment has no shape to control, and its handles would sit
+    // exactly on top of the stacked keyframes they belong to, swallowing the
+    // drag meant for those. Stacked pairs and generator boundary bridges are
+    // both this shape.
+    const spans = (i: number) =>
+      !!keyframes[i] &&
+      !!keyframes[i + 1] &&
+      keyframes[i + 1].time - keyframes[i].time > 1e-6;
+
+    for (let i = 0; i < keyframes.length; i++) {
+      const keyframe = keyframes[i];
+      const forward =
+        segments[i]?.type === "curve" && !!keyframe.handleOut && spans(i);
+      const back =
+        segments[i - 1]?.type === "curve" &&
+        !!keyframe.handleIn &&
+        spans(i - 1);
+      for (const which of ["handleOut", "handleIn"] as const) {
+        if (which === "handleOut" ? !forward : !back) continue;
+        const handle = keyframe[which]!;
+        out.push({
+          index: i,
+          which,
+          x: timeToX(keyframe.time + handle.dt),
+          y: valueToTopPct(keyframe.value + handle.dv),
+          anchorX: timeToX(keyframe.time),
+          anchorY: valueToTopPct(keyframe.value),
+        });
+      }
+    }
+    return out;
+  };
+
   // Path building in a 0..100 x 0..100 viewBox stretched to the area.
   const segmentPathFrom = (segmentIndex: number) => {
     const a = keyframes[segmentIndex];
@@ -1558,6 +1649,38 @@ export const AutomationEditorView = observer(function AutomationEditorView({
 
         <div ref={timeDotRef} className={styles.timeDot} data-doc="time-dot" />
         <div ref={timeDotLabelRef} className={styles.timeDotLabel} />
+
+        {/* Bezier handles, with a leader line back to their keyframe.
+            Drawn BEFORE the keyframe dots so a dot always wins the pointer:
+            grabbing a keyframe matters more than grabbing its handle. */}
+        {bezierHandles().length > 0 && (
+          <svg
+            className={styles.handleLineSvg}
+            viewBox="0 0 100 100"
+            preserveAspectRatio="none"
+          >
+            {bezierHandles().map((handle) => (
+              <line
+                key={`${handle.index}-${handle.which}-line`}
+                className={styles.bezierHandleLine}
+                x1={handle.anchorX}
+                y1={handle.anchorY}
+                x2={handle.x}
+                y2={handle.y}
+              />
+            ))}
+          </svg>
+        )}
+        {bezierHandles().map((handle) => (
+          <div
+            key={`${handle.index}-${handle.which}`}
+            className={styles.bezierHandle}
+            data-doc="bezier-handle"
+            style={{ left: `${handle.x}%`, top: `${handle.y}%` }}
+            onPointerDown={onHandlePointerDown(handle.index, handle.which)}
+            onDoubleClick={(event) => event.stopPropagation()}
+          />
+        ))}
 
         {keyframes.map((keyframe, index) => (
           <div

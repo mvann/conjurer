@@ -550,6 +550,15 @@ The panel opens on its own when nobody is signed in. Click outside, or press Esc
     short: "The options for the settings row you picked.",
     long: `The detail pane for whichever settings row you opened. Pick another row to swap it, or close the settings pane to dismiss it.`,
   },
+  "bezier-handle": {
+    title: "Curve Handle",
+    short: "Drag to shape this side of the curve.",
+    long: `Drag a handle to shape the curve leaving or entering its keyframe. A curve segment is a cubic Bezier, and its two handles are its shape, so what you draw here is exactly what is stored.
+
+Every handle on a curve segment is shown at once rather than only the selected keyframe's. A handle stays on its own side of its keyframe: pulling it across would fold the curve back on itself. Segments that take their shape from somewhere else, like a flat or a wave, have no handles.
+
+Dragging the middle of a segment moves both of its handles together, which is the quick way to bow a curve without touching either end.`,
+  },
 };
 
 export const getDoc = (key: string | null): DocEntry =>

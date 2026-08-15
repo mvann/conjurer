@@ -683,6 +683,51 @@
   cursor: grabbing;
 }
 
+/* Bezier handles. A curve segment is a cubic, and its two control points are
+   the shape: "All beziers should be visible all the time", so every handle on
+   a curve segment is drawn, not just the selected keyframe's. Smaller and
+   dimmer than a keyframe, since a handle is a control and not a value. */
+.bezierHandle {
+  position: absolute;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: rgba(232, 236, 244, 0.55);
+  border: 1px solid rgba(232, 236, 244, 0.85);
+  transform: translate(-50%, -50%);
+  cursor: grab;
+  touch-action: none;
+}
+
+.bezierHandle:hover {
+  background: #ffffff;
+  box-shadow: 0 0 6px rgba(225, 233, 250, 0.8);
+}
+
+.bezierHandle:active {
+  cursor: grabbing;
+}
+
+/* The handles' leader lines sit above the curve, so the layer itself must be
+   inert: the curve's own hit strokes are underneath it and a transparent
+   overlay would swallow every right click and segment grab. */
+.handleLineSvg {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.bezierHandleLine {
+  stroke: rgba(232, 236, 244, 0.4);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  fill: none;
+  pointer-events: none;
+}
+
 /* Beat grid inside the automation editor, matching the timeline's. */
 .gridSvg {
   position: absolute;
