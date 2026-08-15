@@ -25,6 +25,7 @@ import { CurveVariation, makeCurveNode } from "@/src/types/Variations/CurveVaria
 import { PeriodicVariation } from "@/src/types/Variations/PeriodicVariation";
 import type { Block } from "@/src/types/Block";
 import type { Store } from "@/src/types/Store";
+import { reconcileBlockIds } from "@/src/components/EditorV2/blockIdentity";
 import {
   laneCurve,
   laneKeysOf,
@@ -361,6 +362,63 @@ console.log("block lane read model\n");
     `the curve must keep its length rather than stretching, ends at ${endsAt}s (expected 70)`,
   );
   console.log("  a block's automation starts where the block starts, and slides with it");
+}
+
+// ---- a block's id must match the key it is stored under ----
+//
+// BlockMap is keyed by id and removeBlock does `map.delete(block.id)`. A block
+// whose id has drifted from its key therefore CANNOT BE DELETED: the map is
+// asked for a key it does not hold, the removal silently does nothing, and the
+// next save writes the block straight back. Reported live as "I keep deleting
+// a plasma pattern and it keeps coming back".
+//
+// The drift used to be created by restoring a saved experience, which inserted
+// a block under a fresh id and then renamed it, and it SURVIVED a round trip
+// because BlockMap.deserialize keys by the serialized key while
+// Block.deserialize takes the id from the block.
+{
+  type FakeBlock = { id: string };
+  const layerWith = (pairs: [string, string][]) => {
+    const map = new Map<string, FakeBlock>();
+    for (const [key, id] of pairs) map.set(key, { id });
+    return { blockMap: { map } };
+  };
+
+  // Three blocks sharing one id, only one of them under a matching key: the
+  // exact shape found in the owner's saved experience.
+  const layer = layerWith([
+    ["aaa", "aaa"],
+    ["bbb", "zzz"],
+    ["ccc", "zzz"],
+    ["zzz", "zzz"],
+  ]);
+  const store = { layers: [layer] } as never;
+
+  const repaired = reconcileBlockIds(store);
+  check(repaired === 2, `expected 2 repairs, got ${repaired}`);
+
+  const map = layer.blockMap.map;
+  check(map.size === 4, `no block may be dropped, got ${map.size}`);
+  for (const [key, block] of map.entries())
+    check(
+      block.id === key,
+      `block under key ${key} still claims id ${block.id}`,
+    );
+  const ids = [...map.values()].map((b) => b.id);
+  check(
+    new Set(ids).size === ids.length,
+    `ids must be unique after repair, got ${ids.join(",")}`,
+  );
+
+  // Idempotent: a healthy layer is left alone.
+  check(reconcileBlockIds(store) === 0, "a repaired layer must need no repair");
+
+  // A layer with no map at all (the V1 layer) is skipped, not crashed on.
+  check(
+    reconcileBlockIds({ layers: [{}] } as never) === 0,
+    "a layer with no block map must be skipped",
+  );
+  console.log("  block ids are reconciled with their map keys");
 }
 
 console.log("");

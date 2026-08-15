@@ -36,6 +36,7 @@ import {
   addLayer,
   applySongDuration,
   entriesFromStore,
+  reconcileBlockIds,
   moveLayer,
   removeLayer,
   renameLayer,
@@ -770,6 +771,18 @@ export const EditorV2Page = observer(function EditorV2Page() {
     // migration once and writes the result here.
     if (IS_DEMO && store.layers.every((layer) => !layer.getAllBlocks().length))
       store.deserialize(demoExperience as unknown as Experience);
+
+    // Repair any block whose id has drifted from its map key before building
+    // the stack. Such a block cannot be deleted (removeBlock deletes by id, so
+    // the map is asked for a key it does not hold), and the drift survives
+    // saving and reloading, so it has to be fixed on the way in.
+    const repaired = reconcileBlockIds(store);
+    if (repaired > 0) {
+      console.warn(
+        `Repaired ${repaired} block id(s) that had drifted from their map keys; save to persist.`,
+      );
+      setIsDirty(true);
+    }
 
     // The row is already in the store; the stack is a view over it.
     setEntries(entriesFromStore(store));

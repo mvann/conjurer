@@ -24,6 +24,8 @@ import type { Layer } from "@/src/types/Layer";
 import type { Store } from "@/src/types/Store";
 import type { Pattern } from "@/src/types/Pattern";
 import type { StackEntry } from "@/src/components/EditorV2/PatternsPanel";
+export { reconcileBlockIds } from "@/src/components/EditorV2/blockIdentity";
+
 import {
   adoptManualValues,
   getLaneSongDuration,

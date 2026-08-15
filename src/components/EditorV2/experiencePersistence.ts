@@ -25,6 +25,7 @@ import {
   addEffectToBlock,
   addPatternBlock,
   ensureFirstLayer,
+  layerOf,
   removeEffectFromBlock,
   duplicatePatternBlock,
   removePatternBlock,
@@ -204,7 +205,23 @@ export const restoreEntries = (
       // stored as `${entryId}/${laneKey}` keys, and selections are keyed the
       // same way, so a fresh random id would silently drop the author's lane
       // ordering on every reload.
-      if (savedId) runInAction(() => (block.id = savedId));
+      //
+      // RE-KEY the map, do not just rename the block. BlockMap keys on the id
+      // at insertion and never revisits it, and removeBlock deletes by
+      // `block.id` — so a block renamed after insertion can never be deleted
+      // again, and the editor's delete becomes a silent no-op that the next
+      // save undoes. Worse, restoring twice gives two blocks the same id.
+      if (savedId && block.id !== savedId) {
+        const home = layerOf(store, block) ?? layer;
+        runInAction(() => {
+          // Remove under the CURRENT id (which still matches its key, since
+          // the block was only just inserted), rename, then re-add so the map
+          // is keyed by the new id.
+          home.removeBlock(block);
+          block.id = savedId;
+          home.addBlock(block);
+        });
+      }
     }
     claimed.add(block.id);
     applyParams(block.pattern, saved.params ?? {});

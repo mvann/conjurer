@@ -508,7 +508,7 @@ test.describe("segment types", () => {
       /pillActive/,
     );
     await expect(inspector.getByText("Amplitude")).toBeVisible();
-    await expect(inspector.getByText("Cycles")).toBeVisible();
+    await expect(inspector.getByText("Frequency")).toBeVisible();
     await expect(inspector.getByText("Phase")).toBeVisible();
 
     // A wave path oscillates: far more samples than the straight line.
@@ -559,16 +559,22 @@ test.describe("segment types", () => {
 
     // A quarter cycle extra ends the sine at full amplitude, away from
     // the keyframe; the drawn path must still route through it.
+    //
+    // The inspector speaks FREQUENCY now, not cycles, so this asks for the
+    // frequency that lays 4.25 cycles across the span: a fresh wave carries 4
+    // cycles, so the wanted frequency is the shown one times 4.25/4.
     const inspector = page.locator("[data-doc=segment-inspector]");
-    await inspector
+    const frequencyRow = inspector
       .locator("[class*=inspectorRow]")
-      .filter({ hasText: "Cycles" })
-      .locator("[class*=paramScrub]")
-      .click();
+      .filter({ hasText: "Frequency" });
+    const shown = parseFloat(
+      ((await frequencyRow.textContent()) || "").replace(/[^0-9.]/g, ""),
+    );
+    await frequencyRow.locator("[class*=paramScrub]").click();
     const input = page.locator(
       "[data-doc=segment-inspector] [class*=paramInput]",
     );
-    await input.fill("4.25");
+    await input.fill(String(shown * (4.25 / 4)));
     await input.press("Enter");
 
     const dot = page.locator("[class*=keyframeDot]").nth(1);

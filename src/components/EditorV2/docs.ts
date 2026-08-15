@@ -427,7 +427,7 @@ Snapping applies to dragging keyframes, double click creation, the edit cursor, 
     short: "Edits the selected segment's type and parameters.",
     long: `Click a segment to select it and open this card. Use the top row to switch its type; the rows below hold that type's parameters.
 
-For a curve, set the bend: one is linear, below one bows early, above one bows late. For a wave, set the shape (sine, square, triangle), amplitude, cycles across the segment, and phase in fractions of a cycle. For an easing, choose the mode (in, out, in and out) and family. For audio, set the amount the loudness is scaled by (negative inverts it) and a smoothing window in seconds. Flat and linear have nothing to set.
+For a curve, set the bend: one is linear, below one bows early, above one bows late. For a wave, set the shape (sine, square, triangle), amplitude, frequency in hertz, and phase in fractions of a cycle. Frequency is what the wave holds on to: widen the segment and it keeps the same rate, revealing more cycles rather than stretching the ones it has. For an easing, choose the mode (in, out, in and out) and family. For audio, set the amount the loudness is scaled by (negative inverts it) and a smoothing window in seconds. Flat and linear have nothing to set.
 
 Numbers here edit like everywhere else: drag, Shift for fine, click to type. Escape or a click on empty space drops the selection.`,
   },

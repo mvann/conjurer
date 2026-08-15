@@ -2377,6 +2377,14 @@
   color: #cdd3e0;
 }
 
+/* A unit suffix beside an inspector number (Hz). Dimmer than the value: it
+   labels the number rather than competing with it. */
+.inspectorUnit {
+  margin-left: 6px;
+  font-size: 13px;
+  color: rgba(205, 211, 224, 0.6);
+}
+
 /* Boxless glowing options (type, wave kind, easing family): bare words,
    no borders. Hovered or selected words glow. */
 .pill {

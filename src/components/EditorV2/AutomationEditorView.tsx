@@ -43,6 +43,10 @@ import {
   valueRegions,
 } from "@/src/components/EditorV2/valueLane";
 import {
+  getLaneSongDuration,
+  NO_SONG_DURATION_SECONDS,
+} from "@/src/components/EditorV2/blockLanes";
+import {
   TIME_VIEWPORT_EVENT,
   sharedWaveform,
   timeViewport,
@@ -1353,6 +1357,50 @@ export const AutomationEditorView = observer(function AutomationEditorView({
     } as PatternParam<number>;
   };
 
+  /**
+   * A wave's FREQUENCY, in hertz, which is what the owner asked the inspector
+   * to speak: "I wanna start defining waves as having a frequency and a phase
+   * in the little inspector window."
+   *
+   * The segment stores cycles ACROSS ITS SPAN, so frequency is cycles divided
+   * by that span in seconds, which is exactly 1 / period. Storing cycles and
+   * showing frequency is what makes the two behaviours agree: dragging the
+   * segment wider rescales cycles to hold the period, so the frequency shown
+   * here does not move, and "if you drag the right one out further, more
+   * cycles are revealed" falls out.
+   *
+   * The bounds are the old cycle limits expressed in hertz, so the same
+   * shapes remain reachable and no existing wave becomes unrepresentable.
+   */
+  const segmentFrequencyParam = () => {
+    const index = selectedSegment!;
+    const spanSeconds = () => {
+      const a = keyframes[index];
+      const b = keyframes[index + 1];
+      const song = getLaneSongDuration() || NO_SONG_DURATION_SECONDS;
+      return Math.max((b.time - a.time) * song, 1e-6);
+    };
+    return {
+      name: "Frequency",
+      get min() {
+        return 0.25 / spanSeconds();
+      },
+      get max() {
+        return 64 / spanSeconds();
+      },
+      get value() {
+        const spec = currentSegments()[index];
+        const cycles = spec?.type === "wave" ? spec.cycles : 0;
+        return cycles / spanSeconds();
+      },
+      set value(next: number) {
+        updateSegment(index, {
+          cycles: next * spanSeconds(),
+        } as Partial<SegmentSpec>);
+      },
+    } as PatternParam<number>;
+  };
+
   return (
     <div
       className={`${styles.automationEditor} ${
@@ -2001,11 +2049,12 @@ export const AutomationEditorView = observer(function AutomationEditorView({
                 />
               </div>
               <div className={styles.inspectorRow}>
-                <span className={styles.inspectorLabel}>Cycles</span>
+                <span className={styles.inspectorLabel}>Frequency</span>
                 <ScrubbableNumber
-                  key={`cycles-${selectedSegment}`}
-                  param={segmentNumberParam("Cycles", "cycles", 0.25, 64)}
+                  key={`frequency-${selectedSegment}`}
+                  param={segmentFrequencyParam()}
                 />
+                <span className={styles.inspectorUnit}>Hz</span>
               </div>
               <div className={styles.inspectorRow}>
                 <span className={styles.inspectorLabel}>Phase</span>
