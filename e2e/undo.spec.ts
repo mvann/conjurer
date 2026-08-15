@@ -80,6 +80,56 @@ test.describe("undo over the layer/block model", () => {
     expect(undone.duration).toBeCloseTo(before.duration, 1);
   });
 
+  test("block timing survives the FIRST undo of a session", async ({ page }) => {
+    // The history is seeded the instant the experience lands, which is before
+    // the audio has been decoded, so the lane basis is still the 60s nominal
+    // while the blocks already carry their real seconds. Stamping that basis
+    // made the first ctrl-z rescale every block by songLength/60.
+    await openLane(page);
+    const before = await blockTiming(page);
+    expect(before.duration).toBeGreaterThan(100);
+
+    // One real edit, then undo straight back to the opening state.
+    await page.locator("[class*=laneRow]").first().click();
+    await settleBox(page, "[class*=editorLineArea]");
+    const box = (await page.locator("[class*=editorLineArea]").boundingBox())!;
+    await page.mouse.dblclick(box.x + box.width * 0.4, box.y + box.height * 0.5);
+    await page.waitForTimeout(HISTORY_DEBOUNCE);
+
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(400);
+
+    const after = await blockTiming(page);
+    expect(after.duration).toBeCloseTo(before.duration, 1);
+    expect(after.start).toBeCloseTo(before.start, 1);
+  });
+
+  test("collapsing a pattern row is not an undo step", async ({ page }) => {
+    // "certain pieces of state should not be in the history, like having the
+    // expanded automation view open or closed shouldn't be in the history."
+    await openLane(page);
+    await page.waitForTimeout(HISTORY_DEBOUNCE);
+
+    // One real edit: a keyframe.
+    await page.locator("[class*=laneRow]").first().click();
+    await settleBox(page, "[class*=editorLineArea]");
+    const box = (await page.locator("[class*=editorLineArea]").boundingBox())!;
+    await page.mouse.dblclick(box.x + box.width * 0.4, box.y + box.height * 0.5);
+    await page.waitForTimeout(HISTORY_DEBOUNCE);
+    expect(await page.locator("[class*=keyframeDot]").count()).toBe(1);
+
+    // Now a purely visual click: collapse the pattern's row.
+    await openPatternPanel(page);
+    await page.locator("[data-doc=pattern-expand]").first().click();
+    await page.waitForTimeout(HISTORY_DEBOUNCE);
+    await closePanel(page);
+
+    // Undo must take back the KEYFRAME, not the caret.
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(400);
+    expect(await page.locator("[class*=keyframeDot]").count()).toBe(0);
+  });
+
   test("arming a lane is undoable, and lane order survives", async ({
     page,
   }) => {

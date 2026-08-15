@@ -230,6 +230,28 @@ export const EditorV2Page = observer(function EditorV2Page() {
         // Adopting a song length re-spans the full-song blocks AND carries
         // their lanes with them; see applySongDuration.
         applySongDuration(store, durationSeconds);
+        // Everything captured before this moment describes a world with no
+        // song: nominal block spans measured against the 60s stand-in, which
+        // applySongDuration has just replaced. Undoing into one would hand
+        // those nominal seconds back as though the author had chosen them, so
+        // the pre-song history is dropped and re-seeded from what they can
+        // actually see. At most a second or two of history is discarded, and
+        // only ever history that no longer describes anything real.
+        const preSong = history.current.stack.some(
+          (snapshot) => typeof snapshot.songDurationSeconds !== "number",
+        );
+        if (preSong) {
+          history.current = {
+            stack: [
+              serializeEditorState(
+                entriesFromStore(store),
+                latest.current.song,
+                latest.current.laneOrder,
+              ),
+            ],
+            index: 0,
+          };
+        }
       }
       const frac = Math.min(Math.max(seconds / durationSeconds, 0), 1);
       for (const entry of latest.current.entries) {

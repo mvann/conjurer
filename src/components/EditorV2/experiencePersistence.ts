@@ -17,6 +17,7 @@ import {
   laneCurve,
   clearLaneRegions,
   getLaneSongDuration,
+  hasRealSongDuration,
   laneKeysOf,
   resumeLane,
   writeLaneCurve,
@@ -77,7 +78,10 @@ export type SerializedEditorState = {
       params: Record<string, unknown>;
     }[];
     visible: boolean;
-    expanded: boolean;
+    // NOTE: `expanded` is deliberately absent. Undo covers what ends up in the
+    // experience; a collapsed pattern row is a view of it. Including it made
+    // clicking a caret its own undo step, so the next ctrl-z re-expanded a row
+    // instead of undoing the edit before it.
     // The block's span in seconds. Absent in older saves, which predate blocks
     // and are all full-song by decision 24 — so leaving it undefined restores
     // the block as it already is, which is exactly the old behaviour.
@@ -108,7 +112,14 @@ export const serializeEditorState = (
 ): SerializedEditorState => ({
   savedAt: Date.now(),
   song,
-  songDurationSeconds: getLaneSongDuration(),
+  // Only stamp a basis when a real song length is in play. The editor seeds
+  // its undo history the instant an experience lands, which is BEFORE the
+  // audio has been decoded, so the box still holds the 60s nominal while the
+  // blocks already carry their real saved seconds. Stamping 60 there made the
+  // first undo of every session rescale every block by songLength/60.
+  songDurationSeconds: hasRealSongDuration()
+    ? getLaneSongDuration()
+    : undefined,
   laneOrder,
   entries: entries.map((entry) => {
     // Lanes and curves are read out of the block, which owns them now. The
@@ -131,7 +142,6 @@ export const serializeEditorState = (
         params: serializeParams(effect.pattern),
       })),
       visible: entry.visible,
-      expanded: entry.expanded,
       // Block timing is part of the state now that blocks are the model, so
       // undo restores a resize and a save round-trips one.
       startTime: entry.block.startTime,
@@ -274,20 +284,20 @@ export const restoreEntries = (
       if (!effects.some((effect) => effect.block === effectBlock))
         removeEffectFromBlock(block, effectBlock);
 
-    // Block timing, rescaled if the song has changed length since the
-    // snapshot. A block that covered the whole song still covers it, and one
-    // that covered the middle third still does — the same proportional re-span
-    // `applySongDuration` performs when a song first arrives. Older saves
-    // carry no timings, and by decision 24 every block in one was full-song
-    // anyway, so absence means "leave it as it is".
-    const scale =
-      state.songDurationSeconds && state.songDurationSeconds > 0
-        ? getLaneSongDuration() / state.songDurationSeconds
-        : 1;
+    // Block timing, verbatim. Deliberately NOT rescaled against a song length:
+    // a snapshot records the seconds the author actually had, and rescaling
+    // them needs to know what basis those seconds were measured against, which
+    // is unknowable from the snapshot alone. A saved experience's blocks carry
+    // real seconds while the lane basis still reads the nominal stand-in, and
+    // scaling on that mistake multiplied every block by songLength/60 on the
+    // first undo of a session. Snapshots taken before a song loaded are
+    // dropped wholesale instead (see the re-seed in EditorV2Page), so nothing
+    // ever restores a nominal span onto a real timeline. Older saves carry no
+    // timings at all, and by decision 24 every block in one was full-song.
     if (typeof saved.startTime === "number")
-      runInAction(() => (block.startTime = (saved.startTime as number) * scale));
+      runInAction(() => (block.startTime = saved.startTime as number));
     if (typeof saved.duration === "number")
-      runInAction(() => (block.duration = (saved.duration as number) * scale));
+      runInAction(() => (block.duration = saved.duration as number));
 
     // Write the saved curves back onto the block, remapping effect lane keys
     // onto the live effect block ids.
@@ -352,7 +362,9 @@ export const restoreEntries = (
         pattern: block.pattern,
         effects,
         visible: saved.visible ?? true,
-        expanded: saved.expanded ?? true,
+        // Not restored: expansion is the author's current view, and undo must
+        // leave it exactly as they left it.
+        expanded: current?.expanded ?? true,
         visibilityCurve,
       },
     ];

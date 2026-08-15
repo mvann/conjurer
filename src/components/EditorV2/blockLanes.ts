@@ -55,15 +55,28 @@ export const NO_SONG_DURATION_SECONDS = 60;
 // time is a fraction of it.
 const songDurationBox = observable.box(NO_SONG_DURATION_SECONDS);
 
+// Whether a REAL song length has been adopted, as opposed to the nominal span
+// standing in for one. The two are indistinguishable by value (a 60s song
+// would read the same), and telling them apart matters: block timing measured
+// against the nominal basis must never be rescaled as though it had been
+// measured against a song.
+const songDurationAdopted = observable.box(false);
+
 export const setLaneSongDuration = (seconds: number) => {
   // Zero means "no song yet", not "a zero-length song": keep the nominal span
   // rather than collapsing every lane to nothing.
-  const next = seconds > 0 ? seconds : NO_SONG_DURATION_SECONDS;
-  if (songDurationBox.get() === next) return;
-  runInAction(() => songDurationBox.set(next));
+  const real = seconds > 0;
+  const next = real ? seconds : NO_SONG_DURATION_SECONDS;
+  runInAction(() => {
+    if (songDurationAdopted.get() !== real) songDurationAdopted.set(real);
+    if (songDurationBox.get() !== next) songDurationBox.set(next);
+  });
 };
 
 export const getLaneSongDuration = () => songDurationBox.get();
+
+/** True once a real song length is in play, not the nominal stand-in. */
+export const hasRealSongDuration = () => songDurationAdopted.get();
 
 // ------------------------------------------------------------- takeover
 //
