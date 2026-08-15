@@ -627,6 +627,97 @@ console.log("");
   console.log("  a flat chord bends, and survives the trip");
 }
 
+// ---- stacked keyframes survive the round trip ----
+//
+// Two keyframes at the same time are a deliberate instant step, and the editor
+// lets you make one. The round trip used to destroy them: a zero-width segment
+// ends its run, the resulting run chunk has zero duration and is skipped
+// entirely, and then the read path's boundary merge collapses what is left.
+// Reported live as "I moved a keyframe up and each movement it would delete
+// the keyframe to the right".
+{
+  const ctx: RegionContext = {
+    blockStartTime: 0,
+    blockDuration: 120,
+    songDuration: 120,
+  };
+  const store = {} as Store;
+  const trip = (curve: AutomationCurve) =>
+    variationsToCurve(curveToVariations(curve, ctx, store), ctx)!;
+
+  // A stacked pair whose values are EQUAL, straddling a region boundary.
+  const equalStack = ensureCurveHandles({
+    keyframes: [
+      { time: 0.2, value: 0 },
+      { time: 0.5, value: 0.9 },
+      { time: 0.5, value: 0.9 },
+      { time: 0.8, value: 0.4 },
+    ],
+    segments: [
+      { type: "curve", bend: 1 },
+      { type: "flat" },
+      { type: "curve", bend: 1 },
+    ],
+  });
+  const equalBack = trip(equalStack);
+  if (equalBack.keyframes.length !== 4)
+    fail(
+      `an equal-valued stacked pair collapsed: 4 -> ${equalBack.keyframes.length}`,
+    );
+
+  // The same pair with DIFFERING values is a visible step and must also hold.
+  const stepStack = ensureCurveHandles({
+    keyframes: [
+      { time: 0.2, value: 0 },
+      { time: 0.5, value: 0.2 },
+      { time: 0.5, value: 0.9 },
+      { time: 0.8, value: 0.9 },
+    ],
+    segments: [
+      { type: "curve", bend: 1 },
+      { type: "flat" },
+      { type: "curve", bend: 1 },
+    ],
+  });
+  const stepBack = trip(stepStack);
+  if (stepBack.keyframes.length !== 4)
+    fail(`a stacked step collapsed: 4 -> ${stepBack.keyframes.length}`);
+
+  // A stacked pair at the very start of the block.
+  const atStart = ensureCurveHandles({
+    keyframes: [
+      { time: 0, value: 0 },
+      { time: 0, value: 0.9 },
+      { time: 0.6, value: 0.7 },
+    ],
+    segments: [
+      { type: "curve", bend: 1 },
+      { type: "curve", bend: 1 },
+    ],
+  });
+  const startBack = trip(atStart);
+  if (startBack.keyframes.length !== 3)
+    fail(
+      `a stacked pair at the block start collapsed: 3 -> ${startBack.keyframes.length}`,
+    );
+
+  // And the live edit loop: dragging one of a stacked pair vertically must
+  // never change the keyframe COUNT, whatever value it passes through.
+  let live = stepStack;
+  for (let step = 0; step < 14; step++) {
+    const next = { ...live, keyframes: [...live.keyframes] };
+    next.keyframes[1] = { ...next.keyframes[1], value: 0.2 + step * 0.1 };
+    live = trip(ensureCurveHandles(next));
+    if (live.keyframes.length !== 4) {
+      fail(
+        `dragging a stacked keyframe to ${(0.2 + step * 0.1).toFixed(1)} lost one: 4 -> ${live.keyframes.length}`,
+      );
+      break;
+    }
+  }
+  console.log("  stacked keyframes survive the trip, and a vertical drag");
+}
+
 console.log("");
 if (failures > 0) {
   console.error(`FAIL: ${failures} region/curve round-trip failure(s)`);

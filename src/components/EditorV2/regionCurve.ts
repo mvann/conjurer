@@ -590,17 +590,34 @@ export const curveToVariations = (
       continue;
     }
     const runStart = index;
-    const runIsStraight = isStraightType(segments[index].type);
+    // Settled by the first segment that actually has extent: a zero-width one
+    // describes nothing, so it must not decide the run's kind either.
+    let runIsStraight: boolean | null = null;
     while (index < segments.length && !ownsRegion(segments[index].type)) {
-      // Never mix straight and shaped segments in one run: see isStraightType.
-      if (isStraightType(segments[index].type) !== runIsStraight) break;
       const a = keyframes[index];
       const b = keyframes[index + 1];
-      // A zero-width segment between differing values is a step; it belongs to
-      // this run as coincident nodes, and ends it.
       const zeroWidth = Math.abs(b.time - a.time) < TIME_EPS;
+      // A zero-width segment is an instant STEP, which upstream stores as
+      // coincident nodes inside a region. Its type describes no span, so it
+      // never splits a run: splitting there stranded it in a zero-duration
+      // chunk, which is skipped when the regions are emitted, and the author's
+      // stacked keyframes went with it. That is the "moving one keyframe
+      // deletes the one beside it" bug.
+      if (!zeroWidth) {
+        const straight = isStraightType(segments[index].type);
+        // Never mix straight and shaped segments in one run: see isStraightType.
+        if (runIsStraight === null) runIsStraight = straight;
+        else if (straight !== runIsStraight) break;
+      }
       index++;
-      if (zeroWidth && Math.abs(b.value - a.value) > VALUE_EPS) break;
+      // The step ends the run so the fitter never sees a discontinuity — but
+      // only once the run holds something to fit. A step at the very start has
+      // no region to belong to yet, so it rides along into the next one.
+      const runHasExtent =
+        local(keyframes[index].time) - local(keyframes[runStart].time) >
+        TIME_EPS;
+      if (zeroWidth && Math.abs(b.value - a.value) > VALUE_EPS && runHasExtent)
+        break;
     }
     chunks.push({
       kind: "run",
@@ -732,18 +749,30 @@ const curveRegionForRun = (
   // just changed the shape THROUGH the spec — and the handles still on the
   // keyframes are the previous shape. Copying them would swallow the edit, so
   // such a run is re-fit instead.
+  // A zero-width segment spans nothing, so it describes no shape: it is an
+  // instant step, stored as a coincident node pair. It must not drag the run
+  // onto the fitting path, because the fitter samples a CONTINUOUS function
+  // and a coincident pair carries no information there — the author's stacked
+  // keyframes would simply be fitted away.
+  const spans = (segmentIndex: number) =>
+    Math.abs(
+      keyframes[segmentIndex + 1].time - keyframes[segmentIndex].time,
+    ) > TIME_EPS;
+
   const shapeLivesInHandles = segments
     .slice(runStart, runEnd)
     .every(
-      (segment) =>
-        segment.type === "curve" &&
-        (segment.bend === undefined || Math.abs(segment.bend - 1) < 1e-9),
+      (segment, offset) =>
+        !spans(runStart + offset) ||
+        (segment.type === "curve" &&
+          (segment.bend === undefined || Math.abs(segment.bend - 1) < 1e-9)),
     );
   const runIsHandled =
     shapeLivesInHandles &&
     runKeyframes.every((keyframe, i) => {
-      const needsOut = i < runKeyframes.length - 1;
-      const needsIn = i > 0;
+      // Only a segment with extent needs a handle to describe it.
+      const needsOut = i < runKeyframes.length - 1 && spans(runStart + i);
+      const needsIn = i > 0 && spans(runStart + i - 1);
       return (
         (!needsOut || !!keyframe.handleOut) && (!needsIn || !!keyframe.handleIn)
       );
