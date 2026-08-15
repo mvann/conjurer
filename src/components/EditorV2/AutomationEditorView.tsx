@@ -1369,9 +1369,22 @@ export const AutomationEditorView = observer(function AutomationEditorView({
    * here does not move, and "if you drag the right one out further, more
    * cycles are revealed" falls out.
    *
-   * The bounds are the old cycle limits expressed in hertz, so the same
-   * shapes remain reachable and no existing wave becomes unrepresentable.
+   * The bounds are real frequencies, NOT the old cycle limits converted. Those
+   * limits capped cycles ACROSS THE SEGMENT, which as a frequency means a long
+   * segment cannot oscillate quickly: a 125s span topped out under 0.5 Hz. A
+   * rate should not depend on how wide the thing carrying it is, and a longer
+   * segment should simply hold more cycles at the same rate.
+   *
+   * The ceiling is the frame rate's: the wave is evaluated once per rendered
+   * frame, so past about 30 Hz it aliases against a 60 fps canopy rather than
+   * oscillating. 20 leaves headroom under that. The drawn curve also aliases
+   * past roughly 80 cycles across a segment, where sampleSegment's 4000 point
+   * cap bites, but that is only the picture: playback still evaluates the real
+   * function.
    */
+  const FREQUENCY_MIN_HZ = 0.01;
+  const FREQUENCY_MAX_HZ = 20;
+
   const segmentFrequencyParam = () => {
     const index = selectedSegment!;
     const spanSeconds = () => {
@@ -1382,12 +1395,8 @@ export const AutomationEditorView = observer(function AutomationEditorView({
     };
     return {
       name: "Frequency",
-      get min() {
-        return 0.25 / spanSeconds();
-      },
-      get max() {
-        return 64 / spanSeconds();
-      },
+      min: FREQUENCY_MIN_HZ,
+      max: FREQUENCY_MAX_HZ,
       get value() {
         const spec = currentSegments()[index];
         const cycles = spec?.type === "wave" ? spec.cycles : 0;
