@@ -419,12 +419,53 @@ export const setSegmentHandles = (
     out: { dt: number; dv: number };
     in: { dt: number; dv: number };
   },
+  options?: { handlesOwnShape?: boolean },
 ): AutomationCurve => {
   const keyframes = [...curve.keyframes];
   if (!keyframes[index] || !keyframes[index + 1]) return curve;
   keyframes[index] = { ...keyframes[index], handleOut: handles.out };
   keyframes[index + 1] = { ...keyframes[index + 1], handleIn: handles.in };
-  return { ...curve, keyframes };
+  if (!options?.handlesOwnShape) return { ...curve, keyframes };
+  return { ...curve, keyframes, segments: neutralizeBend(curve, index) };
+};
+
+/**
+ * A Schlick bend and a pair of Bezier handles are two ways to say the same
+ * thing, and the projection trusts the bend: a segment whose bend is not 1 is
+ * refit from the bend on save, on the grounds that the author just typed it
+ * and the handles are the shape it replaced. So when the author drags the
+ * shape by hand instead, the bend has to step aside — otherwise the drag is
+ * silently undone the next time the lane is written.
+ */
+const neutralizeBend = (curve: AutomationCurve, index: number) => {
+  const segments = [...getSegments(curve)];
+  const spec = segments[index];
+  if (spec?.type === "curve" && spec.bend !== 1)
+    segments[index] = { type: "curve", bend: 1 };
+  return segments;
+};
+
+/** The segment a keyframe's handle shapes: out looks forward, in looks back. */
+export const segmentOfHandle = (
+  index: number,
+  which: "handleIn" | "handleOut",
+) => (which === "handleOut" ? index : index - 1);
+
+/** One handle moved by hand, with the bend it overrides stepped aside. */
+export const setKeyframeHandle = (
+  curve: AutomationCurve,
+  index: number,
+  which: "handleIn" | "handleOut",
+  handle: { dt: number; dv: number },
+): AutomationCurve => {
+  const keyframes = [...curve.keyframes];
+  if (!keyframes[index]) return curve;
+  keyframes[index] = { ...keyframes[index], [which]: handle };
+  return {
+    ...curve,
+    keyframes,
+    segments: neutralizeBend(curve, segmentOfHandle(index, which)),
+  };
 };
 
 export const isGeneratorType = (type: SegmentType) =>

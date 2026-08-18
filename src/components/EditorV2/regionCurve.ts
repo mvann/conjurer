@@ -919,9 +919,18 @@ const curveRegionForRun = (
       makeCurveNode(offset, keyframes[runStart].value),
     ]);
 
-  const seedUs = runKeyframes
-    .map((keyframe) => (localOf(keyframe.time) - nodesStart) / nodesDuration)
-    .filter((u) => u > 1e-6 && u < 1 - 1e-6);
+  // Deduped, because the fitter dedupes its own seeds and the cap below is
+  // counted from them: a stacked pair inside a shaped run seeds the same u
+  // twice, so an undeduped count let the fitter subdivide once more than
+  // there are keyframes and plant a dot the author never placed.
+  const seedUs = Array.from(
+    new Set(
+      runKeyframes
+        .map((keyframe) => (localOf(keyframe.time) - nodesStart) / nodesDuration)
+        .filter((u) => u > 1e-6 && u < 1 - 1e-6)
+        .map((u) => Math.round(u / 1e-6) * 1e-6),
+    ),
+  ).sort((a, b) => a - b);
 
   // ONE node per keyframe the author placed, and not one more. The fitter is
   // adaptive: seeded at the author's keyframes it then subdivides wherever the

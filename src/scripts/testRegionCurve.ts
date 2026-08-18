@@ -820,6 +820,74 @@ console.log("");
   console.log("  every wave shape draws what the canopy plays");
 }
 
+// Shaping by hand, and what the projection does with the shape.
+{
+  const ctx: RegionContext = {
+    blockStartTime: 0,
+    blockDuration: 120,
+    songDuration: 120,
+  };
+  const store = {} as Store;
+  const trip = (curve: AutomationCurve) =>
+    variationsToCurve(curveToVariations(curve, ctx, store), ctx)!;
+
+  // The projection refits a segment whose bend is not 1, on the grounds that
+  // the bend is the newer instruction. Dragging a handle is the author saying
+  // otherwise, so the drag has to survive the write.
+  const bent = ensureCurveHandles({
+    keyframes: [
+      { time: 0.2, value: 0.1 },
+      { time: 0.8, value: 0.9 },
+    ],
+    segments: [{ type: "curve", bend: 2.5 }],
+  });
+  const dragged = setSegmentHandles(
+    bent,
+    0,
+    { out: { dt: 0.2, dv: 0.5 }, in: { dt: -0.05, dv: -0.4 } },
+    { handlesOwnShape: true },
+  );
+  const back = trip(dragged);
+  const out = back.keyframes[0]?.handleOut;
+  const inn = back.keyframes[1]?.handleIn;
+  if (
+    !out ||
+    !inn ||
+    Math.abs(out.dt - 0.2) > 1e-6 ||
+    Math.abs(out.dv - 0.5) > 1e-6 ||
+    Math.abs(inn.dt + 0.05) > 1e-6 ||
+    Math.abs(inn.dv + 0.4) > 1e-6
+  )
+    fail(
+      `handles dragged on a bent segment snapped back: ${JSON.stringify([out, inn])}`,
+    );
+  console.log("  handles dragged on a bent segment survive the write");
+
+  // A stacked pair inside a shaped run seeds the fitter with the same u
+  // twice. The fitter dedupes its own seeds, so a cap counted from the
+  // undeduped list left room for one node more than there are keyframes —
+  // a dot the author never placed, appearing beside the ones they did.
+  const stackedInShapedRun = ensureCurveHandles({
+    keyframes: [
+      { time: 0.1, value: 0.2 },
+      { time: 0.4, value: 0.6 },
+      { time: 0.4, value: 0.6 },
+      { time: 0.7, value: 0.1 },
+    ],
+    segments: [
+      { type: "curve", bend: 2.5 },
+      { type: "curve", bend: 1 },
+      { type: "curve", bend: 0.4 },
+    ],
+  });
+  const fitted = trip(stackedInShapedRun);
+  if (fitted.keyframes.length > 4)
+    fail(
+      `a shaped run invented a keyframe around a stacked pair: 4 -> ${fitted.keyframes.length}`,
+    );
+  console.log("  a shaped run around a stacked pair invents nothing");
+}
+
 console.log("");
 if (failures > 0) {
   console.error(`FAIL: ${failures} region/curve round-trip failure(s)`);

@@ -20,6 +20,7 @@ import {
   handlesForBend,
   handlesThroughMidpoint,
   setSegmentHandles,
+  setKeyframeHandle,
   generatorAtKeyframe,
   isGeneratorType,
   stackGeneratorBoundaries,
@@ -875,6 +876,7 @@ export const AutomationEditorView = observer(function AutomationEditorView({
             current,
             segmentIndex,
             handlesThroughMidpoint(a, b, clientYToValue(moveEvent.clientY)),
+            { handlesOwnShape: true },
           ),
         );
       };
@@ -1199,12 +1201,12 @@ export const AutomationEditorView = observer(function AutomationEditorView({
         const rawDt = time - anchor.time;
         const dt =
           which === "handleOut" ? Math.max(rawDt, 0) : Math.min(rawDt, 0);
-        const nextKeyframes = [...current.keyframes];
-        nextKeyframes[index] = {
-          ...anchor,
-          [which]: { dt, dv: value - anchor.value },
-        };
-        commitCurve({ ...current, keyframes: nextKeyframes });
+        commitCurve(
+          setKeyframeHandle(current, index, which, {
+            dt,
+            dv: value - anchor.value,
+          }),
+        );
       };
       const onUp = () => {
         isDraggingRef.current = false;
