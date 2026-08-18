@@ -315,24 +315,50 @@ export const variationsToCurve = (
   //
   // Keyframes INSIDE a region (a curve's node list) never take this path:
   // their caller already emits one segment per node gap.
-  const push = (keyframe: AutomationKeyframe, startsRegion = false) => {
+  // - Both sides are GENERATORS: keep both even at equal values. A generator
+  //   owns its endpoints absolutely (decision 14), so two of them meeting is
+  //   a permanent boundary stack, and collapsing it would couple two waves
+  //   that happen to share an offset — drag one and the other follows.
+  const push = (
+    keyframe: AutomationKeyframe,
+    startsRegion = false,
+    boundary: "plain" | "generator" = "plain",
+  ) => {
+    // Generator to generator is the permanent stack; a generator meeting
+    // anything else keeps whatever the boundary already was.
+    const keepStack = boundary === "generator" && previousGenerator;
     const previous = keyframes[keyframes.length - 1];
     if (
       startsRegion &&
       previous &&
       Math.abs(previous.time - keyframe.time) < TIME_EPS
     ) {
-      if (Math.abs(previous.value - keyframe.value) < VALUE_EPS) {
+      if (!keepStack && Math.abs(previous.value - keyframe.value) < VALUE_EPS) {
         if (keyframe.handleOut) previous.handleOut = keyframe.handleOut;
         return;
       }
-      segments.push({ type: "linear" });
+      // The zero-width bridge beside a generator is the segment the unzip
+      // gesture widens, and unzipping opens a CURVE, so reporting it as linear
+      // would retype every generator boundary on its first round trip. Every
+      // other seam keeps the linear step it has always had.
+      segments.push(
+        keepStack || boundary === "generator" || previousGenerator
+          ? { type: "curve", bend: 1 }
+          : { type: "linear" },
+      );
     }
     keyframes.push(keyframe);
   };
 
+  // Whether the region just emitted was a generator, for the stack rule above.
+  let previousGenerator = false;
+
   let cursor = 0; // local seconds
-  for (const variation of variations) {
+  for (let index = 0; index < variations.length; index++) {
+    const variation = variations[index];
+    const before = variations[index - 1];
+    previousGenerator =
+      before instanceof PeriodicVariation || before instanceof AudioVariation;
     const duration = variation.duration;
     const start = cursor;
     const end = cursor + duration;
@@ -393,7 +419,11 @@ export const variationsToCurve = (
     if (variation instanceof PeriodicVariation) {
       const kind = variation.periodicType as WaveKind;
       const period = variation.period;
-      push({ time: frac(start), value: variation.offset }, true);
+      push(
+        { time: frac(start), value: variation.offset },
+        true,
+        "generator",
+      );
       segments.push({
         type: "wave",
         wave: kind,
@@ -406,7 +436,11 @@ export const variationsToCurve = (
     }
 
     if (variation instanceof AudioVariation) {
-      push({ time: frac(start), value: variation.offset }, true);
+      push(
+        { time: frac(start), value: variation.offset },
+        true,
+        "generator",
+      );
       segments.push({
         type: "audio",
         factor: variation.factor,
@@ -655,7 +689,13 @@ export const curveToVariations = (
         const segment = segments[chunk.firstSegment];
         const a = keyframes[chunk.firstSegment];
         if (segment.type === "wave") {
-          const period = segment.cycles !== 0 ? duration / segment.cycles : 0;
+          // Upstream divides by the period, so a zero or negative one makes
+          // every sample NaN on the canopy. A wave with no cycles left has no
+          // rate to preserve, so it falls back to one cycle across the span.
+          const cycles = Number.isFinite(segment.cycles)
+            ? Math.abs(segment.cycles)
+            : 0;
+          const period = cycles > 0 ? duration / cycles : duration;
           variations.push(
             new PeriodicVariation(
               duration,

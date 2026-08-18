@@ -340,21 +340,39 @@ for (const testCase of cases) {
     testCase.tolerance,
   );
 
-  // Second trip: shape must stop changing.
-  const curve2 = variationsToCurve(back, testCase.ctx);
-  if (!curve2) {
-    fail(`${testCase.name}: second projection produced no curve`);
-    continue;
+  // Shape must reach a FIXED POINT, and reach it quickly. The first write can
+  // legitimately normalise: hand-written regions carry no boundary stack, and
+  // a generator's stack is stored as a coincident node pair, so the region
+  // beside one gains that node the first time the editor writes it. What must
+  // never happen is a shape that keeps changing — that is a file that grows
+  // every time it is opened.
+  const shapes = [shapeOf(back)];
+  let latest = back;
+  for (let trip = 0; trip < 3; trip++) {
+    const projected = variationsToCurve(latest, testCase.ctx);
+    if (!projected) {
+      fail(`${testCase.name}: projection ${trip + 2} produced no curve`);
+      break;
+    }
+    latest = curveToVariations(projected, testCase.ctx, stubStore);
+    shapes.push(shapeOf(latest));
   }
-  const back2 = curveToVariations(curve2, testCase.ctx, stubStore);
-  if (shapeOf(back) !== shapeOf(back2))
+  const settled = shapes.findIndex(
+    (shape, index) => index > 0 && shape === shapes[index - 1],
+  );
+  if (settled < 0)
     fail(
-      `${testCase.name}: not idempotent\n    first:  ${shapeOf(back)}\n    second: ${shapeOf(back2)}`,
+      `${testCase.name}: shape never settles\n    ${shapes.join("\n    ")}`,
     );
+  else if (settled > 2)
+    fail(
+      `${testCase.name}: settles only after ${settled} trips\n    ${shapes.join("\n    ")}`,
+    );
+  // Whatever the shape settles to, it must still play the same lane.
   checkEquivalence(
     `${testCase.name} (idempotence values)`,
     back,
-    back2,
+    latest,
     testCase.ctx,
     1e-6,
   );
@@ -716,6 +734,90 @@ console.log("");
     }
   }
   console.log("  stacked keyframes survive the trip, and a vertical drag");
+}
+
+// Two generators meeting, and what happens at the boundary between them.
+{
+  const ctx: RegionContext = {
+    blockStartTime: 0,
+    blockDuration: 60,
+    songDuration: 60,
+  };
+  const store = {} as Store;
+
+  // Decision 14: a generator owns its endpoints absolutely, so two of them
+  // meeting is a permanent boundary stack. Sharing an offset must not fuse
+  // them — a single shared keyframe would drag both waves' centres at once.
+  const sameOffset = [
+    new PeriodicVariation(30, "sine", 0.2, 5, 0, 0.5),
+    new PeriodicVariation(30, "square", 0.4, 3, 0, 0.5),
+  ];
+  const met = variationsToCurve(sameOffset, ctx)!;
+  if (met.keyframes.length !== 4)
+    fail(
+      `two generators sharing an offset lost their stack: 4 -> ${met.keyframes.length}`,
+    );
+  // The zero-width segment between them is the one unzip widens, and unzip
+  // opens a curve.
+  const metSegments = met.segments ?? [];
+  const bridge = metSegments[1];
+  if (bridge?.type !== "curve")
+    fail(`the generator bridge came back as ${bridge?.type}, not curve`);
+  if (metSegments[0]?.type !== "wave" || metSegments[2]?.type !== "wave")
+    fail("the waves either side of the bridge did not survive");
+  console.log("  two generators keep their stack, bridged by a curve");
+
+  // A wave with no cycles left still has to be writable: upstream divides by
+  // the period, so a zero one makes every sample on the canopy NaN.
+  const noCycles: AutomationCurve = {
+    keyframes: [
+      { time: 0, value: 0.5 },
+      { time: 0.5, value: 0.5 },
+    ],
+    segments: [
+      { type: "wave", wave: "sine", amplitude: 0.3, cycles: 0, phase: 0 },
+    ],
+  };
+  for (const written of curveToVariations(noCycles, ctx, store)) {
+    if (!(written instanceof PeriodicVariation)) continue;
+    if (!(written.period > 0))
+      fail(`a cycle-less wave wrote period ${written.period}`);
+    const sample = written.valueAtTime(1);
+    if (!Number.isFinite(sample))
+      fail(`a cycle-less wave evaluates to ${sample} on the canopy`);
+  }
+  console.log("  a wave with no cycles still writes a usable period");
+
+  // The editor draws what the canopy plays. Sampled across the whole span,
+  // for every shape. The samples within a hair of a square wave's own
+  // discontinuity are skipped: which side of the jump a sample lands on there
+  // is decided by floating point, the two paths compute the phase slightly
+  // differently, and the disagreement lasts no time at all. The convention
+  // itself (a boundary reads LOW, as upstream's `> 0` has it) lives in
+  // waveShape; what this guards is every moment either side of it.
+  for (const kind of ["sine", "square", "triangle", "sawUp", "sawDown"] as const) {
+    const wave = new PeriodicVariation(20, kind, 0.4, 4, 0, 0.5);
+    const drawn = variationsToCurve([wave], ctx)!;
+    // The endpoints themselves are the boundary stack: the keyframe there
+    // carries the generator's offset, and the wave is deliberately decoupled
+    // from it ("the wave will be decoupled from whatever value the one on the
+    // left or the right is"). Everything strictly inside is the wave.
+    for (let step = 1; step < 200; step++) {
+      const seconds = (step / 200) * 20;
+      const cycle = seconds / 4;
+      if (kind === "square" && Math.abs(cycle - Math.round(cycle * 2) / 2) < 1e-6)
+        continue;
+      const played = wave.valueAtTime(seconds);
+      const shown = evaluateCurve(drawn, seconds / ctx.songDuration);
+      if (shown === null || Math.abs(played - shown) > 1e-6) {
+        fail(
+          `${kind} at ${seconds.toFixed(2)}s: canopy plays ${played}, editor draws ${shown}`,
+        );
+        break;
+      }
+    }
+  }
+  console.log("  every wave shape draws what the canopy plays");
 }
 
 console.log("");

@@ -522,7 +522,11 @@ const waveShape = (kind: WaveKind, u: number) => {
     case "sine":
       return Math.sin(2 * Math.PI * u);
     case "square":
-      return Math.sin(2 * Math.PI * u) >= 0 ? 1 : -1;
+      // Strictly greater, as upstream's PeriodicVariation has it: at a cycle
+      // boundary the wave reads low. A `>=` here drew the editor's square a
+      // full amplitude above what the canopy played at every boundary, and a
+      // wave seeded with phase 0 sits on one.
+      return Math.sin(2 * Math.PI * u) > 0 ? 1 : -1;
     case "triangle":
       // Exact triangle with sine's alignment: 0 at u=0, peak at u=0.25.
       return (2 / Math.PI) * Math.asin(Math.sin(2 * Math.PI * u));
