@@ -108,6 +108,43 @@ test.describe("colour gradients", () => {
       page.locator('[data-doc=value-swatch][data-gradient="true"]'),
     ).toHaveCount(0);
   });
+  test("a colour keyframe cannot be dragged outside its block", async ({
+    page,
+  }) => {
+    // A value lane's periods ARE regions, and a region cannot sit outside the
+    // block, so a colour keyframe dragged past an edge could not be stored and
+    // was silently dropped on the next write. Scalar lanes keep their overhang
+    // deliberately; value lanes are penned in.
+    await openColourLane(page);
+    const before = await page.locator("[class*=keyframeDot]").count();
+    expect(before).toBe(1);
+
+    const box = (await page.locator("[class*=editorLineArea]").boundingBox())!;
+    const dot = page.locator("[class*=keyframeDot]").first();
+    const db = (await dot.boundingBox())!;
+    await page.mouse.move(db.x + db.width / 2, db.y + db.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(50);
+    // Far past the right edge of the whole view.
+    await page.mouse.move(box.x + box.width + 400, db.y + db.height / 2, {
+      steps: 8,
+    });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+
+    // It survives, and its period is still a real region.
+    expect(await page.locator("[class*=keyframeDot]").count()).toBe(before);
+    const regions = await page.evaluate(() => {
+      const store = (window as unknown as Record<string, any>).__editorStore;
+      const block = store.layers[0].blockMap.getAllBlocks()[0];
+      return (block.parameterVariations.u_color ?? []).map((r: any) =>
+        Number(r.duration.toFixed(3)),
+      );
+    });
+    expect(regions.length).toBeGreaterThan(0);
+    expect(Math.min(...regions)).toBeGreaterThan(0);
+  });
+
 });
 
 // The colour lane is a VARIATION of the numeric lane, not a parallel

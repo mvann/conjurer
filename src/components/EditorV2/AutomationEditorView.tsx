@@ -63,6 +63,12 @@ import {
 import { BpmAnalysis } from "@/src/components/EditorV2/bpm";
 import { EDITOR_DIRTY_EVENT } from "@/src/components/EditorV2/experiencePersistence";
 
+// The narrowest colour or palette period, as a fraction of the song. A period
+// IS a region, and a zero duration region cannot be written, so the last
+// keyframe on a value lane stops this far short of the block's end instead of
+// landing on it and vanishing on the next write.
+const MIN_VALUE_PERIOD = 0.002;
+
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
@@ -1086,14 +1092,28 @@ export const AutomationEditorView = observer(function AutomationEditorView({
         // and last can reach 0 and 1 exactly. Zero-duration segments are
         // safe throughout (evaluateCurve guards the division; sampling
         // just draws the vertical).
-        const minTime = nextKeyframes[index - 1]?.time ?? 0;
-        const maxTime = nextKeyframes[index + 1]?.time ?? 1;
+        // A value lane's periods ARE regions, and a region cannot sit outside
+        // the block, so a colour keyframe dragged past either edge could not
+        // be stored and was silently dropped on the next write. Scalar lanes
+        // keep their overhang on purpose (drawn dotted, not played), so only
+        // value lanes are penned in.
+        // A period needs real width to exist as a region, so the last
+        // keyframe stops short of the end rather than landing exactly on it
+        // and collapsing to nothing.
+        const bounds = isValueLane
+          ? {
+              low: blockRange ? blockRange.start : 0,
+              high: (blockRange ? blockRange.end : 1) - MIN_VALUE_PERIOD,
+            }
+          : { low: 0, high: 1 };
+        const minTime = nextKeyframes[index - 1]?.time ?? bounds.low;
+        const maxTime = nextKeyframes[index + 1]?.time ?? bounds.high;
         const time = clamp(
           // Snap first, then bound by the neighbors (a snap target
           // beyond a neighbor pins at the neighbor).
           snapTime(xFracToTime((moveEvent.clientX - rect.left) / rect.width)),
-          minTime,
-          Math.max(maxTime, minTime),
+          Math.max(minTime, bounds.low),
+          Math.min(Math.max(maxTime, minTime), bounds.high),
         );
         nextKeyframes[index] = {
           ...nextKeyframes[index],
