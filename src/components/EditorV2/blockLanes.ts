@@ -432,7 +432,7 @@ export const adoptManualValues = (block: Block) => {
  * Without it an armed but still-empty lane vanishes on reload, since nothing
  * else records that the author asked for it.
  */
-const persistLanes = (owner: Block) =>
+export const persistLanes = (owner: Block) =>
   saveBlockLanes(owner.store.experienceName, owner.id, [...owner.lanedParams]);
 
 /**

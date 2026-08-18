@@ -218,6 +218,94 @@ test.describe("undo over the layer/block model", () => {
     expect(new Set(flat).size).toBe(flat.length);
   });
 
+  test("three FAST keyframes are three undos, not one", async ({ page }) => {
+    // The original report: "I added one keyframe. I hit control z, and it
+    // deleted three of them." The old test waited 600ms between clicks, so it
+    // only guarded the slow case; a normally-quick author still lost all three.
+    await openLane(page);
+    await page.locator("[class*=laneRow]").first().click();
+    await settleBox(page, "[class*=editorLineArea]");
+    const box = (await page.locator("[class*=editorLineArea]").boundingBox())!;
+    const dots = page.locator("[class*=keyframeDot]");
+
+    for (const fx of [0.3, 0.5, 0.7]) {
+      await page.mouse.dblclick(box.x + box.width * fx, box.y + box.height * 0.5);
+      // Deliberately faster than the old 400ms debounce.
+      await page.waitForTimeout(150);
+    }
+    await page.waitForTimeout(400);
+    await expect(dots).toHaveCount(3);
+
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(300);
+    await expect(dots).toHaveCount(2);
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(300);
+    await expect(dots).toHaveCount(1);
+  });
+
+  test("one drag is one undo, however long it pauses", async ({ page }) => {
+    // commitCurve fires on every pointermove, so a drag that pauses used to
+    // capture an entry per pause and undo landed mid-gesture.
+    await openLane(page);
+    await page.locator("[class*=laneRow]").first().click();
+    await settleBox(page, "[class*=editorLineArea]");
+    const box = (await page.locator("[class*=editorLineArea]").boundingBox())!;
+    await page.mouse.dblclick(box.x + box.width * 0.3, box.y + box.height * 0.5);
+    await page.waitForTimeout(400);
+
+    const dot = page.locator("[class*=keyframeDot]").first();
+    const start = (await dot.boundingBox())!;
+    const before = await page.evaluate(
+      () => (window as unknown as Record<string, any>).__editorHistory.stack.length,
+    );
+
+    // Drag with two long pauses in the middle of the gesture.
+    await page.mouse.move(start.x + start.width / 2, start.y + start.height / 2);
+    await page.mouse.down();
+    for (const dx of [40, 80, 120]) {
+      await page.mouse.move(start.x + start.width / 2 + dx, start.y + start.height / 2, { steps: 4 });
+      await page.waitForTimeout(500);
+    }
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+
+    const after = await page.evaluate(
+      () => (window as unknown as Record<string, any>).__editorHistory.stack.length,
+    );
+    expect(after - before).toBe(1);
+  });
+
+  test("undoing a lane arm survives a reload", async ({ page }) => {
+    // Armed lanes live in localStorage, not the blob, and only armLane wrote
+    // there — so undoing an arm left the stale list behind and a reload
+    // brought the lane back.
+    await openLane(page);
+    await page.waitForTimeout(400);
+    const laneCount = () => page.locator("[data-lane-key]").count();
+    expect(await laneCount()).toBe(1);
+
+    await openPatternPanel(page);
+    await addLaneOnParam(page, "Warp");
+    await closePanel(page);
+    await page.waitForTimeout(400);
+    expect(await laneCount()).toBe(2);
+
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(400);
+    expect(await laneCount()).toBe(1);
+
+    // The undone lane must not come back from localStorage.
+    const persisted = await page.evaluate(() => {
+      const raw = localStorage.getItem("conjurer-lane-state") || "{}";
+      const all = JSON.parse(raw);
+      return Object.values(all).flatMap((byBlock: any) =>
+        Object.values(byBlock).flat(),
+      );
+    });
+    expect(persisted).not.toContain("u_warp");
+  });
+
   test("arming a lane is undoable, and lane order survives", async ({
     page,
   }) => {

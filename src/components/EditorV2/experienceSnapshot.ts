@@ -33,6 +33,7 @@ import {
 } from "@/src/components/EditorV2/PatternsPanel";
 import { Block as BlockClass } from "@/src/types/Block";
 import { adoptAllManualValues } from "@/src/components/EditorV2/blockStack";
+import { persistLanes } from "@/src/components/EditorV2/blockLanes";
 
 export type EditorSnapshot = {
   savedAt: number;
@@ -293,6 +294,10 @@ export const applySnapshot = (
           owner.lanedParams.clear();
           for (const uniform of snapshot.lanedParams[owner.id] ?? [])
             owner.lanedParams.add(uniform);
+          // Armed lanes live in localStorage, not the blob, and only armLane
+          // wrote there. Undoing an arm left the stale list behind, so a
+          // reload resurrected the lane the author had just taken back.
+          persistLanes(owner);
         }
       }
   });

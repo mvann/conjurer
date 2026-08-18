@@ -98,6 +98,10 @@ import { BpmAnalysis } from "@/src/components/EditorV2/bpm";
 export type BeatGrid = BpmAnalysis & { durationSeconds: number };
 
 const AUTOSAVE_DEBOUNCE_MS = 800;
+// Long enough to coalesce the several writes one action makes, short enough
+// that two deliberate actions never merge. A double click is ~150ms of its
+// own, so this sits under the gap between two of them.
+const GESTURE_SETTLE_MS = 120;
 
 export const EditorV2Page = observer(function EditorV2Page() {
   // The shared main-app store. Experiences load into it through upstream's
@@ -346,8 +350,16 @@ export const EditorV2Page = observer(function EditorV2Page() {
 
   // The opening state, taken from the store rather than from React state,
   // since the panel's entries are only just being derived from it.
-  const seedSnapshot = () =>
-    captureSnapshot(store, entriesFromStore(store), latest.current.laneOrder);
+  const seedSnapshot = (laneOrderNow?: string[]) =>
+    captureSnapshot(
+      store,
+      entriesFromStore(store),
+      // React state has not caught up on the load pass, so the caller passes
+      // the order it just read. Seeding with the stale empty array meant the
+      // first undo wiped the author's lane ordering, and a later Save made
+      // that permanent.
+      laneOrderNow ?? latest.current.laneOrder,
+    );
 
   const captureHistoryNow = () => {
     historyTimer.current = null;
@@ -365,10 +377,53 @@ export const EditorV2Page = observer(function EditorV2Page() {
     state.index = state.stack.length - 1;
   };
 
+  // One user action, one undo step.
+  //
+  // A trailing debounce alone cannot express that, and got it wrong in both
+  // directions: at 400ms three double-clicks in quick succession collapsed
+  // into ONE entry ("I added one keyframe. I hit control z, and it deleted
+  // three of them"), while a drag that commits on every pointermove produced a
+  // fresh entry every time the author paused mid-gesture to look at the
+  // canopy, leaving undo to land on a meaningless halfway position.
+  //
+  // So the pointer decides. While a button is down the author is still in the
+  // middle of one gesture, and nothing is captured; the release ends it and
+  // captures once. Between gestures a short debounce only coalesces the
+  // several writes a single action makes, not two actions.
+  const pointerDown = useRef(false);
+  const pendingCapture = useRef(false);
+
   const scheduleHistoryCapture = () => {
     if (historyTimer.current) clearTimeout(historyTimer.current);
-    historyTimer.current = setTimeout(captureHistoryNow, 400);
+    if (pointerDown.current) {
+      pendingCapture.current = true;
+      return;
+    }
+    historyTimer.current = setTimeout(captureHistoryNow, GESTURE_SETTLE_MS);
   };
+
+  useEffect(() => {
+    const onDown = () => {
+      pointerDown.current = true;
+    };
+    const onUp = () => {
+      pointerDown.current = false;
+      if (!pendingCapture.current) return;
+      pendingCapture.current = false;
+      // The gesture is over: capture it as the single edit it was.
+      if (historyTimer.current) clearTimeout(historyTimer.current);
+      historyTimer.current = setTimeout(captureHistoryNow, GESTURE_SETTLE_MS);
+    };
+    document.addEventListener("pointerdown", onDown, true);
+    document.addEventListener("pointerup", onUp, true);
+    document.addEventListener("pointercancel", onUp, true);
+    return () => {
+      document.removeEventListener("pointerdown", onDown, true);
+      document.removeEventListener("pointerup", onUp, true);
+      document.removeEventListener("pointercancel", onUp, true);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const timeTravel = (direction: -1 | 1) => {
     // Flush a half-debounced edit first so it isn't lost off the top.
@@ -384,7 +439,15 @@ export const EditorV2Page = observer(function EditorV2Page() {
     setEntries(restoreSnapshot(snapshot));
     const restoredSong = snapshot.experience.song ?? null;
     applySong(restoredSong && restoredSong.id !== NO_SONG.id ? restoredSong : null);
-    setLaneOrder(snapshot.laneOrder ?? []);
+    const restoredOrder = snapshot.laneOrder ?? [];
+    setLaneOrder(restoredOrder);
+    // Lane order lives beside the blob, so the restore has to reach it too, or
+    // localStorage keeps the pre-undo order until the next Save overwrites it
+    // with the restored one.
+    writeLaneOrder(
+      store.experienceName || DEFAULT_EXPERIENCE_NAME,
+      restoredOrder,
+    );
     // Persist the restored state directly rather than through
     // scheduleAutosave, which would capture it as a fresh history entry.
     // Edits made right after an undo therefore capture normally: there
@@ -812,7 +875,8 @@ export const EditorV2Page = observer(function EditorV2Page() {
     setEntries(entriesFromStore(store));
     const loaded = store.audioStore.selectedSong;
     if (loaded && loaded.id !== NO_SONG.id) setSong(loaded);
-    setLaneOrder(readLaneOrder(experienceName));
+    const savedLaneOrder = readLaneOrder(experienceName);
+    setLaneOrder(savedLaneOrder);
 
     // Unsaved work from a previous visit, offered rather than applied.
     const draft = readDraft(experienceName);
@@ -823,7 +887,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
 
     // Seed the undo history with the opening state, so the very first
     // change can be undone back to it.
-    resetHistory(seedSnapshot());
+    resetHistory(seedSnapshot(savedLaneOrder));
     // Test hook: e2e reads the live history through this.
     (window as unknown as Record<string, unknown>).__editorHistory =
       history.current;
