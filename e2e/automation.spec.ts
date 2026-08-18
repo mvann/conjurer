@@ -213,31 +213,29 @@ test.describe("automation editor", () => {
     await page.mouse.dblclick(box.x + box.width * 0.7, box.y + box.height / 2);
     await expect(dots).toHaveCount(2);
 
-    // The current lane's keyframe times, from the latest history snapshot
-    // (captured 400ms after an edit settles).
+    // The lane's keyframe times as SONG FRACTIONS, read from the block itself
+    // rather than from a history snapshot. The history holds the experience
+    // blob now, where a curve's points are region-local `nodes`, so reading the
+    // real thing is both simpler and a stronger assertion.
     const keyframeTimes = async () => {
       await page.waitForTimeout(600);
       return page.evaluate(() => {
-        const history = (
-          window as unknown as Record<
-            string,
-            { stack: unknown[]; index: number }
-          >
-        ).__editorHistory;
-        const times: number[][] = [];
-        const walk = (node: unknown) => {
-          if (!node || typeof node !== "object") return;
-          const record = node as Record<string, unknown>;
-          if (Array.isArray(record.keyframes))
-            times.push(
-              (record.keyframes as { time: number }[]).map(
-                (keyframe) => keyframe.time,
-              ),
-            );
-          for (const key of Object.keys(record)) walk(record[key]);
-        };
-        walk(history.stack[history.index]);
-        return times[0] ?? [];
+        const store = (window as unknown as Record<string, any>).__editorStore;
+        const block = store.layers
+          .flatMap((layer: any) => layer.getAllBlocks())
+          .find((candidate: any) => candidate.parameterVariations.u_timeFactor);
+        if (!block) return [];
+        const song = store.audioStore?.selectedSong;
+        const duration = block.duration || 1;
+        const times: number[] = [];
+        let cursor = 0;
+        for (const region of block.parameterVariations.u_timeFactor ?? []) {
+          const serialized = region.serialize();
+          for (const node of serialized.nodes ?? [])
+            times.push((block.startTime + cursor + node.time) / (song ? duration : duration));
+          cursor += region.duration;
+        }
+        return times.map((t: number) => Math.round(t * 1e6) / 1e6);
       });
     };
 

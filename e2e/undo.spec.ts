@@ -130,6 +130,94 @@ test.describe("undo over the layer/block model", () => {
     expect(await page.locator("[class*=keyframeDot]").count()).toBe(0);
   });
 
+  test("undo then redo returns EXACTLY where it started", async ({ page }) => {
+    // The property the old history could not hold: it stored a derived
+    // projection of the document, so restoring one rebuilt the document
+    // slightly differently and a round trip drifted. The snapshot IS the
+    // document now, so this compares the real blob before and after.
+    await openLane(page);
+    await page.waitForTimeout(HISTORY_DEBOUNCE);
+
+    const blob = () =>
+      page.evaluate(() => {
+        const store = (window as unknown as Record<string, any>).__editorStore;
+        return JSON.stringify(store.serialize().data);
+      });
+
+    const start = await blob();
+
+    // A spread of edits across different parts of the document.
+    await page.locator("[class*=laneRow]").first().click();
+    await settleBox(page, "[class*=editorLineArea]");
+    const box = (await page.locator("[class*=editorLineArea]").boundingBox())!;
+    for (const fx of [0.3, 0.55, 0.75]) {
+      await page.mouse.dblclick(box.x + box.width * fx, box.y + box.height * 0.5);
+      await page.waitForTimeout(HISTORY_DEBOUNCE);
+    }
+    await page.getByLabel("Close automation editor").click();
+    await openPatternPanel(page);
+    await insertPattern(page, "Plasma");
+    await closePanel(page);
+    await page.waitForTimeout(HISTORY_DEBOUNCE);
+
+    const edited = await blob();
+    expect(edited).not.toBe(start);
+
+    // All the way back, then all the way forward again.
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press("Control+z");
+      await page.waitForTimeout(200);
+    }
+    const undone = await blob();
+    expect(undone).toBe(start);
+
+    for (let i = 0; i < 6; i++) {
+      await page.keyboard.press("Control+Shift+z");
+      await page.waitForTimeout(200);
+    }
+    expect(await blob()).toBe(edited);
+  });
+
+  test("undo restores a block to the layer it came from", async ({ page }) => {
+    // restoreEntries used to funnel every rebuilt block through the first
+    // layer, so undoing a delete moved the pattern and undo/redo could leave
+    // the same block id in two layers at once.
+    await openLane(page);
+    await openPatternPanel(page);
+    await page.getByRole("button", { name: "Add Layer" }).click();
+    await page.waitForTimeout(300);
+    // Add a pattern to the SECOND layer.
+    await page
+      .locator("[data-doc=add-pattern]")
+      .last()
+      .click();
+    await page.getByRole("button", { name: "Insert" }).click();
+    await closePanel(page);
+    await page.waitForTimeout(HISTORY_DEBOUNCE);
+
+    const layout = () =>
+      page.evaluate(() => {
+        const store = (window as unknown as Record<string, any>).__editorStore;
+        return store.layers.map((l: any) =>
+          l.getAllBlocks().map((b: any) => b.id),
+        );
+      });
+    const before = await layout();
+    expect(before.length).toBe(2);
+    expect(before[1].length).toBe(1);
+
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(300);
+    await page.keyboard.press("Control+Shift+z");
+    await page.waitForTimeout(300);
+
+    const after = await layout();
+    expect(after).toEqual(before);
+    // And no id may appear twice across layers.
+    const flat = after.flat();
+    expect(new Set(flat).size).toBe(flat.length);
+  });
+
   test("arming a lane is undoable, and lane order survives", async ({
     page,
   }) => {

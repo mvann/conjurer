@@ -79,11 +79,14 @@ import { CanopyControls } from "@/src/components/EditorV2/CanopyControls";
 import {
   duplicateStackEntry,
   EDITOR_DIRTY_EVENT,
-  restoreEntries,
-  SerializedEditorState,
-  serializeEditorState,
 } from "@/src/components/EditorV2/experiencePersistence";
 import { IS_DEMO } from "@/src/utils/demo";
+import {
+  applySnapshot,
+  captureSnapshot,
+  EditorSnapshot,
+  snapshotsEqual,
+} from "@/src/components/EditorV2/experienceSnapshot";
 import demoExperience from "@/src/components/EditorV2/demoExperience.json";
 import type { Experience } from "@/src/types/Experience";
 import { Pattern } from "@/src/types/Pattern";
@@ -198,7 +201,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
   // way.
   const [assigningLane, setAssigningLane] = useState(false);
 
-  // Display order of the automation lanes (see SerializedEditorState).
+  // Display order of the automation lanes (see EditorSnapshot).
   const [laneOrder, setLaneOrder] = useState<string[]>([]);
 
   // The song length the lanes were last projected against, so a change can
@@ -238,19 +241,12 @@ export const EditorV2Page = observer(function EditorV2Page() {
         // actually see. At most a second or two of history is discarded, and
         // only ever history that no longer describes anything real.
         const preSong = history.current.stack.some(
-          (snapshot) => typeof snapshot.songDurationSeconds !== "number",
+          (snapshot) =>
+            !snapshot.experience.song ||
+            snapshot.experience.song.id === NO_SONG.id,
         );
         if (preSong) {
-          history.current = {
-            stack: [
-              serializeEditorState(
-                entriesFromStore(store),
-                latest.current.song,
-                latest.current.laneOrder,
-              ),
-            ],
-            index: 0,
-          };
+          resetHistory(seedSnapshot());
         }
       }
       const frac = Math.min(Math.max(seconds / durationSeconds, 0), 1);
@@ -329,30 +325,35 @@ export const EditorV2Page = observer(function EditorV2Page() {
   // a single undo step; snapshots identical to the current one are
   // skipped, which also keeps undo/redo restores from re-entering the
   // stack.
-  const history = useRef<{ stack: SerializedEditorState[]; index: number }>({
+  const history = useRef<{ stack: EditorSnapshot[]; index: number }>({
     stack: [],
     index: -1,
   });
   const historyTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Restore a snapshot's entries. Identity comes from the blocks now, so
-  // there is no id counter to keep ahead of anything.
-  const restoreSnapshot = (snapshot: SerializedEditorState) =>
-    // Live entries flow in so pattern instances survive the restore:
-    // materials and scrub fields keep the same param objects.
-    restoreEntries(snapshot, store, latest.current.entries);
+  // Adopt a snapshot into the live store. Live entries flow in so pattern
+  // instances survive: materials and scrub fields keep the same param objects.
+  const restoreSnapshot = (snapshot: EditorSnapshot) =>
+    applySnapshot(store, snapshot, latest.current.entries);
 
-  // Snapshots carry a savedAt timestamp (autosave metadata); comparisons
-  // must ignore it or no two snapshots ever match.
-  const snapshotsEqual = (a: SerializedEditorState, b: SerializedEditorState) =>
-    JSON.stringify({ ...a, savedAt: 0 }) ===
-    JSON.stringify({ ...b, savedAt: 0 });
+  // Reset in place: `history.current` is handed out (the e2e hook holds it), so
+  // replacing the object would leave every other reference pointing at a
+  // history that no longer updates.
+  const resetHistory = (seed: EditorSnapshot) => {
+    history.current.stack = [seed];
+    history.current.index = 0;
+  };
+
+  // The opening state, taken from the store rather than from React state,
+  // since the panel's entries are only just being derived from it.
+  const seedSnapshot = () =>
+    captureSnapshot(store, entriesFromStore(store), latest.current.laneOrder);
 
   const captureHistoryNow = () => {
     historyTimer.current = null;
-    const snapshot = serializeEditorState(
+    const snapshot = captureSnapshot(
+      store,
       latest.current.entries,
-      latest.current.song,
       latest.current.laneOrder,
     );
     const state = history.current;
@@ -381,7 +382,8 @@ export const EditorV2Page = observer(function EditorV2Page() {
     state.index = nextIndex;
     const snapshot = state.stack[nextIndex];
     setEntries(restoreSnapshot(snapshot));
-    applySong(snapshot.song ?? null);
+    const restoredSong = snapshot.experience.song ?? null;
+    applySong(restoredSong && restoredSong.id !== NO_SONG.id ? restoredSong : null);
     setLaneOrder(snapshot.laneOrder ?? []);
     // Persist the restored state directly rather than through
     // scheduleAutosave, which would capture it as a fresh history entry.
@@ -821,15 +823,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
 
     // Seed the undo history with the opening state, so the very first
     // change can be undone back to it.
-    history.current = {
-      stack: [
-        serializeEditorState(
-          entriesFromStore(store),
-          store.audioStore.selectedSong,
-        ),
-      ],
-      index: 0,
-    };
+    resetHistory(seedSnapshot());
     // Test hook: e2e reads the live history through this.
     (window as unknown as Record<string, unknown>).__editorHistory =
       history.current;
@@ -895,15 +889,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
     setSong(restored && restored.id !== NO_SONG.id ? restored : null);
     setAutosavePrompt(null);
     // The restored draft is the new baseline for undo.
-    history.current = {
-      stack: [
-        serializeEditorState(
-          entriesFromStore(store),
-          store.audioStore.selectedSong,
-        ),
-      ],
-      index: 0,
-    };
+    resetHistory(seedSnapshot());
   };
 
   // Keyed by membership AND effect-chain structure so expand/collapse
