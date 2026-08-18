@@ -158,6 +158,40 @@ test.describe("generator boundary stacks", () => {
     expect(after[4]).toBeCloseTo(before[4], 0);
   });
 
+  test("a wave cannot be squeezed out of existence", async ({ page }) => {
+    // A zero-duration region is never written, so a wave collapsed onto its
+    // own far edge used to vanish on the next save while the editor went on
+    // drawing it.
+    const box = await openLane(page, [
+      [0.15, 0.6],
+      [0.4, 0.35],
+      [0.65, 0.7],
+      [0.9, 0.45],
+    ]);
+    await retype(page, 1, "Wave");
+    expect(await marks(page)).toHaveLength(6);
+
+    // The wave owns dots 2 and 3; drag its right edge hard left, past its own
+    // left edge.
+    await drag(page, 3, -box.width * 0.6, 0);
+
+    const periodic = await page.evaluate(() => {
+      const store = (window as unknown as Record<string, any>).__editorStore;
+      const block = store.layers[0].blockMap.getAllBlocks()[0];
+      return Object.entries(block.parameterVariations).flatMap(
+        ([name, list]: [string, any]) =>
+          (list ?? []).map((v: any) => ({
+            name,
+            type: v.type,
+            duration: v.duration,
+          })),
+      );
+    });
+    const wave = periodic.find((v: any) => v.type === "periodic");
+    expect(wave).toBeTruthy();
+    expect(wave!.duration).toBeGreaterThan(0);
+  });
+
   test("time-dragging a stacked pair unzips one bridge, not one per frame", async ({
     page,
   }) => {

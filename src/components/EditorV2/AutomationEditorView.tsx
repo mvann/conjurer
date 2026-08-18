@@ -70,6 +70,12 @@ import { EDITOR_DIRTY_EVENT } from "@/src/components/EditorV2/experiencePersiste
 // landing on it and vanishing on the next write.
 const MIN_VALUE_PERIOD = 0.002;
 
+// The narrowest a generator may be squeezed, likewise as a fraction of the
+// song. A zero-duration region is never written, so a wave collapsed onto its
+// own far edge was deleted on the next save while the editor went on drawing
+// it. Its edges stop just short of each other instead.
+const MIN_GENERATOR_SPAN = 0.002;
+
 const clamp = (value: number, min: number, max: number) =>
   Math.min(Math.max(value, min), max);
 
@@ -1108,8 +1114,18 @@ export const AutomationEditorView = observer(function AutomationEditorView({
               high: (blockRange ? blockRange.end : 1) - MIN_VALUE_PERIOD,
             }
           : { low: 0, high: 1 };
-        const minTime = nextKeyframes[index - 1]?.time ?? bounds.low;
-        const maxTime = nextKeyframes[index + 1]?.time ?? bounds.high;
+        // A generator either side of this keyframe keeps a span of its own.
+        // Its boundary stack is a different thing: the bridge beside it is
+        // zero-width by design and stays free to zip shut.
+        const specs = getSegments(current);
+        const previousTime = nextKeyframes[index - 1]?.time ?? bounds.low;
+        const nextTime = nextKeyframes[index + 1]?.time ?? bounds.high;
+        const minTime = isGeneratorType(specs[index - 1]?.type)
+          ? previousTime + MIN_GENERATOR_SPAN
+          : previousTime;
+        const maxTime = isGeneratorType(specs[index]?.type)
+          ? nextTime - MIN_GENERATOR_SPAN
+          : nextTime;
         const time = clamp(
           // Snap first, then bound by the neighbors (a snap target
           // beyond a neighbor pins at the neighbor).
