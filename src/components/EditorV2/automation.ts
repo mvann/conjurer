@@ -1,7 +1,7 @@
 // Relative imports (not @/ aliases) so the ts-node test scripts, which
 // have no path mapping, can exercise this module directly.
 import { easings } from "../../utils/easings";
-import { bezierValueAtX } from "../../utils/envelopeCurve";
+import { bezierValueAtX, solveBezierS } from "../../utils/envelopeCurve";
 
 // Same string union as the main app's EasingVariationType, derived from
 // the shared easing table itself.
@@ -774,6 +774,60 @@ export const sliceSpec = (
   }
 };
 
+
+/**
+ * Split a Bezier segment at `time`, EXACTLY.
+ *
+ * De Casteljau: subdividing a cubic at a parameter yields two cubics whose
+ * union is the original curve, point for point. `sliceSpec` instead refit the
+ * segment as a Schlick bend matched at its midpoint, which is a different
+ * shape — so every window operation (copy, delete, paste all insert
+ * boundaries) warped the curve near its edges, and a symmetric bulge moved by
+ * 0.07 on a unit range. Where the endpoints happened to be equal it returned a
+ * straight line and erased the bulge outright.
+ *
+ * Returns the handles for the left keyframe, the new middle one, and the right.
+ */
+export const splitBezierAt = (
+  a: AutomationKeyframe,
+  b: AutomationKeyframe,
+  time: number,
+) => {
+  const out = a.handleOut ?? { dt: 0, dv: 0 };
+  const inn = b.handleIn ?? { dt: 0, dv: 0 };
+  const p = [
+    { x: a.time, v: a.value },
+    { x: a.time + out.dt, v: a.value + out.dv },
+    { x: b.time + inn.dt, v: b.value + inn.dv },
+    { x: b.time, v: b.value },
+  ];
+  // The curve is parameterised by s, not by time, so find the s that lands on
+  // this time before subdividing — the same solve `bezierValueAtX` does.
+  const s = solveBezierS(p[0].x, p[1].x, p[2].x, p[3].x, time);
+  const mix = (
+    u: { x: number; v: number },
+    w: { x: number; v: number },
+    k: number,
+  ) => ({ x: u.x + (w.x - u.x) * k, v: u.v + (w.v - u.v) * k });
+
+  const q0 = mix(p[0], p[1], s);
+  const q1 = mix(p[1], p[2], s);
+  const q2 = mix(p[2], p[3], s);
+  const r0 = mix(q0, q1, s);
+  const r1 = mix(q1, q2, s);
+  const mid = mix(r0, r1, s);
+
+  return {
+    value: mid.v,
+    // Left half: p0, q0, r0, mid
+    leftOut: { dt: q0.x - p[0].x, dv: q0.v - p[0].v },
+    midIn: { dt: r0.x - mid.x, dv: r0.v - mid.v },
+    // Right half: mid, r1, q2, p3
+    midOut: { dt: r1.x - mid.x, dv: r1.v - mid.v },
+    rightIn: { dt: q2.x - p[3].x, dv: q2.v - p[3].v },
+  };
+};
+
 // Split the curve at time t: a keyframe appears exactly on the curve and
 // the bisected segment becomes two sliced halves. No-op outside the
 // keyframe span or on an existing keyframe.
@@ -797,6 +851,23 @@ export const insertBoundary = (
     // top, so a curve-value keyframe would double it). Other types
     // place the keyframe on the curve itself.
     const spec = segments[i];
+    // A Bezier splits exactly, into two Beziers. Everything else keeps the
+    // old behaviour.
+    if (isBezierSegment(a, b, spec)) {
+      const split = splitBezierAt(a, b, t);
+      const nextKeyframes = [...keyframes];
+      nextKeyframes[i] = { ...a, handleOut: split.leftOut };
+      nextKeyframes[i + 1] = { ...b, handleIn: split.rightIn };
+      nextKeyframes.splice(i + 1, 0, {
+        time: t,
+        value: split.value,
+        handleIn: split.midIn,
+        handleOut: split.midOut,
+      });
+      const nextSegments = [...segments];
+      nextSegments.splice(i, 1, { ...spec }, { ...spec });
+      return { ...curve, keyframes: nextKeyframes, segments: nextSegments };
+    }
     const value =
       isGeneratorType(spec.type)
         ? // A generator's keyframes ARE its baseline, and that baseline is
@@ -887,11 +958,22 @@ export const copyCurveWindow = (
     }
     return payloadOf(holder);
   };
-  const absolute = [
-    { time: w0, value: startValue, ...edgePayload(w0) },
-    ...inner,
-    { time: w1, value: endValue, ...edgePayload(w1) },
-  ];
+  // The edges keep their HANDLES. insertBoundary has just split the curve
+  // exactly at each of them, so the boundary keyframe already carries the
+  // right ones; rebuilding the edge from scratch dropped them and the clip's
+  // first and last segments came back straight. An identity copy and paste
+  // moved the shape by 0.4 on a unit range.
+  const edge = (t: number, value: number) => {
+    const at = keyframeAt(t);
+    return {
+      time: t,
+      value,
+      ...edgePayload(t),
+      ...(at?.handleIn ? { handleIn: at.handleIn } : {}),
+      ...(at?.handleOut ? { handleOut: at.handleOut } : {}),
+    };
+  };
+  const absolute = [edge(w0, startValue), ...inner, edge(w1, endValue)];
   const segments: SegmentSpec[] = [];
   for (let i = 0; i < absolute.length - 1; i++)
     segments.push(specForSpan(work, absolute[i].time, absolute[i + 1].time));

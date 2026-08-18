@@ -24,8 +24,11 @@ import {
   evaluateSegment,
   generatorAtKeyframe,
   getSegments,
+  ensureCurveHandles,
+  handlesThroughMidpoint,
   insertBoundary,
   pasteClipAt,
+  setSegmentHandles,
   payloadAtTime,
   setAudioEnvelope,
   sliceSpec,
@@ -625,6 +628,67 @@ const curveOf = (
     1e-9,
     "zip: the later side wins at a stacked time",
   );
+}
+
+// ---- a Bezier survives the window operations ----
+//
+// Curves are cubic Beziers now. Splitting one used to refit it as a Schlick
+// bend matched at the midpoint, which is a DIFFERENT shape, and every window
+// operation inserts boundaries — so copy, delete and paste all warped the
+// curve near their edges. copyCurveWindow also rebuilt its edge keyframes
+// from scratch, dropping their handles, so the clip's end segments came back
+// straight.
+{
+  const bent = ensureCurveHandles({
+    keyframes: [kf(0.1, 0), kf(0.9, 1)],
+    segments: [{ type: "curve", bend: 1 }],
+  });
+  // Bulge it well off the chord, the way a drag does.
+  const bulged = setSegmentHandles(
+    bent,
+    0,
+    handlesThroughMidpoint(bent.keyframes[0], bent.keyframes[1], 0.9),
+  );
+
+  // Splitting is exact: both halves trace the original curve.
+  const split = insertBoundary(bulged, 0.5);
+  if (split.keyframes.length !== 3) fail("bezier split added no keyframe");
+  for (let i = 1; i < 40; i++) {
+    const t = 0.1 + (0.8 * i) / 40;
+    near(
+      evaluateCurve(split, t)!,
+      evaluateCurve(bulged, t)!,
+      1e-6,
+      `bezier split at ${t.toFixed(3)}`,
+    );
+  }
+
+  // An identity copy and paste returns the same shape.
+  const clip = copyCurveWindow(bulged, 0.1, 0.9)!;
+  const pasted = pasteClipAt(bulged, clip, 0.1)!;
+  for (let i = 1; i < 40; i++) {
+    const t = 0.1 + (0.8 * i) / 40;
+    near(
+      evaluateCurve(pasted, t)!,
+      evaluateCurve(bulged, t)!,
+      1e-6,
+      `bezier copy/paste identity at ${t.toFixed(3)}`,
+    );
+  }
+
+  // And a partial copy keeps the shape it cut out.
+  const partial = copyCurveWindow(bulged, 0.3, 0.7)!;
+  const target = pasteClipAt(bulged, partial, 0.3)!;
+  for (let i = 1; i < 20; i++) {
+    const t = 0.3 + (0.4 * i) / 20;
+    near(
+      evaluateCurve(target, t)!,
+      evaluateCurve(bulged, t)!,
+      1e-6,
+      `bezier partial copy at ${t.toFixed(3)}`,
+    );
+  }
+  console.log("  a Bezier splits and round trips through the clipboard exactly");
 }
 
 if (failures > 0) {
