@@ -134,6 +134,17 @@ test.describe("colour gradients", () => {
 
     // It survives, and its period is still a real region.
     expect(await page.locator("[class*=keyframeDot]").count()).toBe(before);
+
+    // The near edge too: a keyframe dropped on the block's start would leave
+    // no room for the lead-in period and be swallowed into it.
+    const again = (await dot.boundingBox())!;
+    await page.mouse.move(again.x + again.width / 2, again.y + again.height / 2);
+    await page.mouse.down();
+    await page.waitForTimeout(50);
+    await page.mouse.move(box.x - 400, again.y + again.height / 2, { steps: 8 });
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    expect(await page.locator("[class*=keyframeDot]").count()).toBe(before);
     const regions = await page.evaluate(() => {
       const store = (window as unknown as Record<string, any>).__editorStore;
       const block = store.layers[0].blockMap.getAllBlocks()[0];

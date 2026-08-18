@@ -1105,12 +1105,15 @@ export const AutomationEditorView = observer(function AutomationEditorView({
         // be stored and was silently dropped on the next write. Scalar lanes
         // keep their overhang on purpose (drawn dotted, not played), so only
         // value lanes are penned in.
-        // A period needs real width to exist as a region, so the last
-        // keyframe stops short of the end rather than landing exactly on it
-        // and collapsing to nothing.
+        // A period needs real width to exist as a region, so a keyframe stops
+        // short of either edge rather than landing on it. On the far edge that
+        // period would collapse to nothing; on the near edge there would be no
+        // room for the lead-in period before it, and the keyframe would be
+        // swallowed into the lead-in on the next read - the author's dot
+        // disappearing where they dropped it.
         const bounds = isValueLane
           ? {
-              low: blockRange ? blockRange.start : 0,
+              low: (blockRange ? blockRange.start : 0) + MIN_VALUE_PERIOD,
               high: (blockRange ? blockRange.end : 1) - MIN_VALUE_PERIOD,
             }
           : { low: 0, high: 1 };

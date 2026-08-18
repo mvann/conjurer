@@ -69,6 +69,11 @@ export const payloadOf = (keyframe: AutomationKeyframe): ValuePayload => ({
   palette: keyframe.palette,
 });
 
+/** Two period payloads that would draw the same chip. */
+export const samePayload = (a: ValuePayload, b: ValuePayload) =>
+  JSON.stringify([a.color ?? null, a.colorTo ?? null, a.palette ?? null]) ===
+  JSON.stringify([b.color ?? null, b.colorTo ?? null, b.palette ?? null]);
+
 /** True when a keyframe carries a value-lane payload at all. */
 export const hasPayload = (keyframe: AutomationKeyframe) =>
   !!keyframe.color || !!keyframe.palette;
@@ -1157,7 +1162,36 @@ export const pasteClipAt = (
     for (let i = rightStart; i < base.keyframes.length - 1; i++)
       segments.push(baseSegments[i]);
   }
-  return { ...(curve ?? {}), keyframes, segments };
+  const result = { ...(curve ?? {}), keyframes, segments };
+  // A value lane's keyframes are period BOUNDARIES, and the paste plants one
+  // at each edge of its window to pin what shows there. Where the colour on
+  // both sides of an edge is the same colour, that boundary divides nothing:
+  // it is an extra dot on a lane that looks untouched, and pasting again
+  // plants another beside it. Pasting a window back where it came from should
+  // leave the lane exactly as it was.
+  if (!keyframes.some(hasPayload)) return result;
+  return dissolveSeam(dissolveSeam(result, at + duration), at);
+};
+
+/**
+ * Drop the boundary at `seam` when the period it opens carries the same
+ * payload as the period it closes. Value lanes only: a numeric keyframe at
+ * the same value still pins the shape around it.
+ */
+const dissolveSeam = (curve: AutomationCurve, seam: number) => {
+  const index = curve.keyframes.findIndex(
+    (keyframe) => Math.abs(keyframe.time - seam) <= EPS * 2,
+  );
+  if (index < 0) return curve;
+  const keyframe = curve.keyframes[index];
+  if (!hasPayload(keyframe)) return curve;
+  const before = index > 0 ? payloadOf(curve.keyframes[index - 1]) : curve.leadIn;
+  if (!before || !samePayload(before, payloadOf(keyframe))) return curve;
+  const keyframes = curve.keyframes.filter((_, i) => i !== index);
+  const segments = getSegments(curve).filter(
+    (_, i) => i !== (index > 0 ? index - 1 : 0),
+  );
+  return { ...curve, keyframes, segments };
 };
 
 export const evaluateCurve = (

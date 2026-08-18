@@ -494,6 +494,34 @@ const curveOf = (
     "value: delete leaves the outside untouched",
   );
 
+  // Pasting a window straight back where it came from must leave the lane
+  // exactly as it was. The paste pins a boundary at each edge of its window,
+  // and where the colour is the same on both sides that boundary divides
+  // nothing: it is an extra dot on a lane that looks untouched, and pasting
+  // again plants another beside it.
+  {
+    const before = colourCurve();
+    const identityClip = copyCurveWindow(before, 0.2, 0.7)!;
+    const after = pasteClipAt(before, identityClip, 0.2)!;
+    if (after.keyframes.length !== before.keyframes.length)
+      fail(
+        `value: pasting a window back where it came from added keyframes: ${before.keyframes.length} -> ${after.keyframes.length}`,
+      );
+    for (const [index, keyframe] of after.keyframes.entries()) {
+      near(
+        keyframe.time,
+        before.keyframes[index]?.time ?? -1,
+        1e-6,
+        `value: identity paste keyframe ${index}`,
+      );
+      sameColor(
+        keyframe.color as Rgba,
+        before.keyframes[index]?.color as Rgba,
+        `value: identity paste colour ${index}`,
+      );
+    }
+  }
+
   // Paste lands the copied periods at the cursor, and the original colour
   // resumes at the window's end rather than the pasted one bleeding past it.
   const target: AutomationCurve = {
