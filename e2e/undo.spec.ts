@@ -286,3 +286,43 @@ test.describe("undo over the layer/block model", () => {
     expect(await page.locator("[class*=keyframeDot]").count()).toBe(2);
   });
 });
+
+test.describe("layer visibility", () => {
+  test("hiding a layer stops its patterns rendering, and is undoable", async ({
+    page,
+  }) => {
+    await gotoEditorClean(page);
+    await openPatternPanel(page);
+    await insertPattern(page, "Nebula");
+    await closePanel(page);
+    await loadSeededSong(page);
+    await page.waitForTimeout(600);
+
+    const layerVisible = () =>
+      page.evaluate(() => {
+        const store = (window as unknown as Record<string, any>).__editorStore;
+        return store.layers.map((l: any) => l.visible);
+      });
+
+    expect(await layerVisible()).toEqual([true]);
+
+    await openPatternPanel(page);
+    await page.getByLabel("Hide layer").first().click();
+    await page.waitForTimeout(600);
+    expect(await layerVisible()).toEqual([false]);
+    // The pattern is filtered out of the render set.
+    const hiddenCount = await page.evaluate(() => {
+      const store = (window as unknown as Record<string, any>).__editorStore;
+      return store.layers
+        .flatMap((l: any) => (l.visible ? l.getAllBlocks() : []))
+        .length;
+    });
+    expect(hiddenCount).toBe(0);
+
+    // Layer visibility lives on the layer in the blob, so undo covers it.
+    await closePanel(page);
+    await page.keyboard.press("Control+z");
+    await page.waitForTimeout(400);
+    expect(await layerVisible()).toEqual([true]);
+  });
+});

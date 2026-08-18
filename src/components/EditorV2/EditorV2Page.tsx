@@ -892,11 +892,21 @@ export const EditorV2Page = observer(function EditorV2Page() {
     resetHistory(seedSnapshot());
   };
 
+  // A pattern renders when its own eye is open AND its layer's is. Hiding a
+  // layer hides it on the canopy: `visible` is serialized on the layer, so it
+  // is part of the experience and travels with it, and upstream's own
+  // RenderPipelineV2 already filters on it. This pipeline did not, so the
+  // layer eye changed an icon and nothing else.
+  const entryRenders = (entry: StackEntry) =>
+    entry.visible && entry.block.layer?.visible !== false;
+
   // Keyed by membership AND effect-chain structure so expand/collapse
   // clicks don't recreate the array (and churn the canopy pipeline's
-  // render targets), while adding/removing/reordering an effect does.
+  // render targets), while adding/removing/reordering an effect does. A
+  // layer's eye changes which entries pass the filter, so the key moves with
+  // it and the memo re-runs.
   const visibleKey = entries
-    .filter((entry) => entry.visible)
+    .filter(entryRenders)
     .map(
       (entry) =>
         `${entry.id}[${entry.effects.map((effect) => effect.id).join(",")}]`,
@@ -905,7 +915,7 @@ export const EditorV2Page = observer(function EditorV2Page() {
   const visiblePatterns = useMemo(
     () =>
       entries
-        .filter((entry) => entry.visible)
+        .filter(entryRenders)
         .map(({ id, pattern, effects, block }) => ({
           id,
           pattern,
