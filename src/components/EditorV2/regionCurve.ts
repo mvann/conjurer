@@ -850,15 +850,22 @@ const curveRegionForRun = (
     for (let i = runStart; i < runEnd; i++) {
       const a = keyframes[i];
       const b = keyframes[i + 1];
+      const at = localOf(a.time) - start;
       const bt = localOf(b.time) - start;
       // The hold point only exists to carry the value up to the step. With
       // equal endpoints there IS no step, so writing it anyway leaves a
       // coincident pair the read side cannot recognise as a flat — and since
       // every edit rewrites the lane, each pass would add another pair and the
       // keyframes would multiply under a drag.
+      //
+      // A flat with no width has nothing to carry either: it IS the step. Its
+      // hold point would land exactly on the keyframe before it and read back
+      // as a keyframe of its own, so a flat run with one segment squeezed shut
+      // grew a dot every time it was written.
       if (
         segments[i].type === "flat" &&
-        Math.abs(b.value - a.value) > VALUE_EPS
+        Math.abs(b.value - a.value) > VALUE_EPS &&
+        bt - at > TIME_EPS
       )
         points.push({ t: bt, v: a.value });
       points.push({ t: bt, v: b.value });

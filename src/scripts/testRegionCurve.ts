@@ -886,6 +886,31 @@ console.log("");
       `a shaped run invented a keyframe around a stacked pair: 4 -> ${fitted.keyframes.length}`,
     );
   console.log("  a shaped run around a stacked pair invents nothing");
+
+  // A flat carries its start value to the next keyframe and then steps, so it
+  // is written as a hold point plus the step. Squeezed shut it IS the step,
+  // and the hold point landed on the keyframe before it — reading back as a
+  // keyframe of its own, one more every time the lane was written.
+  const squeezedFlat = ensureCurveHandles({
+    keyframes: [
+      { time: 0.1, value: 0.2 },
+      { time: 0.3, value: 0.5 },
+      { time: 0.3, value: 0.7 },
+      { time: 0.6, value: 0.9 },
+    ],
+    segments: [{ type: "flat" }, { type: "flat" }, { type: "flat" }],
+  });
+  let grown = squeezedFlat;
+  for (let pass = 0; pass < 3; pass++) {
+    grown = trip(grown);
+    if (grown.keyframes.length !== 4) {
+      fail(
+        `a flat run with a squeezed segment grew on pass ${pass + 1}: 4 -> ${grown.keyframes.length}`,
+      );
+      break;
+    }
+  }
+  console.log("  a flat squeezed shut stays one step, however often written");
 }
 
 console.log("");
